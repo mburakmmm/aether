@@ -9,11 +9,12 @@ class GatewayError(Exception):
         self.message = message
 
 class Gateway:
+    _events: list[str]
+    _handlers: list[(WebSocketServerConn, str, str) -> None]
+
     def __init__(self: Gateway) -> None:
-        events: list[str] = []
-        handlers: list[(WebSocketServerConn, str, str) -> None] = []
-        self._events = events
-        self._handlers = handlers
+        self._events = []
+        self._handlers = []
 
     def on(self: Gateway, event: str, handler: (WebSocketServerConn, str, str) -> None) -> None:
         if len(event) == 0:

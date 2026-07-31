@@ -7,11 +7,12 @@ class ContainerError(Exception):
         self.message = message
 
 class Container:
+    _names: list[str]
+    _request: dict[str, str]
+
     def __init__(self: Container) -> None:
-        names: list[str] = []
-        request: dict[str, str] = {}
-        self._names = names
-        self._request = request
+        self._names = []
+        self._request = {}
 
     def register_name(self: Container, name: str) -> None:
         if len(name) == 0:
@@ -44,5 +45,4 @@ class Container:
         return ""
 
     def clear_request(self: Container) -> None:
-        empty: dict[str, str] = {}
-        self._request = empty
+        self._request = {}

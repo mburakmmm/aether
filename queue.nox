@@ -149,11 +149,12 @@ def fail(db: Connection, id: int, error: str) -> None:
         stmt2.execute()
 
 class JobRegistry:
+    _names: list[str]
+    _handlers: list[(str) -> None]
+
     def __init__(self: JobRegistry) -> None:
-        names: list[str] = []
-        handlers: list[(str) -> None] = []
-        self._names = names
-        self._handlers = handlers
+        self._names = []
+        self._handlers = []
 
     def register(self: JobRegistry, name: str, handler: (str) -> None) -> None:
         names: list[str] = self._names

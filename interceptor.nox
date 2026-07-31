@@ -6,6 +6,9 @@ import aether.response
 from aether.context import HttpContext
 
 class InterceptorFns:
+    before_fn: (HttpContext) -> None
+    after_fn: (HttpContext, HttpResponse) -> HttpResponse
+
     def __init__(
         self: InterceptorFns,
         before_fn: (HttpContext) -> None,

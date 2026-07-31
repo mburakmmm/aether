@@ -8,6 +8,13 @@ import aether.errors
 from aether.errors import ValidationError
 
 class Field:
+    name: str
+    kind: str
+    required: bool
+    format_name: str
+    description: str
+    item_kind: str
+
     def __init__(
         self: Field,
         name: str,
@@ -25,14 +32,17 @@ class Field:
         self.item_kind = item_kind
 
 class DtoSchema:
+    name: str
+    fields: list[Field]
+    nested_names: list[str]
+    nested_schemas: list[DtoSchema]
+    _flat: Schema
+
     def __init__(self: DtoSchema, name: str) -> None:
         self.name = name
-        fields: list[Field] = []
-        nested_names: list[str] = []
-        nested_schemas: list[DtoSchema] = []
-        self.fields = fields
-        self.nested_names = nested_names
-        self.nested_schemas = nested_schemas
+        self.fields = []
+        self.nested_names = []
+        self.nested_schemas = []
         self._flat = Schema()
 
     def require(self: DtoSchema, name: str, kind: str) -> None:

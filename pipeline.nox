@@ -41,6 +41,9 @@ def match_path(pattern: str, target: str) -> dict[str, str] | None:
     return params
 
 class MatchResult:
+    route: RouteDef
+    params: dict[str, str]
+
     def __init__(self: MatchResult, route: RouteDef, params: dict[str, str]) -> None:
         self.route = route
         self.params = params

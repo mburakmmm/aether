@@ -15,10 +15,12 @@ from aether.errors import NotFoundError
 from aether.dto import DtoSchema
 
 class UserService:
+    _users: dict[str, str]
+    _next: int
+
     def __init__(self: UserService) -> None:
-        users: dict[str, str] = {}
-        users["1"] = "ada"
-        self._users = users
+        self._users = {}
+        self._users["1"] = "ada"
         self._next = 2
 
     def find(self: UserService, id: str) -> str | None:

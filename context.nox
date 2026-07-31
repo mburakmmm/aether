@@ -6,6 +6,12 @@ from aether.container import Container
 import nox.strings
 
 class RequestState:
+    active: bool
+    request_id: str
+    input_json: str
+    path: str
+    method: str
+
     def __init__(self: RequestState) -> None:
         self.active = False
         self.request_id = ""
@@ -71,6 +77,14 @@ def query_string(target: str) -> str:
     return _substr(target, q + 1, len(target))
 
 class HttpContext:
+    request: HttpRequest
+    params: dict[str, str]
+    container: Container
+    request_id: str
+    input_body: str
+    path: str
+    method: str
+
     def __init__(
         self: HttpContext,
         request: HttpRequest,

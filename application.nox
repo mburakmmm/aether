@@ -29,6 +29,16 @@ class AppError(Exception):
         self.message = message
 
 class Application:
+    config: Config
+    container: Container
+    routes: list[RouteDef]
+    global_guards: list[(HttpContext) -> bool]
+    global_pipes: list[(HttpContext) -> None]
+    global_interceptors: list[InterceptorFns]
+    _shutdown_hooks: list[() -> None]
+    openapi_doc: str
+    _closed: bool
+
     def __init__(
         self: Application,
         cfg: Config,

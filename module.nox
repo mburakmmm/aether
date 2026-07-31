@@ -14,6 +14,19 @@ from aether.pipe import validation_pipe
 from aether.interceptor import InterceptorFns
 
 class RouteDef:
+    method: str
+    pattern: str
+    handler: (HttpContext) -> HttpResponse
+    summary: str
+    tag: str
+    has_input: bool
+    input_schema: DtoSchema
+    has_output: bool
+    output_schema: DtoSchema
+    guards: list[(HttpContext) -> bool]
+    pipes: list[(HttpContext) -> None]
+    interceptors: list[InterceptorFns]
+
     def __init__(
         self: RouteDef,
         method: str,
@@ -35,14 +48,21 @@ class RouteDef:
         self.input_schema = input_schema
         self.has_output = has_output
         self.output_schema = output_schema
-        guards: list[(HttpContext) -> bool] = []
-        pipes: list[(HttpContext) -> None] = []
-        interceptors: list[InterceptorFns] = []
-        self.guards = guards
-        self.pipes = pipes
-        self.interceptors = interceptors
+        self.guards = []
+        self.pipes = []
+        self.interceptors = []
 
 class ModuleBuilder:
+    _routes: list[RouteDef]
+    _container: Container
+    _global_guards: list[(HttpContext) -> bool]
+    _global_pipes: list[(HttpContext) -> None]
+    _global_interceptors: list[InterceptorFns]
+    _route_guards: list[(HttpContext) -> bool]
+    _route_pipes: list[(HttpContext) -> None]
+    _route_interceptors: list[InterceptorFns]
+    _default_tag: str
+
     def __init__(
         self: ModuleBuilder,
         routes: list[RouteDef],
@@ -56,12 +76,9 @@ class ModuleBuilder:
         self._global_guards = global_guards
         self._global_pipes = global_pipes
         self._global_interceptors = global_interceptors
-        route_guards: list[(HttpContext) -> bool] = []
-        route_pipes: list[(HttpContext) -> None] = []
-        route_interceptors: list[InterceptorFns] = []
-        self._route_guards = route_guards
-        self._route_pipes = route_pipes
-        self._route_interceptors = route_interceptors
+        self._route_guards = []
+        self._route_pipes = []
+        self._route_interceptors = []
         self._default_tag = ""
 
     def tag(self: ModuleBuilder, name: str) -> None:
@@ -101,12 +118,9 @@ class ModuleBuilder:
         self._route_interceptors = xs
 
     def clear_route_meta(self: ModuleBuilder) -> None:
-        empty_g: list[(HttpContext) -> bool] = []
-        empty_p: list[(HttpContext) -> None] = []
-        empty_i: list[InterceptorFns] = []
-        self._route_guards = empty_g
-        self._route_pipes = empty_p
-        self._route_interceptors = empty_i
+        self._route_guards = []
+        self._route_pipes = []
+        self._route_interceptors = []
 
     def _add(
         self: ModuleBuilder,
