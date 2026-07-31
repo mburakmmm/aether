@@ -1,10 +1,55 @@
 # Aether
 
-NestJS-inspired **API / backend** framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ **1.26.0**).
+[English](README.md) · [Türkçe](README.tr.md)
 
-Pythonic modules, closure-based DI, guards/pipes/interceptors, typed DTOs, OpenAPI, WebSocket gateways, and background queues.
+**NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
+Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-> Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use Aether for HTTP APIs; use Nyx for monolithic HTML apps.
+**Version:** 0.2.0 · **License:** MIT · **Requires Nox ≥ 1.26.0**  
+Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
+
+> Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
+
+---
+
+## Install (Nox package)
+
+Add to your app’s `nox.json`:
+
+```json
+{
+  "name": "myapi",
+  "entry": "main.nox",
+  "requires": [
+    {
+      "alias": "aether",
+      "repo": "github.com/mburakmmm/aether",
+      "ref": "v0.2.0"
+    }
+  ]
+}
+```
+
+```sh
+noxc fetch
+AETHER_ENV=development noxc run main.nox
+```
+
+### Local path (development)
+
+```json
+{ "alias": "aether", "repo": "/absolute/path/to/aether", "ref": "master" }
+```
+
+### CLI scaffold
+
+```sh
+noxc install github.com/mburakmmm/aether@v0.2.0
+aether new myapi
+cd myapi && noxc fetch && AETHER_ENV=development noxc run main.nox
+```
+
+---
 
 ## Quick start
 
@@ -49,46 +94,80 @@ finally:
     aether.application.shutdown(app)
 ```
 
-```sh
-noxc fetch
-AETHER_ENV=development noxc run examples/hello_api/main.nox
-```
+Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
+
+---
+
+## What’s new in 0.2.0
+
+- Path prefix, `import_module`, exception filters
+- CORS, body size limit, rate limit, 405, trailing-slash normalize
+- OpenAPI `$ref` + success statuses, Swagger UI at `/docs`
+- DTO format checks (`email` / `uuid` / `uri`) and number ranges
+- Trusted `X-Forwarded-For` → `client_ip` (opt-in)
+- Queue stale reclaim + DLQ (`list_dead` / `requeue_dead` / `mark_dead`)
+- WebSocket rooms / broadcast + token auth helper
+- In-process metrics at `/metrics`
+
+---
 
 ## Features
 
 | Feature | Module |
 |---------|--------|
-| Application boot / dispatch | `aether.application` |
-| Modules + routing + prefix | `aether.module` (`app.module()` / `import_module`) |
+| Boot / dispatch / filters | `aether.application` |
+| Modules, routes, prefix | `aether.module` |
 | Provider **name** registry | `aether.container` |
-| Request context (`TaskLocal`, query/header/IP) | `aether.context` |
-| Guards / pipes / interceptors | function-based (`aether.guard`, `pipe`, `interceptor`) |
-| Exception filters | `app.use_exception_filter` |
-| DTO validation (+ email/uuid/uri/range) | `aether.dto` |
+| Context (query / header / IP) | `aether.context` |
+| Guards / pipes / interceptors | `aether.guard`, `pipe`, `interceptor` |
+| DTO validation | `aether.dto` |
 | Structured errors | `aether.errors` |
-| OpenAPI 3 + Swagger UI | `aether.openapi` / `aether.swagger` (`/openapi.json`, `/docs`) |
-| CORS / rate limit / body limit / metrics | `aether.cors`, `rate_limit`, `metrics` |
+| OpenAPI 3 + Swagger UI | `aether.openapi`, `aether.swagger` |
+| CORS / rate limit / metrics | `aether.cors`, `rate_limit`, `metrics` |
 | WebSocket gateway + rooms | `aether.gateway` |
-| Background jobs + reclaim + DLQ | `aether.queue` |
-| CLI scaffold | `aether` bin (`cli.nox`) |
+| Jobs + reclaim + DLQ | `aether.queue` |
+| Testing helpers | `aether.testing` |
+| CLI | `aether` (`cli.nox`) |
 
-## DI style (official)
+### DI (official)
 
-Nox cannot subclass imported framework bases and has no ctor reflection. Aether’s official DI is **closure injection** + a name registry:
+Nox cannot subclass imported bases. Aether uses **closure injection** + a name registry:
 
 ```nox
 svc: UserService = UserService()
-m.provide("UserService")              # name registry only — not an instance map
-m.get("/users/:id", self._show(svc))  # svc captured by handler closure
+m.provide("UserService")                 # names only
+m.get("/users/:id", self._show(svc))     # capture in closure
 ```
 
-Do not expect `provide(name, instance)` or constructor injection — those are blocked by Nox language limits (see `docs/NOX_LIMITATIONS.md`).
+---
 
-## Nox limitations
+## Configuration
 
-Evidence-backed language gaps for upstream work: [docs/NOX_LIMITATIONS.md](docs/NOX_LIMITATIONS.md).
+| Env | Default (dev) | Notes |
+|-----|---------------|--------|
+| `AETHER_ENV` | `development` | `development` \| `test` \| `production` |
+| `AETHER_HOST` / `AETHER_PORT` | `0.0.0.0` / `3000` | Bind |
+| `AETHER_OPENAPI` | on (off in prod) | `/openapi.json`, `/docs` |
+| `AETHER_CORS_ORIGINS` | `*` | Empty disables CORS helper |
+| `AETHER_MAX_BODY_BYTES` | `1048576` | 413 when exceeded |
+| `AETHER_RATE_LIMIT` | off (on in prod) | Per-worker window |
+| `AETHER_TRUST_X_FORWARDED_FOR` | `false` | Enable only behind a trusted proxy |
+| `AETHER_JOBS_DB` | `db/jobs.sqlite` | Queue SQLite path |
+| `AETHER_JOB_STALE_MS` | `300000` | Stuck `running` reclaim window |
 
-Performance notes: [docs/PERF.md](docs/PERF.md).
+Built-in routes: `GET /health`, `GET /metrics`, and when OpenAPI is on: `GET /openapi.json`, `GET /docs`.
+
+---
+
+## Docs
+
+- Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Nox limitations (upstream evidence): [docs/NOX_LIMITATIONS.md](docs/NOX_LIMITATIONS.md)
+- Perf notes: [docs/PERF.md](docs/PERF.md)
+
+## Serve note
+
+Nox `serve*` requires a **bare top-level** `handle` / `ws_handle` name — do not wrap `dispatch` inside `aether.server.listen(...)`.
 
 ## License
 
