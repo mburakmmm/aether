@@ -179,6 +179,7 @@ def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
     _mount_framework_routes(app)
     if cfg.openapi_enabled:
         app.openapi_doc = aether.openapi.build_document(cfg, app.route_table.routes)
+    bind(app)
     return app
 
 def _apply_filters(app: Application, err: HttpError) -> HttpResponse | None:
@@ -266,6 +267,29 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
         finish()
     return resp
 
+# Serve handlers must not close over Application directly — Nox codegen rejects
+# that combination. Prefer dispatch_bound() after boot (boot auto-bind) or bind().
+class AppBind:
+    apps: list[Application]
+
+    def __init__(self: AppBind) -> None:
+        self.apps = []
+
+_bind: AppBind = AppBind()
+
+def bind(app: Application) -> None:
+    xs: list[Application] = []
+    xs.append(app)
+    _bind.apps = xs
+
+def bound() -> Application:
+    if len(_bind.apps) == 0:
+        raise AppError("call aether.application.bind(app) before dispatch_bound")
+    return _bind.apps[0]
+
+def dispatch_bound(req: HttpRequest) -> HttpResponse:
+    return dispatch(bound(), req)
+
 def shutdown(app: Application) -> None:
     if app._closed:
         return
@@ -278,3 +302,7 @@ def shutdown(app: Application) -> None:
         except Exception as e:
             nox.log.error("shutdown hook failed: " + e.message)
         i = i + 1
+
+def shutdown_bound() -> None:
+    if len(_bind.apps) > 0:
+        shutdown(_bind.apps[0])

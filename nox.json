@@ -8,8 +8,8 @@
   "requires": [
     {
       "alias": "aether",
-      "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.4.0"
+      "repo": "/Users/melihburakmemis/Documents/aether",
+      "ref": "master"
     }
   ]
 }

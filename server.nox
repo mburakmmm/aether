@@ -5,8 +5,11 @@
 # Kullanım (scaffold / examples):
 #
 #   def handle(req: HttpRequest) -> HttpResponse:
-#       return aether.application.dispatch(app, req)
+#       return aether.application.dispatch_bound(req)
 #   nox.http.serve(app.config.port, handle)
+#
+# boot_with_config auto-calls bind(app). Do not close over Application in handle
+# (Nox codegen rejects that with serve*).
 #
 # Multicore:
 #   nox.http.serve_multicore(app.config.port, handle, aether.server.effective_workers(app.config))

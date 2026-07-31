@@ -81,7 +81,7 @@ cfg: Config = aether.config.load()
 app: Application = aether.application.boot_with_config(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
-    return aether.application.dispatch(app, req)
+    return aether.application.dispatch_bound(req)
 
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
 try:
@@ -91,7 +91,7 @@ try:
     else:
         nox.http.serve(cfg.port, handle)
 finally:
-    aether.application.shutdown(app)
+    aether.application.shutdown_bound()
 ```
 
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
@@ -181,6 +181,8 @@ Built-in routes: `GET /health`, `GET /metrics`, and when OpenAPI is on: `GET /op
 ## Serve note
 
 Nox `serve*` requires a **bare top-level** `handle` / `ws_handle` name — do not wrap `dispatch` inside `aether.server.listen(...)`.
+
+Do **not** close over `Application` in that handle (`dispatch(app, req)`). Use `dispatch_bound` after `boot_with_config` (auto-`bind`).
 
 ## License
 

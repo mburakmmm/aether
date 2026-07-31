@@ -303,6 +303,23 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ---
 
+## 19. `serve*` handlers cannot close over `Application`
+
+**Status:** `workaround`
+
+**Impact:** The idiomatic Nest/Express pattern `def handle(req): return dispatch(app, req)` fails codegen when `app: Application` is a free variable of the serve handler (`desteklenmeyen yapı`). Config and simple values are fine; capturing the framework Application graph is not.
+
+**Evidence:**
+- Minimal repro: boot + `handle` referencing `app` + `nox.http.serve` → codegen error
+- Works: store app in `list[Application]` / `AppBind` and read `APPS[0]` inside handle
+- Bench harness + `examples/hello_api` require this pattern
+
+**Desired Nox change:** Allow serve handlers to close over complex package class instances (or document free-variable restrictions for serve intrinsics).
+
+**Aether workaround:** `boot_with_config` calls `bind(app)`; entrypoints use `dispatch_bound` / `shutdown_bound`.
+
+---
+
 ## Priority asks for Nox (Aether ranking)
 
 0. Cross-module class inheritance
@@ -319,5 +336,6 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 10. Stdlib base64 (+ JWT HS256)
 11. Typed / coercing query values
 12. Hot-path JSON / response buffers
+13. Serve-handler free vars over complex package objects
 
 When an item is fixed upstream, update its **Status** to `resolved in nox X.Y` and tighten Aether APIs accordingly.
