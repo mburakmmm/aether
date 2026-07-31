@@ -23,7 +23,8 @@ class ValidatedBody:
     def _field(self: ValidatedBody, name: str) -> JsonValue | None:
         v: JsonValue = self._root()
         if not nox.json.is_object(v):
-            raise ValidationError("body must be a json object", [])
+            details: list[str] = []
+            raise ValidationError("body must be a json object", details)
         i: int = 0
         n: int = nox.json.object_len(v)
         while i < n:
@@ -38,47 +39,60 @@ class ValidatedBody:
     def get_str(self: ValidatedBody, name: str) -> str:
         got: JsonValue | None = self._field(name)
         if got == None:
-            raise ValidationError("missing field: " + name, [])
-        val: JsonValue = got
-        if not nox.json.is_string(val):
-            raise ValidationError("field '" + name + "' must be string", [])
-        return nox.json.as_string(val)
+            details: list[str] = []
+            raise ValidationError("missing field: " + name, details)
+        else:
+            val: JsonValue = got
+            if not nox.json.is_string(val):
+                details2: list[str] = []
+                raise ValidationError("field '" + name + "' must be string", details2)
+            return nox.json.as_string(val)
 
     def get_str_or(self: ValidatedBody, name: str, default: str) -> str:
         got: JsonValue | None = self._field(name)
         if got == None:
             return default
-        val: JsonValue = got
-        if not nox.json.is_string(val):
-            raise ValidationError("field '" + name + "' must be string", [])
-        return nox.json.as_string(val)
+        else:
+            val: JsonValue = got
+            if not nox.json.is_string(val):
+                details: list[str] = []
+                raise ValidationError("field '" + name + "' must be string", details)
+            return nox.json.as_string(val)
 
     def get_int(self: ValidatedBody, name: str) -> int:
         got: JsonValue | None = self._field(name)
         if got == None:
-            raise ValidationError("missing field: " + name, [])
-        val: JsonValue = got
-        if not nox.json.is_number(val):
-            raise ValidationError("field '" + name + "' must be number", [])
-        return int(nox.json.as_number(val))
+            details: list[str] = []
+            raise ValidationError("missing field: " + name, details)
+        else:
+            val: JsonValue = got
+            if not nox.json.is_number(val):
+                details2: list[str] = []
+                raise ValidationError("field '" + name + "' must be number", details2)
+            return int(nox.json.as_number(val))
 
     def get_int_or(self: ValidatedBody, name: str, default: int) -> int:
         got: JsonValue | None = self._field(name)
         if got == None:
             return default
-        val: JsonValue = got
-        if not nox.json.is_number(val):
-            raise ValidationError("field '" + name + "' must be number", [])
-        return int(nox.json.as_number(val))
+        else:
+            val: JsonValue = got
+            if not nox.json.is_number(val):
+                details: list[str] = []
+                raise ValidationError("field '" + name + "' must be number", details)
+            return int(nox.json.as_number(val))
 
     def get_bool(self: ValidatedBody, name: str) -> bool:
         got: JsonValue | None = self._field(name)
         if got == None:
-            raise ValidationError("missing field: " + name, [])
-        val: JsonValue = got
-        if not nox.json.is_bool(val):
-            raise ValidationError("field '" + name + "' must be bool", [])
-        return nox.json.as_bool(val)
+            details: list[str] = []
+            raise ValidationError("missing field: " + name, details)
+        else:
+            val: JsonValue = got
+            if not nox.json.is_bool(val):
+                details2: list[str] = []
+                raise ValidationError("field '" + name + "' must be bool", details2)
+            return nox.json.as_bool(val)
 
 def from_raw(raw: str) -> ValidatedBody:
     return ValidatedBody(raw)

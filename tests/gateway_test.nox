@@ -1,16 +1,16 @@
 import nox.test
 import aether.gateway
-from aether.gateway import Gateway, RoomHub
+from aether.gateway import Gateway, RoomHub, echo_handler, allow_all_rooms, require_token_auth
 
 hub: RoomHub = RoomHub()
 nox.test.assert_eq_int(hub.member_count("lobby"), 0, "empty room")
 
 gw: Gateway = Gateway()
-gw.on("echo", aether.gateway.echo_handler)
-gw.set_auth(aether.gateway.require_token_auth("secret"))
+gw.on("echo", echo_handler)
+gw.set_auth(require_token_auth("secret"))
 nox.test.assert_true(not gw.rooms_enabled, "rooms off by default")
 gw.enable_rooms()
-gw.set_room_auth(aether.gateway.allow_all_rooms())
+gw.set_room_auth(allow_all_rooms())
 nox.test.assert_true(gw.rooms_enabled, "rooms on")
 nox.test.assert_eq_int(len(gw._events), 1, "echo registered")
 print("gateway_test ok")
