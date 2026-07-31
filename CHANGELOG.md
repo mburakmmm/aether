@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.4 — 2026-07-31
+
+Hardening follow-up (fingerprint, reclaim batching, release smoke).
+
+- DTO fingerprint is field-order independent; nested shapes included; nested always queued for collision checks
+- `reclaim_stale_batch(db, stale_ms, limit)` (default 500) + broader rollback on reclaim errors
+- Two-connection file-backed queue contention + batch-limit tests
+- Route patterns normalized at boot (`/users` vs `/users/` → duplicate)
+- `docs/RELEASE.md` lock-commit rule; tag-triggered remote install/scaffold workflow
+
 ## 0.4.3 — 2026-07-31
 
 Production hardening (queue reclaim + boot validation + release refs).

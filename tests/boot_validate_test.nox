@@ -55,4 +55,51 @@ def build_schema_ok(app: Application) -> None:
 app_ok: Application = aether.application.boot_with_config(cfg, build_schema_ok)
 aether.application.shutdown(app_ok)
 
+# Field order must not matter for the same DTO shape.
+def build_field_order_ok(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    a: DtoSchema = DtoSchema("Ordered")
+    a.require("id", "string")
+    a.require("name", "string")
+    b: DtoSchema = DtoSchema("Ordered")
+    b.require("name", "string")
+    b.require("id", "string")
+    m.post_body("/a", empty_handler, "A", a, a)
+    m.post_body("/b", empty_handler, "B", b, b)
+
+app_ord: Application = aether.application.boot_with_config(cfg, build_field_order_ok)
+aether.application.shutdown(app_ord)
+
+# Nested schema shape collision under the same parent name must fail.
+def build_nested_clash(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    p1: DtoSchema = DtoSchema("Profile")
+    p1.require("name", "string")
+    u1: DtoSchema = DtoSchema("User")
+    u1.require_object("profile", p1)
+    p2: DtoSchema = DtoSchema("Profile")
+    p2.require("age", "number")
+    u2: DtoSchema = DtoSchema("User")
+    u2.require_object("profile", p2)
+    m.post_body("/a", empty_handler, "A", u1, u1)
+    m.post_body("/b", empty_handler, "B", u2, u2)
+
+try:
+    aether.application.boot_with_config(cfg, build_nested_clash)
+    nox.test.assert_true(False, "nested clash should raise")
+except AppError as e3:
+    nox.test.assert_true(nox.strings.contains(e3.message, "duplicate DTO"), "nested clash msg")
+
+# /users and /users/ normalize to the same pattern → duplicate at boot.
+def build_slash_clash(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.get("/users", empty_handler)
+    m.get("/users/", empty_handler)
+
+try:
+    aether.application.boot_with_config(cfg, build_slash_clash)
+    nox.test.assert_true(False, "trailing slash clash should raise")
+except AppError as e4:
+    nox.test.assert_true(nox.strings.contains(e4.message, "duplicate route"), "slash msg")
+
 print("boot_validate_test ok")

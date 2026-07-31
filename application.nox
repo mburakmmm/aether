@@ -3,6 +3,7 @@
 import nox.uuid
 import nox.log
 import nox.time
+import nox.strings
 from nox.http import HttpRequest, HttpResponse
 import aether.config
 import aether.container
@@ -111,25 +112,83 @@ def _mount_framework_routes(app: Application) -> None:
 def _route_key(method: str, pattern: str) -> str:
     return method + " " + pattern
 
-def _schema_fingerprint(schema: DtoSchema) -> str:
-    # Structural identity for OpenAPI component name collisions.
-    out: str = schema.name
+def _str_less(a: str, b: str) -> bool:
+    i: int = 0
+    na: int = len(a)
+    nb: int = len(b)
+    while i < na and i < nb:
+        ca: int = nox.strings.byte_at(a, i)
+        cb: int = nox.strings.byte_at(b, i)
+        if ca < cb:
+            return True
+        if ca > cb:
+            return False
+        i = i + 1
+    return na < nb
+
+def _sort_strs(xs: list[str]) -> None:
+    # Insertion sort (Nox: no list.sort, string <, break, or reliable and-short-circuit).
+    i: int = 1
+    while i < len(xs):
+        key: str = xs[i]
+        j: int = i - 1
+        shifting: bool = True
+        while shifting:
+            if j < 0:
+                shifting = False
+            else:
+                if _str_less(key, xs[j]):
+                    xs[j + 1] = xs[j]
+                    j = j - 1
+                else:
+                    shifting = False
+        xs[j + 1] = key
+        i = i + 1
+
+def _field_sig(f: Field) -> str:
+    return (
+        f.name + ":" + f.kind + ":" + str(f.required) + ":" + f.format_name +
+        ":" + f.item_kind + ":" + str(f.has_min) + ":" + str(f.minimum) +
+        ":" + str(f.has_max) + ":" + str(f.maximum)
+    )
+
+def _fields_fingerprint(schema: DtoSchema) -> str:
+    sigs: list[str] = []
     fi: int = 0
     while fi < len(schema.fields):
-        f: Field = schema.fields[fi]
-        out = out + "|" + f.name + ":" + f.kind + ":" + str(f.required) + ":" + f.format_name
-        out = out + ":" + f.item_kind + ":" + str(f.has_min) + ":" + str(f.minimum)
-        out = out + ":" + str(f.has_max) + ":" + str(f.maximum)
+        sigs.append(_field_sig(schema.fields[fi]))
         fi = fi + 1
+    _sort_strs(sigs)
+    out: str = ""
+    si: int = 0
+    while si < len(sigs):
+        if si > 0:
+            out = out + "|"
+        out = out + sigs[si]
+        si = si + 1
+    return out
+
+def _schema_fingerprint(schema: DtoSchema) -> str:
+    # Order-independent fields; nested schemas contribute name + their fields
+    # (so Profile{name:string} vs Profile{age:number} differ under the same parent).
+    out: str = schema.name + "{" + _fields_fingerprint(schema) + "}"
+    nest_sigs: list[str] = []
     ni: int = 0
     while ni < len(schema.nested_schemas):
         nest: DtoSchema = schema.nested_schemas[ni]
-        out = out + ">nested:" + nest.name
+        nest_sigs.append(nest.name + "{" + _fields_fingerprint(nest) + "}")
         ni = ni + 1
+    _sort_strs(nest_sigs)
+    nj: int = 0
+    while nj < len(nest_sigs):
+        out = out + ">nested:" + nest_sigs[nj]
+        nj = nj + 1
     return out
 
 def _validate_schema_names(routes: list[RouteDef]) -> None:
     # Iterative - avoid recursive helpers (Nox codegen limits).
+    # Always enqueue nested schemas even when the parent name was already seen,
+    # so conflicting nested shapes under a duplicate parent name are still checked.
     seen_names: list[str] = []
     seen_fps: list[str] = []
     queue: list[DtoSchema] = []
@@ -159,18 +218,26 @@ def _validate_schema_names(routes: list[RouteDef]) -> None:
         if not found:
             seen_names.append(name)
             seen_fps.append(fp)
-            ni: int = 0
-            while ni < len(schema.nested_schemas):
-                nest: DtoSchema = schema.nested_schemas[ni]
-                if len(nest.name) > 0:
-                    queue.append(nest)
-                ni = ni + 1
+        ni: int = 0
+        while ni < len(schema.nested_schemas):
+            nest: DtoSchema = schema.nested_schemas[ni]
+            if len(nest.name) > 0:
+                queue.append(nest)
+            ni = ni + 1
         qi = qi + 1
+
+def _normalize_route_patterns(routes: list[RouteDef]) -> None:
+    i: int = 0
+    while i < len(routes):
+        r: RouteDef = routes[i]
+        r.pattern = normalize_path(r.pattern)
+        i = i + 1
 
 def _validate_boot(app: Application) -> None:
     # Call after _mount_framework_routes so /health|/metrics|/docs|/openapi.json
     # collide with user routes at boot instead of silently double-registering.
     routes: list[RouteDef] = app.route_table.routes
+    _normalize_route_patterns(routes)
     seen_routes: list[str] = []
     i: int = 0
     while i < len(routes):

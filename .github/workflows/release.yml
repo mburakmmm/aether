@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  remote-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential curl
+
+      - name: Install Nox
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.26.0 bash
+          echo "$HOME/.nox-lang/bin" >> "$GITHUB_PATH"
+
+      - name: Tag matches VERSION and refs
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="$(tr -d '[:space:]' < VERSION)"
+          if [[ "$TAG" != "v${VER}" ]]; then
+            echo "tag=$TAG VERSION=$VER mismatch" >&2
+            exit 1
+          fi
+          chmod +x scripts/check_release_refs.sh
+          ./scripts/check_release_refs.sh
+
+      - name: Remote noxc install @tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          noxc install "github.com/mburakmmm/aether@${TAG}"
+          aether version | tee /tmp/aether-version.txt
+          grep -q "${TAG#v}" /tmp/aether-version.txt
+
+      - name: Remote consumer fetch/check/run
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          WORK="$(mktemp -d)"
+          mkdir -p "$WORK/src"
+          cat > "$WORK/nox.json" <<EOF
+          {
+            "name": "aether-remote-smoke",
+            "entry": "src/main.nox",
+            "requires": [
+              {
+                "alias": "aether",
+                "repo": "github.com/mburakmmm/aether",
+                "ref": "${TAG}"
+              }
+            ]
+          }
+          EOF
+          cat > "$WORK/src/main.nox" <<'EOF'
+          import aether.config
+          import aether.application
+          from aether.config import Config
+          from aether.application import Application
+          from aether.module import ModuleBuilder
+          from aether.context import HttpContext
+          from aether.response import json_ok
+          from nox.http import HttpResponse
+
+          def build(app: Application) -> None:
+              m: ModuleBuilder = app.module()
+              def ping(ctx: HttpContext) -> HttpResponse:
+                  return json_ok("{\"pong\":true}")
+              m.get("/ping", ping)
+
+          cfg: Config = aether.config.defaults("test")
+          cfg.log_requests = False
+          app: Application = aether.application.boot_with_config(cfg, build)
+          aether.application.shutdown(app)
+          print("remote package smoke ok")
+          EOF
+          cd "$WORK"
+          noxc fetch
+          noxc check src/main.nox
+          noxc run src/main.nox
+
+      - name: Scaffold from checkout templates
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          WORK="$(mktemp -d)"
+          cd "$GITHUB_WORKSPACE"
+          noxc run cli.nox -- new "$WORK/smokeapi"
+          cd "$WORK/smokeapi"
+          python3 - <<PY
+          import json, os
+          tag = os.environ["TAG"]
+          data = json.load(open("nox.json"))
+          data["requires"] = [{
+            "alias": "aether",
+            "repo": "github.com/mburakmmm/aether",
+            "ref": tag,
+          }]
+          open("nox.json", "w").write(json.dumps(data, indent=2) + "\n")
+          PY
+          noxc fetch
+          noxc check main.nox
+        env:
+          TAG: ${{ github.ref_name }}

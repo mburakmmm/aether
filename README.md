@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.4.3 · **License:** MIT · **Requires Nox ≥ 1.26.0**  
+**Version:** 0.4.4 · **License:** MIT · **Requires Nox ≥ 1.26.0**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.4.3"
+      "ref": "v0.4.4"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.4.3
+noxc install github.com/mburakmmm/aether@v0.4.4
 aether new myapi
 cd myapi && noxc fetch && AETHER_ENV=development noxc run main.nox
 ```
@@ -97,6 +97,11 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.4.4
+
+Order-independent recursive DTO fingerprints, reclaim batch limit, two-connection
+queue contention tests, trailing-slash route normalize, tag release remote smoke.
 
 ## What’s new in 0.4.3
 

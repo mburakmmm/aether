@@ -155,21 +155,31 @@ def reserve(db: Connection) -> str | None:
         db.execute("ROLLBACK")
         raise QueueError(e.message)
 
+def default_reclaim_batch() -> int:
+    return 500
+
 def reclaim_stale(db: Connection, stale_ms: int) -> int:
+    return reclaim_stale_batch(db, stale_ms, default_reclaim_batch())
+
+def reclaim_stale_batch(db: Connection, stale_ms: int, limit: int) -> int:
     # BEGIN IMMEDIATE serializes against reserve(); UPDATE re-checks lease_token
     # and updated_at_ms so a concurrent new lease cannot be stolen after SELECT.
+    # `limit` caps rows touched per call so write-lock duration stays bounded.
     if stale_ms <= 0:
         stale_ms = default_stale_ms()
+    if limit <= 0:
+        limit = default_reclaim_batch()
     now: int = nox.time.now_ms()
     cutoff: int = now - stale_ms
     db.execute("BEGIN IMMEDIATE")
     try:
         sel: Statement = db.prepare(
             "SELECT id, lease_failures, lease_token FROM aether_jobs " +
-            "WHERE status = ? AND updated_at_ms < ?"
+            "WHERE status = ? AND updated_at_ms < ? ORDER BY updated_at_ms ASC, id ASC LIMIT ?"
         )
         sel.bind_str(0, status_running())
         sel.bind_int(1, cutoff)
+        sel.bind_int(2, limit)
         rows: list[Row] = sel.query()
         n: int = 0
         i: int = 0
@@ -217,6 +227,9 @@ def reclaim_stale(db: Connection, stale_ms: int) -> int:
     except SqliteError as e:
         db.execute("ROLLBACK")
         raise QueueError(e.message)
+    except Exception:
+        db.execute("ROLLBACK")
+        raise QueueError("reclaim_stale failed")
 
 def list_dead(db: Connection, limit: int) -> list[str]:
     if limit <= 0:
@@ -427,7 +440,7 @@ def work(db: Connection, registry: JobRegistry, limit: int) -> int:
     return processed
 
 def work_with_reclaim(db: Connection, registry: JobRegistry, limit: int, stale_ms: int) -> int:
-    reclaim_stale(db, stale_ms)
+    reclaim_stale_batch(db, stale_ms, default_reclaim_batch())
     return work(db, registry, limit)
 
 def work_forever(db: Connection, registry: JobRegistry, idle_sleep_ms: int) -> None:

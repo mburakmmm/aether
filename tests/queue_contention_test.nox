@@ -1,0 +1,88 @@
+import nox.test
+import nox.time
+import nox.fs
+import nox.json
+import aether.queue
+from nox.sqlite import Connection, Statement
+from aether.queue import QueueError
+
+def lease_token_of(raw: str) -> str:
+    v: JsonValue = nox.json.decode(raw)
+    i: int = 0
+    while i < nox.json.object_len(v):
+        if nox.json.object_key(v, i) == "lease_token":
+            return nox.json.as_string(nox.json.object_value(v, i))
+        i = i + 1
+    return ""
+
+# Two connections on one file DB: reserve on A, reclaim on B, reserve on C.
+db_path: str = "/tmp/aether_queue_contention.sqlite"
+if nox.fs.exists(db_path):
+    nox.fs.remove_file(db_path)
+
+conn_a: Connection = aether.queue.open_db(db_path)
+aether.queue.ensure_schema(conn_a)
+conn_b: Connection = aether.queue.open_db(db_path)
+conn_c: Connection = aether.queue.open_db(db_path)
+
+jid: int = aether.queue.enqueue(conn_a, "demo", "{\"c\":1}", 0)
+nox.test.assert_true(jid > 0, "enqueued")
+
+raw_a: str | None = aether.queue.reserve(conn_a)
+nox.test.assert_true(raw_a != None, "A reserved")
+token_a: str = ""
+if raw_a != None:
+    token_a = lease_token_of(raw_a)
+
+# Age lease so B's reclaim SELECT can see it.
+age: Statement = conn_a.prepare("UPDATE aether_jobs SET updated_at_ms = ? WHERE id = ?")
+age.bind_int(0, nox.time.now_ms() - 5000)
+age.bind_int(1, jid)
+age.execute()
+
+n_b: int = aether.queue.reclaim_stale_batch(conn_b, 1, 10)
+nox.test.assert_eq_int(n_b, 1, "B reclaimed via second connection")
+
+raw_c: str | None = aether.queue.reserve(conn_c)
+nox.test.assert_true(raw_c != None, "C reserved after B reclaim")
+token_c: str = ""
+if raw_c != None:
+    token_c = lease_token_of(raw_c)
+
+try:
+    aether.queue.complete(conn_a, jid, token_a)
+    nox.test.assert_true(False, "A complete must fail after B/C")
+except QueueError as e:
+    nox.test.assert_true(len(e.message) > 0, "A rejected")
+
+aether.queue.complete(conn_c, jid, token_c)
+
+# Batch limit: many stale jobs, reclaim at most 2 per call.
+db2_path: str = "/tmp/aether_queue_batch.sqlite"
+if nox.fs.exists(db2_path):
+    nox.fs.remove_file(db2_path)
+db2: Connection = aether.queue.open_db(db2_path)
+aether.queue.ensure_schema(db2)
+bi: int = 0
+while bi < 5:
+    aether.queue.enqueue(db2, "demo", "{\"b\":" + str(bi) + "}", 0)
+    raw: str | None = aether.queue.reserve(db2)
+    nox.test.assert_true(raw != None, "batch reserve")
+    bi = bi + 1
+age_all: Statement = db2.prepare("UPDATE aether_jobs SET updated_at_ms = ? WHERE status = ?")
+age_all.bind_int(0, nox.time.now_ms() - 5000)
+age_all.bind_str(1, aether.queue.status_running())
+age_all.execute()
+n1: int = aether.queue.reclaim_stale_batch(db2, 1, 2)
+nox.test.assert_eq_int(n1, 2, "batch capped at 2")
+n2: int = aether.queue.reclaim_stale_batch(db2, 1, 2)
+nox.test.assert_eq_int(n2, 2, "second batch 2")
+n3: int = aether.queue.reclaim_stale_batch(db2, 1, 2)
+nox.test.assert_eq_int(n3, 1, "final batch 1")
+
+if nox.fs.exists(db_path):
+    nox.fs.remove_file(db_path)
+if nox.fs.exists(db2_path):
+    nox.fs.remove_file(db2_path)
+
+print("queue_contention_test ok")

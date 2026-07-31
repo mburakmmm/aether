@@ -17,10 +17,13 @@ stale token raises `QueueError` — this prevents double-ack races.
 
 ## Reclaim and lease failures
 
-- `reclaim_stale(db, stale_ms)` runs under `BEGIN IMMEDIATE` (serialized with `reserve`).
-- It selects `running` rows with `updated_at_ms < cutoff`, then UPDATEs only when
-  `status = running` **and** `lease_token` still matches **and** `updated_at_ms < cutoff`.
-  Success requires `changes == 1`; otherwise the row is skipped (another worker won the race).
+- `reclaim_stale(db, stale_ms)` / `reclaim_stale_batch(db, stale_ms, limit)` run under
+  `BEGIN IMMEDIATE` (serialized with `reserve`). Default batch size is 500
+  (`default_reclaim_batch`) so a large backlog cannot hold the write lock indefinitely.
+- It selects up to `limit` `running` rows with `updated_at_ms < cutoff` (oldest first), then
+  UPDATEs only when `status = running` **and** `lease_token` still matches **and**
+  `updated_at_ms < cutoff`. Success requires `changes == 1`; otherwise the row is skipped.
+- Unexpected errors roll the transaction back (not only `SqliteError`).
 - Each successful reclaim increments `lease_failures` and either:
   - returns the job to `queued` (with a reclaim error note), or
   - marks it `failed` / dead when `lease_failures >= max_lease_failures()` (default 5).
