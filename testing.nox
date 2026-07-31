@@ -9,11 +9,43 @@ def request(app: Application, method: str, target: str, body: str) -> HttpRespon
     req: HttpRequest = HttpRequest(method, target, body, headers)
     return aether.application.dispatch(app, req)
 
+def request_headers(
+    app: Application,
+    method: str,
+    target: str,
+    body: str,
+    headers: dict[str, str]
+) -> HttpResponse:
+    req: HttpRequest = HttpRequest(method, target, body, headers)
+    return aether.application.dispatch(app, req)
+
 def get(app: Application, target: str) -> HttpResponse:
     return request(app, "GET", target, "")
+
+def get_headers(app: Application, target: str, headers: dict[str, str]) -> HttpResponse:
+    return request_headers(app, "GET", target, "", headers)
 
 def post(app: Application, target: str, body: str) -> HttpResponse:
     headers: dict[str, str] = {}
     headers["Content-Type"] = "application/json"
-    req: HttpRequest = HttpRequest("POST", target, body, headers)
-    return aether.application.dispatch(app, req)
+    return request_headers(app, "POST", target, body, headers)
+
+def post_headers(app: Application, target: str, body: str, headers: dict[str, str]) -> HttpResponse:
+    keys: list[str] = headers.keys()
+    has_ct: bool = False
+    i: int = 0
+    while i < len(keys):
+        if keys[i] == "Content-Type" or keys[i] == "content-type":
+            has_ct = True
+        i = i + 1
+    if not has_ct:
+        headers["Content-Type"] = "application/json"
+    return request_headers(app, "POST", target, body, headers)
+
+def put(app: Application, target: str, body: str) -> HttpResponse:
+    headers: dict[str, str] = {}
+    headers["Content-Type"] = "application/json"
+    return request_headers(app, "PUT", target, body, headers)
+
+def delete(app: Application, target: str) -> HttpResponse:
+    return request(app, "DELETE", target, "")

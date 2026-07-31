@@ -1,4 +1,4 @@
-# aether.application — boot, dispatch, lifecycle.
+# aether.application — boot, dispatch, lifecycle, filters, hardening.
 
 import nox.uuid
 import nox.log
@@ -12,17 +12,20 @@ import aether.pipeline
 import aether.errors
 import aether.response
 import aether.openapi
-import aether.guard
-import aether.pipe
 import aether.interceptor
+import aether.cors
+import aether.rate_limit
+import aether.metrics
+import aether.swagger
 from aether.config import Config
 from aether.container import Container
-from aether.context import HttpContext, begin, finish, path_only
+from aether.context import HttpContext, begin, finish, path_only, normalize_path
 from aether.module import ModuleBuilder, RouteDef, RouteTable, HookState
-from aether.pipeline import MatchResult, find_route, execute
-from aether.errors import HttpError, NotFoundError, error_json
+from aether.pipeline import MatchResult, find_route, path_exists, execute
+from aether.errors import HttpError, NotFoundError, MethodNotAllowedError, PayloadTooLargeError, error_json
 from aether.interceptor import InterceptorFns, request_id_interceptor
 from aether.dto import DtoSchema
+from aether.metrics import Metrics, global_metrics
 
 class AppError(Exception):
     def __init__(self: AppError, message: str) -> None:
@@ -35,6 +38,7 @@ class Application:
     hooks: HookState
     _shutdown_hooks: list[() -> None]
     openapi_doc: str
+    metrics: Metrics
     _closed: bool
 
     def __init__(
@@ -44,7 +48,8 @@ class Application:
         route_table: RouteTable,
         hooks: HookState,
         shutdown_hooks: list[() -> None],
-        openapi_doc: str
+        openapi_doc: str,
+        metrics: Metrics
     ) -> None:
         self.config = cfg
         self.container = container
@@ -52,6 +57,7 @@ class Application:
         self.hooks = hooks
         self._shutdown_hooks = shutdown_hooks
         self.openapi_doc = openapi_doc
+        self.metrics = metrics
         self._closed = False
 
     def module(self: Application) -> ModuleBuilder:
@@ -60,10 +66,20 @@ class Application:
     def import_configure(self: Application, configure: (ModuleBuilder) -> None) -> None:
         configure(self.module())
 
+    def import_module(self: Application, configure: (ModuleBuilder) -> None) -> None:
+        # Alias: pass a configure function, e.g. UsersModule().configure
+        configure(self.module())
+
     def on_shutdown(self: Application, hook: () -> None) -> None:
         hooks: list[() -> None] = self._shutdown_hooks
         hooks.append(hook)
         self._shutdown_hooks = hooks
+
+    def use_exception_filter(self: Application, filt: (HttpError) -> HttpResponse | None) -> None:
+        hooks: HookState = self.hooks
+        fs: list[(HttpError) -> HttpResponse | None] = hooks.exception_filters
+        fs.append(filt)
+        hooks.exception_filters = fs
 
 def _mount_framework_routes(app: Application) -> None:
     empty: DtoSchema = DtoSchema("")
@@ -74,12 +90,22 @@ def _mount_framework_routes(app: Application) -> None:
     def openapi_handler(ctx: HttpContext) -> HttpResponse:
         return aether.response.json_ok(app.openapi_doc + "")
 
+    def metrics_handler(ctx: HttpContext) -> HttpResponse:
+        return aether.response.json_ok(app.metrics.to_json())
+
+    def docs_handler(ctx: HttpContext) -> HttpResponse:
+        return aether.swagger.html_page(app.config.openapi_title + "")
+
     table: RouteTable = app.route_table
     routes: list[RouteDef] = table.routes
-    routes.append(RouteDef("GET", "/health", health, "Health check", "system", False, empty, False, empty))
+    routes.append(RouteDef("GET", "/health", health, "Health check", "system", False, empty, False, empty, 200))
+    routes.append(RouteDef("GET", "/metrics", metrics_handler, "Metrics", "system", False, empty, False, empty, 200))
     if app.config.openapi_enabled:
         routes.append(
-            RouteDef("GET", "/openapi.json", openapi_handler, "OpenAPI document", "system", False, empty, False, empty)
+            RouteDef("GET", "/openapi.json", openapi_handler, "OpenAPI document", "system", False, empty, False, empty, 200)
+        )
+        routes.append(
+            RouteDef("GET", "/docs", docs_handler, "Swagger UI", "system", False, empty, False, empty, 200)
         )
     table.routes = routes
 
@@ -93,15 +119,29 @@ def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
     hooks: HookState = HookState()
     xs: list[InterceptorFns] = hooks.interceptors
     xs.append(request_id_interceptor())
+    if len(cfg.cors_origins) > 0:
+        xs.append(aether.cors.cors_interceptor(cfg.cors_origins))
+    if cfg.rate_limit_enabled:
+        xs.append(aether.rate_limit.rate_limit_interceptor(cfg.rate_limit_max, cfg.rate_limit_window_ms))
     hooks.interceptors = xs
     shutdown_hooks: list[() -> None] = []
-    app: Application = Application(cfg, container, table, hooks, shutdown_hooks, "{}")
+    app: Application = Application(cfg, container, table, hooks, shutdown_hooks, "{}", global_metrics())
     build(app)
     app.openapi_doc = aether.openapi.build_document(cfg, app.route_table.routes)
     _mount_framework_routes(app)
     if cfg.openapi_enabled:
         app.openapi_doc = aether.openapi.build_document(cfg, app.route_table.routes)
     return app
+
+def _apply_filters(app: Application, err: HttpError) -> HttpResponse | None:
+    i: int = 0
+    while i < len(app.hooks.exception_filters):
+        filt: (HttpError) -> HttpResponse | None = app.hooks.exception_filters[i]
+        out: HttpResponse | None = filt(err)
+        if out != None:
+            return out
+        i = i + 1
+    return None
 
 def _error_response(cfg: Config, err: HttpError, kind: str) -> HttpResponse:
     include_kind: bool = cfg.is_development() or cfg.is_test()
@@ -110,28 +150,52 @@ def _error_response(cfg: Config, err: HttpError, kind: str) -> HttpResponse:
 
 def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
     rid: str = nox.uuid.uuid4()
-    path: str = path_only(req.target)
+    path: str = normalize_path(path_only(req.target))
     begin(rid, req.method, path)
     app.container.clear_request()
     started: int = nox.time.now_ms()
     resp: HttpResponse = aether.response.json(500, "{\"error\":{\"code\":\"internal_error\",\"message\":\"unset\"}}")
     try:
         try:
-            matched: MatchResult | None = find_route(app.route_table.routes, req.method, path)
-            if matched == None:
-                raise NotFoundError("route not found: " + req.method + " " + path)
+            if app.config.max_body_bytes > 0 and len(req.body) > app.config.max_body_bytes:
+                raise PayloadTooLargeError("request body too large")
+            # CORS preflight: answer OPTIONS without requiring a registered OPTIONS route.
+            if req.method == "OPTIONS" and len(app.config.cors_origins) > 0:
+                headers: dict[str, str] = {}
+                headers["Access-Control-Allow-Origin"] = app.config.cors_origins + ""
+                headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
+                headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,X-Request-Id"
+                headers["Access-Control-Max-Age"] = "86400"
+                resp = HttpResponse(204, "", headers)
             else:
-                hit: MatchResult = matched
-                ctx: HttpContext = HttpContext(req, hit.params, app.container, rid, "")
-                resp = execute(
-                    hit.route,
-                    ctx,
-                    app.hooks.guards,
-                    app.hooks.pipes,
-                    app.hooks.interceptors
-                )
+                matched: MatchResult | None = find_route(app.route_table.routes, req.method, path)
+                if matched == None:
+                    if path_exists(app.route_table.routes, path):
+                        raise MethodNotAllowedError("method not allowed: " + req.method + " " + path)
+                    raise NotFoundError("route not found: " + req.method + " " + path)
+                else:
+                    hit: MatchResult = matched
+                    ctx: HttpContext = HttpContext(
+                        req,
+                        hit.params,
+                        app.container,
+                        rid,
+                        "",
+                        app.config.trust_x_forwarded_for
+                    )
+                    resp = execute(
+                        hit.route,
+                        ctx,
+                        app.hooks.guards,
+                        app.hooks.pipes,
+                        app.hooks.interceptors
+                    )
         except HttpError as e:
-            resp = _error_response(app.config, e, "HttpError")
+            filtered: HttpResponse | None = _apply_filters(app, e)
+            if filtered != None:
+                resp = filtered
+            else:
+                resp = _error_response(app.config, e, "HttpError")
         except Exception as e:
             msg: str = e.message
             if not app.config.is_production():
@@ -141,6 +205,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                 internal2: HttpError = HttpError(500, "internal_error", "internal server error", [])
                 resp = _error_response(app.config, internal2, "Exception")
     finally:
+        app.metrics.record(resp.status)
         if app.config.log_requests:
             elapsed: int = nox.time.now_ms() - started
             nox.log.info(
@@ -158,6 +223,6 @@ def shutdown(app: Application) -> None:
         hook: () -> None = app._shutdown_hooks[i]
         try:
             hook()
-        except Exception:
-            nox.log.error("shutdown hook failed")
+        except Exception as e:
+            nox.log.error("shutdown hook failed: " + e.message)
         i = i + 1

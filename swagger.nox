@@ -1,0 +1,16 @@
+# aether.swagger — minimal Swagger UI HTML for /docs.
+
+from nox.http import HttpResponse
+
+def html_page(title: str) -> HttpResponse:
+    body: str = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>"
+    body = body + "<title>" + title + "</title>"
+    body = body + "<link rel=\"stylesheet\" href=\"https://unpkg.com/swagger-ui-dist@5/swagger-ui.css\"/>"
+    body = body + "</head><body>"
+    body = body + "<div id=\"swagger-ui\"></div>"
+    body = body + "<script src=\"https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js\"></script>"
+    body = body + "<script>window.ui=SwaggerUIBundle({url:'/openapi.json',dom_id:'#swagger-ui'});</script>"
+    body = body + "</body></html>"
+    headers: dict[str, str] = {}
+    headers["Content-Type"] = "text/html; charset=utf-8"
+    return HttpResponse(200, body, headers)

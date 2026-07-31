@@ -1,4 +1,4 @@
-# aether.queue — SQLite background job queue + worker.
+# aether.queue — SQLite background job queue + worker + reclaim + DLQ.
 
 import nox.sqlite
 import nox.json
@@ -26,6 +26,9 @@ def status_failed() -> str:
 def max_attempts() -> int:
     return 5
 
+def default_stale_ms() -> int:
+    return 300000
+
 def open_db(path: str) -> Connection:
     return nox.sqlite.open(path)
 
@@ -45,6 +48,9 @@ def ensure_schema(db: Connection) -> None:
     )
     db.execute(
         "CREATE INDEX IF NOT EXISTS idx_aether_jobs_status_run_at ON aether_jobs (status, run_at_ms)"
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_aether_jobs_status_updated ON aether_jobs (status, updated_at_ms)"
     )
 
 def enqueue(db: Connection, job_name: str, payload_json: str, run_at_ms: int) -> int:
@@ -72,6 +78,18 @@ def _job_json(id: int, job_name: str, payload_json: str, status: str, attempts: 
         ",\"status\":" + nox.json.encode_string(status) +
         ",\"attempts\":" + str(attempts) +
         ",\"run_at_ms\":" + str(run_at_ms) + "}"
+    )
+
+def _job_row_json(row: Row) -> str:
+    return (
+        "{\"id\":" + str(row.get_int(0)) +
+        ",\"job_name\":" + nox.json.encode_string(row.get_str(1)) +
+        ",\"payload\":" + row.get_str(2) +
+        ",\"status\":" + nox.json.encode_string(row.get_str(3)) +
+        ",\"attempts\":" + str(row.get_int(4)) +
+        ",\"run_at_ms\":" + str(row.get_int(5)) +
+        ",\"last_error\":" + nox.json.encode_string(row.get_str(6)) +
+        ",\"updated_at_ms\":" + str(row.get_int(7)) + "}"
     )
 
 def reserve(db: Connection) -> str | None:
@@ -106,6 +124,58 @@ def reserve(db: Connection) -> str | None:
     except SqliteError as e:
         db.execute("ROLLBACK")
         raise QueueError(e.message)
+
+def reclaim_stale(db: Connection, stale_ms: int) -> int:
+    # Stuck `running` jobs (worker crash) go back to queued.
+    if stale_ms <= 0:
+        stale_ms = default_stale_ms()
+    now: int = nox.time.now_ms()
+    cutoff: int = now - stale_ms
+    stmt: Statement = db.prepare(
+        "UPDATE aether_jobs SET status = ?, last_error = ?, updated_at_ms = ?, run_at_ms = ? " +
+        "WHERE status = ? AND updated_at_ms < ?"
+    )
+    stmt.bind_str(0, status_queued())
+    stmt.bind_str(1, "reclaimed: stale running job")
+    stmt.bind_int(2, now)
+    stmt.bind_int(3, now)
+    stmt.bind_str(4, status_running())
+    stmt.bind_int(5, cutoff)
+    stmt.execute()
+    return db.changes()
+
+def list_dead(db: Connection, limit: int) -> list[str]:
+    # Dead-letter: permanently failed jobs.
+    if limit <= 0:
+        limit = 50
+    stmt: Statement = db.prepare(
+        "SELECT id, job_name, payload, status, attempts, run_at_ms, last_error, updated_at_ms " +
+        "FROM aether_jobs WHERE status = ? ORDER BY updated_at_ms DESC, id DESC LIMIT ?"
+    )
+    stmt.bind_str(0, status_failed())
+    stmt.bind_int(1, limit)
+    rows: list[Row] = stmt.query()
+    out: list[str] = []
+    i: int = 0
+    while i < len(rows):
+        out.append(_job_row_json(rows[i]))
+        i = i + 1
+    return out
+
+def requeue_dead(db: Connection, id: int) -> None:
+    now: int = nox.time.now_ms()
+    stmt: Statement = db.prepare(
+        "UPDATE aether_jobs SET status = ?, attempts = 0, last_error = '', run_at_ms = ?, updated_at_ms = ? " +
+        "WHERE id = ? AND status = ?"
+    )
+    stmt.bind_str(0, status_queued())
+    stmt.bind_int(1, now)
+    stmt.bind_int(2, now)
+    stmt.bind_int(3, id)
+    stmt.bind_str(4, status_failed())
+    stmt.execute()
+    if db.changes() == 0:
+        raise QueueError("dead job not found: " + str(id))
 
 def complete(db: Connection, id: int) -> None:
     now: int = nox.time.now_ms()
@@ -220,8 +290,18 @@ def work(db: Connection, registry: JobRegistry, limit: int) -> int:
             return processed
     return processed
 
+def work_with_reclaim(db: Connection, registry: JobRegistry, limit: int, stale_ms: int) -> int:
+    reclaim_stale(db, stale_ms)
+    return work(db, registry, limit)
+
 def work_forever(db: Connection, registry: JobRegistry, idle_sleep_ms: int) -> None:
     while True:
-        n: int = work(db, registry, 10)
+        n: int = work_with_reclaim(db, registry, 10, default_stale_ms())
+        if n == 0:
+            nox.time.sleep_ms(idle_sleep_ms)
+
+def work_forever_stale(db: Connection, registry: JobRegistry, idle_sleep_ms: int, stale_ms: int) -> None:
+    while True:
+        n: int = work_with_reclaim(db, registry, 10, stale_ms)
         if n == 0:
             nox.time.sleep_ms(idle_sleep_ms)

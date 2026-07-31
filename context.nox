@@ -1,9 +1,14 @@
-# aether.context — request-scoped HttpContext + TaskLocal bag.
+# aether.context — request-scoped HttpContext + TaskLocal + client IP helpers.
+#
+# DI model (official): closure injection. Container only tracks provider *names*
+# and request-scoped string values — see README / ARCHITECTURE.
 
 from nox.http import HttpRequest
 import aether.container
 from aether.container import Container
 import nox.strings
+import nox.url
+from nox.url import UrlError
 
 class RequestState:
     active: bool
@@ -76,14 +81,72 @@ def query_string(target: str) -> str:
         return ""
     return _substr(target, q + 1, len(target))
 
+def normalize_path(path: str) -> str:
+    if len(path) == 0:
+        return "/"
+    if path == "/":
+        return "/"
+    # Strip trailing slash (keep root).
+    last: int = len(path) - 1
+    if path[last] == "/":
+        return _substr(path, 0, last)
+    return path
+
+def parse_query(target: str) -> dict[str, str]:
+    raw: str = query_string(target)
+    if len(raw) == 0:
+        empty: dict[str, str] = {}
+        return empty
+    try:
+        return nox.url.query_decode(nox.strings.replace(raw, "+", "%20"))
+    except UrlError:
+        empty2: dict[str, str] = {}
+        return empty2
+
+def header_get(headers: dict[str, str], name: str) -> str:
+    want: str = nox.strings.lower(name)
+    keys: list[str] = headers.keys()
+    i: int = 0
+    while i < len(keys):
+        k: str = keys[i]
+        if nox.strings.lower(k) == want:
+            return headers[k]
+        i = i + 1
+    return ""
+
+def client_ip(headers: dict[str, str], trust_xff: bool) -> str:
+    # Nox has no peer address yet. Without trust_xff we cannot know the client.
+    if trust_xff:
+        xff: str = header_get(headers, "X-Forwarded-For")
+        if len(xff) > 0:
+            parts: list[str] = nox.strings.split(xff, ",")
+            if len(parts) > 0:
+                hop: str = parts[0]
+                # trim spaces
+                out: str = ""
+                i: int = 0
+                while i < len(hop):
+                    ch: str = hop[i]
+                    if ch != " ":
+                        out = out + ch
+                    i = i + 1
+                if len(out) > 0:
+                    return out
+        real: str = header_get(headers, "X-Real-IP")
+        if len(real) > 0:
+            return real
+    return ""
+
 class HttpContext:
     request: HttpRequest
     params: dict[str, str]
+    query: dict[str, str]
     container: Container
     request_id: str
     input_body: str
     path: str
     method: str
+    trust_xff: bool
 
     def __init__(
         self: HttpContext,
@@ -91,15 +154,18 @@ class HttpContext:
         params: dict[str, str],
         container: Container,
         request_id_value: str,
-        input_body: str
+        input_body: str,
+        trust_xff: bool
     ) -> None:
         self.request = request
         self.params = params
+        self.query = parse_query(request.target)
         self.container = container
         self.request_id = request_id_value
         self.input_body = input_body
-        self.path = path_only(request.target)
+        self.path = normalize_path(path_only(request.target))
         self.method = request.method
+        self.trust_xff = trust_xff
 
     def param(self: HttpContext, name: str) -> str:
         keys: list[str] = self.params.keys()
@@ -110,17 +176,23 @@ class HttpContext:
             i = i + 1
         return ""
 
-    def header(self: HttpContext, name: str) -> str:
-        keys: list[str] = self.request.headers.keys()
+    def query_param(self: HttpContext, name: str) -> str:
+        keys: list[str] = self.query.keys()
         i: int = 0
         while i < len(keys):
             if keys[i] == name:
-                return self.request.headers[name]
+                return self.query[name]
             i = i + 1
         return ""
 
+    def header(self: HttpContext, name: str) -> str:
+        return header_get(self.request.headers, name)
+
     def body(self: HttpContext) -> str:
         return self.request.body
+
+    def client_ip(self: HttpContext) -> str:
+        return client_ip(self.request.headers, self.trust_xff)
 
     def has_provider(self: HttpContext, name: str) -> bool:
         return self.container.has(name)
@@ -133,3 +205,9 @@ class HttpContext:
         if len(self.input_body) > 0:
             return self.input_body
         return input_json()
+
+    def set_request_value(self: HttpContext, key: str, value: str) -> None:
+        self.container.set_request_value(key, value)
+
+    def get_request_value(self: HttpContext, key: str) -> str:
+        return self.container.get_request_value(key)

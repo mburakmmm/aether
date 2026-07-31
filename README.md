@@ -59,26 +59,30 @@ AETHER_ENV=development noxc run examples/hello_api/main.nox
 | Feature | Module |
 |---------|--------|
 | Application boot / dispatch | `aether.application` |
-| Modules + routing | `aether.module` (`app.module()`) |
-| Provider name registry | `aether.container` |
-| Request context (`TaskLocal`) | `aether.context` |
+| Modules + routing + prefix | `aether.module` (`app.module()` / `import_module`) |
+| Provider **name** registry | `aether.container` |
+| Request context (`TaskLocal`, query/header/IP) | `aether.context` |
 | Guards / pipes / interceptors | function-based (`aether.guard`, `pipe`, `interceptor`) |
-| DTO validation | `aether.dto` |
+| Exception filters | `app.use_exception_filter` |
+| DTO validation (+ email/uuid/uri/range) | `aether.dto` |
 | Structured errors | `aether.errors` |
-| OpenAPI 3 | `aether.openapi` (`GET /openapi.json`) |
-| WebSocket gateway | `aether.gateway` |
-| Background jobs | `aether.queue` |
+| OpenAPI 3 + Swagger UI | `aether.openapi` / `aether.swagger` (`/openapi.json`, `/docs`) |
+| CORS / rate limit / body limit / metrics | `aether.cors`, `rate_limit`, `metrics` |
+| WebSocket gateway + rooms | `aether.gateway` |
+| Background jobs + reclaim + DLQ | `aether.queue` |
 | CLI scaffold | `aether` bin (`cli.nox`) |
 
-## DI style
+## DI style (official)
 
-Nox cannot subclass imported framework bases and has no ctor reflection. Aether uses **closure injection**:
+Nox cannot subclass imported framework bases and has no ctor reflection. Aether’s official DI is **closure injection** + a name registry:
 
 ```nox
 svc: UserService = UserService()
-m.provide("UserService")          # name registry only
-m.get("/users/:id", self._show(svc))  # svc captured by handler
+m.provide("UserService")              # name registry only — not an instance map
+m.get("/users/:id", self._show(svc))  # svc captured by handler closure
 ```
+
+Do not expect `provide(name, instance)` or constructor injection — those are blocked by Nox language limits (see `docs/NOX_LIMITATIONS.md`).
 
 ## Nox limitations
 

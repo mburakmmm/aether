@@ -1,4 +1,4 @@
-# aether.pipeline — path match + Guard → Pipe → Interceptor → Handler.
+# aether.pipeline — path match + 405 + Guard → Pipe → Interceptor → Handler.
 
 import nox.strings
 from nox.http import HttpResponse
@@ -7,7 +7,7 @@ import aether.guard
 import aether.pipe
 import aether.interceptor
 import aether.module
-from aether.context import HttpContext
+from aether.context import HttpContext, normalize_path
 from aether.guard import run_guards
 from aether.pipe import run_pipes
 from aether.interceptor import InterceptorFns, run_before, run_after
@@ -49,15 +49,26 @@ class MatchResult:
         self.params = params
 
 def find_route(routes: list[RouteDef], method: str, path: str) -> MatchResult | None:
+    norm: str = normalize_path(path)
     i: int = 0
     while i < len(routes):
         route: RouteDef = routes[i]
         if route.method == method:
-            params: dict[str, str] | None = match_path(route.pattern, path)
+            params: dict[str, str] | None = match_path(route.pattern, norm)
             if params != None:
                 return MatchResult(route, params)
         i = i + 1
     return None
+
+def path_exists(routes: list[RouteDef], path: str) -> bool:
+    norm: str = normalize_path(path)
+    i: int = 0
+    while i < len(routes):
+        params: dict[str, str] | None = match_path(routes[i].pattern, norm)
+        if params != None:
+            return True
+        i = i + 1
+    return False
 
 def execute(
     route: RouteDef,
@@ -79,6 +90,8 @@ def execute(
     while i < len(route.interceptors):
         combined.append(route.interceptors[i])
         i = i + 1
-    run_before(combined, ctx)
+    early: HttpResponse | None = run_before(combined, ctx)
+    if early != None:
+        return run_after(combined, ctx, early)
     resp: HttpResponse = route.handler(ctx)
     return run_after(combined, ctx, resp)

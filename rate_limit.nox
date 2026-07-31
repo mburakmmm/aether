@@ -1,0 +1,62 @@
+# aether.rate_limit — in-process sliding window (per-worker; peer IP limited by Nox).
+
+import nox.time
+from nox.http import HttpResponse
+import aether.context
+import aether.errors
+import aether.interceptor
+from aether.context import HttpContext
+from aether.errors import TooManyRequestsError
+from aether.interceptor import InterceptorFns
+
+class RateBucket:
+    key: str
+    count: int
+    window_start_ms: int
+
+    def __init__(self: RateBucket, key: str, count: int, window_start_ms: int) -> None:
+        self.key = key
+        self.count = count
+        self.window_start_ms = window_start_ms
+
+class RateStore:
+    buckets: list[RateBucket]
+
+    def __init__(self: RateStore) -> None:
+        self.buckets = []
+
+    def allow(self: RateStore, key: str, max_n: int, window_ms: int) -> bool:
+        now: int = nox.time.now_ms()
+        i: int = 0
+        while i < len(self.buckets):
+            b: RateBucket = self.buckets[i]
+            if b.key == key:
+                if now - b.window_start_ms >= window_ms:
+                    b.count = 1
+                    b.window_start_ms = now
+                    return True
+                if b.count >= max_n:
+                    return False
+                b.count = b.count + 1
+                return True
+            i = i + 1
+        buckets: list[RateBucket] = self.buckets
+        buckets.append(RateBucket(key, 1, now))
+        self.buckets = buckets
+        return True
+
+_store: RateStore = RateStore()
+
+def rate_limit_interceptor(max_n: int, window_ms: int) -> InterceptorFns:
+    def before(ctx: HttpContext) -> HttpResponse | None:
+        key: str = ctx.client_ip()
+        if len(key) == 0:
+            key = "unknown"
+        if not _store.allow(key, max_n, window_ms):
+            raise TooManyRequestsError("rate limit exceeded")
+        return None
+
+    def after(ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
+        return resp
+
+    return InterceptorFns(before, after)

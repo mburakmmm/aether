@@ -1,4 +1,4 @@
-# aether.interceptor — before/after hooks as function pairs.
+# aether.interceptor — before may short-circuit with HttpResponse | None.
 
 from nox.http import HttpResponse
 import aether.context
@@ -6,23 +6,26 @@ import aether.response
 from aether.context import HttpContext
 
 class InterceptorFns:
-    before_fn: (HttpContext) -> None
+    before_fn: (HttpContext) -> HttpResponse | None
     after_fn: (HttpContext, HttpResponse) -> HttpResponse
 
     def __init__(
         self: InterceptorFns,
-        before_fn: (HttpContext) -> None,
+        before_fn: (HttpContext) -> HttpResponse | None,
         after_fn: (HttpContext, HttpResponse) -> HttpResponse
     ) -> None:
         self.before_fn = before_fn
         self.after_fn = after_fn
 
-def run_before(interceptors: list[InterceptorFns], ctx: HttpContext) -> None:
+def run_before(interceptors: list[InterceptorFns], ctx: HttpContext) -> HttpResponse | None:
     i: int = 0
     while i < len(interceptors):
         item: InterceptorFns = interceptors[i]
-        item.before_fn(ctx)
+        early: HttpResponse | None = item.before_fn(ctx)
+        if early != None:
+            return early
         i = i + 1
+    return None
 
 def run_after(interceptors: list[InterceptorFns], ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
     out: HttpResponse = resp
@@ -33,10 +36,19 @@ def run_after(interceptors: list[InterceptorFns], ctx: HttpContext, resp: HttpRe
         i = i - 1
     return out
 
-def _noop_before(ctx: HttpContext) -> None:
-    pass
+def _noop_before(ctx: HttpContext) -> HttpResponse | None:
+    return None
+
+def _noop_after(ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
+    return resp
 
 def request_id_interceptor() -> InterceptorFns:
     def after_fn(ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
         return aether.response.with_header(resp, "X-Request-Id", ctx.request_id + "")
     return InterceptorFns(_noop_before, after_fn)
+
+def make_interceptor(
+    before_fn: (HttpContext) -> HttpResponse | None,
+    after_fn: (HttpContext, HttpResponse) -> HttpResponse
+) -> InterceptorFns:
+    return InterceptorFns(before_fn, after_fn)

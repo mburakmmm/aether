@@ -73,7 +73,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Desired Nox change:** Allow first-class function values (or bound methods) as serve handlers.
 
-**Aether workaround:** `aether.server.listen(app, handle)` documents bare-name requirement; scaffolds emit `handle` / `ws_handle`.
+**Aether workaround:** Call `nox.http.serve*` with a bare top-level `handle` / `ws_handle` in the app entry (see `aether.server` comments + scaffolds).
 
 ---
 

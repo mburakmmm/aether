@@ -1,0 +1,25 @@
+# aether.cors — simple CORS interceptor factory.
+
+from nox.http import HttpResponse
+import aether.context
+import aether.response
+import aether.interceptor
+from aether.context import HttpContext
+from aether.interceptor import InterceptorFns
+
+def cors_interceptor(origins: str) -> InterceptorFns:
+    def before(ctx: HttpContext) -> HttpResponse | None:
+        if ctx.method == "OPTIONS":
+            headers: dict[str, str] = {}
+            headers["Access-Control-Allow-Origin"] = origins + ""
+            headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
+            headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,X-Request-Id"
+            headers["Access-Control-Max-Age"] = "86400"
+            return HttpResponse(204, "", headers)
+        return None
+
+    def after(ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
+        out: HttpResponse = aether.response.with_header(resp, "Access-Control-Allow-Origin", origins + "")
+        return out
+
+    return InterceptorFns(before, after)

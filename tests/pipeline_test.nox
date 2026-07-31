@@ -1,0 +1,125 @@
+import nox.test
+import nox.strings
+import aether.config
+import aether.application
+import aether.testing
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from aether.dto import DtoSchema
+from aether.errors import HttpError
+from nox.http import HttpResponse
+
+class ApiModule:
+    def configure(self: ApiModule, m: ModuleBuilder) -> None:
+        m.prefix("/api")
+        m.get("/ping", self._ping())
+        schema: DtoSchema = DtoSchema("Echo")
+        schema.require("msg", "string")
+        out: DtoSchema = DtoSchema("EchoOut")
+        out.require("msg", "string")
+        m.post_body("/echo", self._echo(), "Echo", schema, out)
+
+    def _ping(self: ApiModule) -> (HttpContext) -> HttpResponse:
+        def ping(ctx: HttpContext) -> HttpResponse:
+            return json_ok("{\"pong\":true}")
+        return ping
+
+    def _echo(self: ApiModule) -> (HttpContext) -> HttpResponse:
+        def echo(ctx: HttpContext) -> HttpResponse:
+            return json_ok(ctx.input())
+        return echo
+
+def build(app: Application) -> None:
+    ApiModule().configure(app.module())
+    def filt(err: HttpError) -> HttpResponse | None:
+        if err.code == "not_found":
+            return json_ok("{\"filtered\":true}")
+        return None
+    app.use_exception_filter(filt)
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+cfg.cors_origins = "*"
+cfg.max_body_bytes = 32
+app: Application = aether.application.boot_with_config(cfg, build)
+
+# prefix
+r1: HttpResponse = aether.testing.get(app, "/api/ping")
+nox.test.assert_eq_int(r1.status, 200, "prefixed ping")
+
+# trailing slash normalize
+r2: HttpResponse = aether.testing.get(app, "/api/ping/")
+nox.test.assert_eq_int(r2.status, 200, "trailing slash")
+
+# 405
+r3: HttpResponse = aether.testing.post(app, "/api/ping", "{}")
+nox.test.assert_eq_int(r3.status, 405, "method not allowed")
+
+# CORS preflight
+r4: HttpResponse = aether.testing.request(app, "OPTIONS", "/api/ping", "")
+nox.test.assert_eq_int(r4.status, 204, "cors options")
+
+# validation 422
+r5: HttpResponse = aether.testing.post(app, "/api/echo", "{}")
+nox.test.assert_eq_int(r5.status, 422, "validation")
+
+# body too large
+big: str = "{\"msg\":\""
+i: int = 0
+while i < 40:
+    big = big + "x"
+    i = i + 1
+big = big + "\"}"
+r6: HttpResponse = aether.testing.post(app, "/api/echo", big)
+nox.test.assert_eq_int(r6.status, 413, "payload too large")
+
+# exception filter
+r7: HttpResponse = aether.testing.get(app, "/missing-route")
+nox.test.assert_eq_int(r7.status, 200, "filtered not_found")
+nox.test.assert_true(nox.strings.contains(r7.body, "filtered"), "filtered body")
+
+# metrics + docs
+r8: HttpResponse = aether.testing.get(app, "/metrics")
+nox.test.assert_eq_int(r8.status, 200, "metrics")
+r9: HttpResponse = aether.testing.get(app, "/docs")
+nox.test.assert_eq_int(r9.status, 200, "docs")
+
+# headers helper + client_ip trust
+headers: dict[str, str] = {}
+headers["X-Forwarded-For"] = "203.0.113.9, 10.0.0.1"
+cfg2: Config = aether.config.defaults("test")
+cfg2.log_requests = False
+cfg2.trust_x_forwarded_for = True
+seen_ip: list[str] = []
+
+class IpModule:
+    def configure(self: IpModule, m: ModuleBuilder) -> None:
+        m.get("/ip", self._ip())
+
+    def _ip(self: IpModule) -> (HttpContext) -> HttpResponse:
+        def ip(ctx: HttpContext) -> HttpResponse:
+            seen_ip.append(ctx.client_ip())
+            q: str = ctx.query_param("q")
+            h: str = ctx.header("X-Custom")
+            return json_ok("{\"ip\":\"" + ctx.client_ip() + "\",\"q\":\"" + q + "\",\"h\":\"" + h + "\"}")
+        return ip
+
+def build2(app2: Application) -> None:
+    IpModule().configure(app2.module())
+
+app2: Application = aether.application.boot_with_config(cfg2, build2)
+headers2: dict[str, str] = {}
+headers2["X-Forwarded-For"] = "203.0.113.9, 10.0.0.1"
+headers2["X-Custom"] = "hello"
+r10: HttpResponse = aether.testing.get_headers(app2, "/ip?q=1", headers2)
+nox.test.assert_eq_int(r10.status, 200, "ip status")
+nox.test.assert_true(nox.strings.contains(r10.body, "203.0.113.9"), "xff ip")
+nox.test.assert_true(nox.strings.contains(r10.body, "\"q\":\"1\""), "query")
+nox.test.assert_true(nox.strings.contains(r10.body, "\"h\":\"hello\""), "header")
+
+aether.application.shutdown(app)
+aether.application.shutdown(app2)
+print("pipeline_test ok")

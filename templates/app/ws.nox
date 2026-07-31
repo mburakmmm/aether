@@ -1,0 +1,18 @@
+# {{APP_NAME}} WebSocket entry — wire to nox.http.serve_ws / dual stack as needed.
+#
+# Example message protocol (JSON):
+#   {"event":"join","payload":{"room":"lobby"}}
+#   {"event":"broadcast","payload":{"room":"lobby","message":{"hello":true}}}
+#   {"event":"echo","payload":{"ping":1}}
+
+import aether.gateway
+from aether.gateway import Gateway
+from nox.websocket import WebSocketServerConn
+
+gateway: Gateway = Gateway()
+gateway.on("echo", aether.gateway.echo_handler)
+# Optional auth:
+# gateway.set_auth(aether.gateway.require_token_auth("secret-token"))
+
+def ws_handle(conn: WebSocketServerConn) -> None:
+    aether.gateway.run_connection(gateway, conn)

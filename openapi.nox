@@ -1,4 +1,4 @@
-# aether.openapi - OpenAPI 3 document from RouteDef + DtoSchema metadata.
+# aether.openapi — OpenAPI 3 with nested $ref components + success status.
 
 import nox.json
 import nox.strings
@@ -9,12 +9,17 @@ from aether.module import RouteDef
 from aether.dto import DtoSchema, Field
 from aether.config import Config
 
-def _field_schema_json(field: Field) -> str:
+def _field_schema_json(field: Field, nested_ref: bool) -> str:
+    if field.kind == "object" and len(field.description) > 0 and nested_ref:
+        return "{\"$ref\":\"#/components/schemas/" + field.description + "\"}"
     body: str = "{\"type\":" + nox.json.encode_string(field.kind)
     if len(field.format_name) > 0:
         body = body + ",\"format\":" + nox.json.encode_string(field.format_name)
-    if len(field.description) > 0 and field.kind == "object":
-        body = body + ",\"description\":" + nox.json.encode_string(field.description)
+    if field.kind == "number":
+        if field.has_min:
+            body = body + ",\"minimum\":" + str(field.minimum)
+        if field.has_max:
+            body = body + ",\"maximum\":" + str(field.maximum)
     if field.kind == "array" and len(field.item_kind) > 0:
         body = body + ",\"items\":{\"type\":" + nox.json.encode_string(field.item_kind) + "}"
     body = body + "}"
@@ -28,7 +33,7 @@ def _dto_schema_json(schema: DtoSchema) -> str:
         field: Field = schema.fields[i]
         if i > 0:
             props = props + ","
-        props = props + nox.json.encode_string(field.name) + ":" + _field_schema_json(field)
+        props = props + nox.json.encode_string(field.name) + ":" + _field_schema_json(field, True)
         if field.required:
             required.append(field.name)
         i = i + 1
@@ -44,6 +49,55 @@ def _dto_schema_json(schema: DtoSchema) -> str:
             j = j + 1
         body = body + "]"
     body = body + "}"
+    return body
+
+def _collect_schemas(routes: list[RouteDef]) -> list[DtoSchema]:
+    out: list[DtoSchema] = []
+    names: list[str] = []
+    ri: int = 0
+    while ri < len(routes):
+        r: RouteDef = routes[ri]
+        if r.has_input and len(r.input_schema.name) > 0:
+            if not _has_name(names, r.input_schema.name):
+                names.append(r.input_schema.name)
+                out.append(r.input_schema)
+                _add_nested(out, names, r.input_schema)
+        if r.has_output and len(r.output_schema.name) > 0:
+            if not _has_name(names, r.output_schema.name):
+                names.append(r.output_schema.name)
+                out.append(r.output_schema)
+                _add_nested(out, names, r.output_schema)
+        ri = ri + 1
+    return out
+
+def _has_name(names: list[str], name: str) -> bool:
+    i: int = 0
+    while i < len(names):
+        if names[i] == name:
+            return True
+        i = i + 1
+    return False
+
+def _add_nested(out: list[DtoSchema], names: list[str], schema: DtoSchema) -> None:
+    i: int = 0
+    while i < len(schema.nested_schemas):
+        nest: DtoSchema = schema.nested_schemas[i]
+        if len(nest.name) > 0 and not _has_name(names, nest.name):
+            names.append(nest.name)
+            out.append(nest)
+            _add_nested(out, names, nest)
+        i = i + 1
+
+def _components_json(schemas: list[DtoSchema]) -> str:
+    body: str = "{\"schemas\":{"
+    i: int = 0
+    while i < len(schemas):
+        if i > 0:
+            body = body + ","
+        s: DtoSchema = schemas[i]
+        body = body + nox.json.encode_string(s.name) + ":" + _dto_schema_json(s)
+        i = i + 1
+    body = body + "}}"
     return body
 
 def _path_params_json(pattern: str) -> str:
@@ -68,6 +122,11 @@ def _path_params_json(pattern: str) -> str:
     out = out + "]"
     return out
 
+def _schema_ref_or_inline(schema: DtoSchema) -> str:
+    if len(schema.name) > 0:
+        return "{\"$ref\":\"#/components/schemas/" + schema.name + "\"}"
+    return _dto_schema_json(schema)
+
 def _operation_json(route: RouteDef) -> str:
     body: str = "{"
     if len(route.summary) > 0:
@@ -79,10 +138,11 @@ def _operation_json(route: RouteDef) -> str:
         body = body + "\"parameters\":" + params + ","
     if route.has_input:
         body = body + "\"requestBody\":{\"required\":true,\"content\":{\"application/json\":{\"schema\":"
-        body = body + _dto_schema_json(route.input_schema) + "}}},"
-    body = body + "\"responses\":{\"200\":{\"description\":\"OK\""
+        body = body + _schema_ref_or_inline(route.input_schema) + "}}},"
+    status_key: str = str(route.success_status)
+    body = body + "\"responses\":{" + nox.json.encode_string(status_key) + ":{\"description\":\"OK\""
     if route.has_output:
-        body = body + ",\"content\":{\"application/json\":{\"schema\":" + _dto_schema_json(route.output_schema) + "}}"
+        body = body + ",\"content\":{\"application/json\":{\"schema\":" + _schema_ref_or_inline(route.output_schema) + "}}"
     body = body + "}}"
     body = body + "}"
     return body
@@ -110,6 +170,7 @@ def _openapi_path(pattern: str) -> str:
     return out
 
 def build_document(cfg: Config, routes: list[RouteDef]) -> str:
+    schemas: list[DtoSchema] = _collect_schemas(routes)
     paths_json: str = "{"
     emitted: list[str] = []
     pi: int = 0
@@ -156,6 +217,7 @@ def build_document(cfg: Config, routes: list[RouteDef]) -> str:
     doc = doc + "\"openapi\":\"3.0.3\","
     doc = doc + "\"info\":{\"title\":" + nox.json.encode_string(cfg.openapi_title)
     doc = doc + ",\"version\":" + nox.json.encode_string(cfg.openapi_version) + "},"
-    doc = doc + "\"paths\":" + paths_json
+    doc = doc + "\"paths\":" + paths_json + ","
+    doc = doc + "\"components\":" + _components_json(schemas)
     doc = doc + "}"
     return doc

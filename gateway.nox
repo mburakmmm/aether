@@ -1,6 +1,7 @@
-# aether.gateway — WebSocket message routing (process-local hub).
+# aether.gateway — WebSocket message routing + rooms (process-local hub).
 
 import nox.json
+import nox.uuid
 from nox.json import JsonError
 from nox.websocket import WebSocketServerConn
 
@@ -8,13 +9,138 @@ class GatewayError(Exception):
     def __init__(self: GatewayError, message: str) -> None:
         self.message = message
 
+class RoomHub:
+    # Parallel arrays: room_names[i] -> member_ids[i] (conn ids)
+    _room_names: list[str]
+    _member_ids: list[list[str]]
+    _conn_ids: list[str]
+    _conns: list[WebSocketServerConn]
+
+    def __init__(self: RoomHub) -> None:
+        self._room_names = []
+        self._member_ids = []
+        self._conn_ids = []
+        self._conns = []
+
+    def register(self: RoomHub, conn: WebSocketServerConn) -> str:
+        cid: str = nox.uuid.uuid4()
+        ids: list[str] = self._conn_ids
+        conns: list[WebSocketServerConn] = self._conns
+        ids.append(cid)
+        conns.append(conn)
+        self._conn_ids = ids
+        self._conns = conns
+        return cid
+
+    def unregister(self: RoomHub, conn_id: str) -> None:
+        self.leave_all(conn_id)
+        ids: list[str] = []
+        conns: list[WebSocketServerConn] = []
+        i: int = 0
+        while i < len(self._conn_ids):
+            if self._conn_ids[i] != conn_id:
+                ids.append(self._conn_ids[i])
+                conns.append(self._conns[i])
+            i = i + 1
+        self._conn_ids = ids
+        self._conns = conns
+
+    def _conn_index(self: RoomHub, conn_id: str) -> int:
+        i: int = 0
+        while i < len(self._conn_ids):
+            if self._conn_ids[i] == conn_id:
+                return i
+            i = i + 1
+        return -1
+
+    def _room_index(self: RoomHub, room: str) -> int:
+        i: int = 0
+        while i < len(self._room_names):
+            if self._room_names[i] == room:
+                return i
+            i = i + 1
+        return -1
+
+    def join(self: RoomHub, room: str, conn_id: str) -> None:
+        if len(room) == 0:
+            raise GatewayError("room name empty")
+        if self._conn_index(conn_id) < 0:
+            raise GatewayError("unknown connection")
+        idx: int = self._room_index(room)
+        if idx < 0:
+            names: list[str] = self._room_names
+            members: list[list[str]] = self._member_ids
+            names.append(room)
+            bucket: list[str] = []
+            bucket.append(conn_id)
+            members.append(bucket)
+            self._room_names = names
+            self._member_ids = members
+            return
+        bucket2: list[str] = self._member_ids[idx]
+        j: int = 0
+        while j < len(bucket2):
+            if bucket2[j] == conn_id:
+                return
+            j = j + 1
+        bucket2.append(conn_id)
+
+    def leave(self: RoomHub, room: str, conn_id: str) -> None:
+        idx: int = self._room_index(room)
+        if idx < 0:
+            return
+        old: list[str] = self._member_ids[idx]
+        fresh: list[str] = []
+        i: int = 0
+        while i < len(old):
+            if old[i] != conn_id:
+                fresh.append(old[i])
+            i = i + 1
+        self._member_ids[idx] = fresh
+
+    def leave_all(self: RoomHub, conn_id: str) -> None:
+        i: int = 0
+        while i < len(self._room_names):
+            self.leave(self._room_names[i], conn_id)
+            i = i + 1
+
+    def broadcast(self: RoomHub, room: str, message: str) -> int:
+        idx: int = self._room_index(room)
+        if idx < 0:
+            return 0
+        members: list[str] = self._member_ids[idx]
+        sent: int = 0
+        i: int = 0
+        while i < len(members):
+            ci: int = self._conn_index(members[i])
+            if ci >= 0:
+                c: WebSocketServerConn = self._conns[ci]
+                if c.is_open():
+                    c.send_text(message)
+                    sent = sent + 1
+            i = i + 1
+        return sent
+
+    def member_count(self: RoomHub, room: str) -> int:
+        idx: int = self._room_index(room)
+        if idx < 0:
+            return 0
+        return len(self._member_ids[idx])
+
 class Gateway:
     _events: list[str]
     _handlers: list[(WebSocketServerConn, str, str) -> None]
+    rooms: RoomHub
+    _auth: (WebSocketServerConn, str) -> bool
 
     def __init__(self: Gateway) -> None:
         self._events = []
         self._handlers = []
+        self.rooms = RoomHub()
+        self._auth = _default_auth
+
+    def set_auth(self: Gateway, auth: (WebSocketServerConn, str) -> bool) -> None:
+        self._auth = auth
 
     def on(self: Gateway, event: str, handler: (WebSocketServerConn, str, str) -> None) -> None:
         if len(event) == 0:
@@ -26,7 +152,7 @@ class Gateway:
         self._events = events
         self._handlers = handlers
 
-    def dispatch_message(self: Gateway, conn: WebSocketServerConn, raw: str) -> None:
+    def dispatch_message(self: Gateway, conn: WebSocketServerConn, conn_id: str, raw: str) -> None:
         event: str = ""
         payload: str = raw + ""
         try:
@@ -48,6 +174,22 @@ class Gateway:
             payload = raw + ""
         if len(event) == 0:
             event = "message"
+        if event == "join":
+            room: str = _payload_room(payload)
+            self.rooms.join(room, conn_id)
+            conn.send_text("{\"event\":\"joined\",\"payload\":{\"room\":" + nox.json.encode_string(room) + "}}")
+            return
+        if event == "leave":
+            room2: str = _payload_room(payload)
+            self.rooms.leave(room2, conn_id)
+            conn.send_text("{\"event\":\"left\",\"payload\":{\"room\":" + nox.json.encode_string(room2) + "}}")
+            return
+        if event == "broadcast":
+            room3: str = _payload_room(payload)
+            msg: str = _payload_message(payload)
+            n_sent: int = self.rooms.broadcast(room3, msg)
+            conn.send_text("{\"event\":\"broadcast_ok\",\"payload\":{\"sent\":" + str(n_sent) + "}}")
+            return
         i2: int = 0
         while i2 < len(self._events):
             if self._events[i2] == event:
@@ -57,12 +199,64 @@ class Gateway:
             i2 = i2 + 1
         conn.send_text("{\"event\":\"error\",\"payload\":{\"message\":\"unknown event\"}}")
 
+def _default_auth(conn: WebSocketServerConn, token: str) -> bool:
+    return True
+
+def require_token_auth(expected: str) -> (WebSocketServerConn, str) -> bool:
+    def auth(conn: WebSocketServerConn, token: str) -> bool:
+        return token == expected
+    return auth
+
+def _payload_room(payload: str) -> str:
+    try:
+        v: JsonValue = nox.json.decode(payload)
+        if nox.json.is_object(v):
+            i: int = 0
+            n: int = nox.json.object_len(v)
+            while i < n:
+                if nox.json.object_key(v, i) == "room":
+                    val: JsonValue = nox.json.object_value(v, i)
+                    if nox.json.is_string(val):
+                        return nox.json.as_string(val)
+                i = i + 1
+        if nox.json.is_string(v):
+            return nox.json.as_string(v)
+    except JsonError:
+        return payload + ""
+    return payload + ""
+
+def _payload_message(payload: str) -> str:
+    try:
+        v: JsonValue = nox.json.decode(payload)
+        if nox.json.is_object(v):
+            i: int = 0
+            n: int = nox.json.object_len(v)
+            while i < n:
+                if nox.json.object_key(v, i) == "message":
+                    return nox.json.encode(nox.json.object_value(v, i))
+                i = i + 1
+    except JsonError:
+        return payload + ""
+    return payload + ""
+
 def echo_handler(conn: WebSocketServerConn, event: str, payload: str) -> None:
     conn.send_text("{\"event\":" + nox.json.encode_string(event) + ",\"payload\":" + payload + "}")
 
 def run_connection(gateway: Gateway, conn: WebSocketServerConn) -> None:
-    while conn.is_open():
-        msg: str = conn.recv()
-        if len(msg) == 0:
-            return
-        gateway.dispatch_message(conn, msg)
+    run_connection_authed(gateway, conn, "")
+
+def run_connection_authed(gateway: Gateway, conn: WebSocketServerConn, token: str) -> None:
+    ok: bool = gateway._auth(conn, token)
+    if not ok:
+        conn.send_text("{\"event\":\"error\",\"payload\":{\"message\":\"unauthorized\"}}")
+        conn.close()
+        return
+    conn_id: str = gateway.rooms.register(conn)
+    try:
+        while conn.is_open():
+            msg: str = conn.recv()
+            if len(msg) == 0:
+                return
+            gateway.dispatch_message(conn, conn_id, msg)
+    finally:
+        gateway.rooms.unregister(conn_id)

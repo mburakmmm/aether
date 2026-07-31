@@ -1,4 +1,6 @@
 # aether.reflect_mount — mount top-level @get/@post/@put/@delete into Application.
+#
+# Decorated handlers still go through Application.dispatch (guards/pipes/filters).
 
 import nox.reflect
 import nox.strings
@@ -24,6 +26,11 @@ def mount_decorators(app: Application) -> None:
             pattern: str = nox.reflect.decorator_arg(i, 0)
             raw_handler: (Context) -> HttpResponse = nox.reflect.decorator_handler(i)
             method: str = nox.strings.upper(name)
+            status: int = 200
+            if method == "POST":
+                status = 201
+            if method == "DELETE":
+                status = 204
 
             def make_handler(inner: (Context) -> HttpResponse) -> (HttpContext) -> HttpResponse:
                 def wrapped(ctx: HttpContext) -> HttpResponse:
@@ -42,7 +49,8 @@ def mount_decorators(app: Application) -> None:
                     False,
                     empty,
                     False,
-                    empty
+                    empty,
+                    status
                 )
             )
             app.route_table.routes = routes

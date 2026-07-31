@@ -1,0 +1,39 @@
+# aether.metrics — simple in-process counters (per-worker).
+
+class Metrics:
+    requests: int
+    errors: int
+    status_2xx: int
+    status_4xx: int
+    status_5xx: int
+
+    def __init__(self: Metrics) -> None:
+        self.requests = 0
+        self.errors = 0
+        self.status_2xx = 0
+        self.status_4xx = 0
+        self.status_5xx = 0
+
+    def record(self: Metrics, status: int) -> None:
+        self.requests = self.requests + 1
+        if status >= 200 and status < 300:
+            self.status_2xx = self.status_2xx + 1
+        if status >= 400 and status < 500:
+            self.status_4xx = self.status_4xx + 1
+        if status >= 500:
+            self.status_5xx = self.status_5xx + 1
+            self.errors = self.errors + 1
+
+    def to_json(self: Metrics) -> str:
+        return (
+            "{\"requests\":" + str(self.requests) +
+            ",\"errors\":" + str(self.errors) +
+            ",\"status_2xx\":" + str(self.status_2xx) +
+            ",\"status_4xx\":" + str(self.status_4xx) +
+            ",\"status_5xx\":" + str(self.status_5xx) + "}"
+        )
+
+_global: Metrics = Metrics()
+
+def global_metrics() -> Metrics:
+    return _global

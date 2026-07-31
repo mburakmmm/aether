@@ -2,7 +2,7 @@
 
 [Nox](https://github.com/mburakmmm/nox-lang) (≥ **1.26.0**) için NestJS esintili **API / backend** framework’ü.
 
-Pythonic modüller, closure + provider registry ile DI, guard / pipe / interceptor, typed DTO, OpenAPI, WebSocket gateway ve arka plan kuyrukları.
+Pythonic modüller; resmi DI modeli **closure injection** + provider **isim** kaydı; guard / pipe / interceptor / exception filter; typed DTO (format doğrulama); OpenAPI + Swagger UI; CORS / rate limit / metrics; WebSocket gateway (oda/broadcast); arka plan kuyrukları (stale reclaim + DLQ).
 
 > [Nyx](https://github.com/mburakmmm/nyx)’ten bağımsızdır (Rails tarzı full-stack). HTTP API için Aether; HTML monolit için Nyx.
 

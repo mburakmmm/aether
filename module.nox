@@ -1,10 +1,12 @@
-# aether.module — ModuleBuilder + RouteDef.
+# aether.module — ModuleBuilder + RouteDef + shared RouteTable/HookState.
+#
+# Official DI: register provider *names* with provide(name); inject services
+# via closures when registering handlers (Nox cannot subclass imported bases).
 
 from nox.http import HttpResponse
 import aether.container
 import aether.context
 import aether.dto
-import aether.guard
 import aether.pipe
 import aether.interceptor
 from aether.container import Container
@@ -12,6 +14,8 @@ from aether.context import HttpContext
 from aether.dto import DtoSchema
 from aether.pipe import validation_pipe
 from aether.interceptor import InterceptorFns
+import aether.errors
+from aether.errors import HttpError
 
 class RouteDef:
     method: str
@@ -23,6 +27,7 @@ class RouteDef:
     input_schema: DtoSchema
     has_output: bool
     output_schema: DtoSchema
+    success_status: int
     guards: list[(HttpContext) -> bool]
     pipes: list[(HttpContext) -> None]
     interceptors: list[InterceptorFns]
@@ -37,7 +42,8 @@ class RouteDef:
         has_input: bool,
         input_schema: DtoSchema,
         has_output: bool,
-        output_schema: DtoSchema
+        output_schema: DtoSchema,
+        success_status: int
     ) -> None:
         self.method = method
         self.pattern = pattern
@@ -48,6 +54,7 @@ class RouteDef:
         self.input_schema = input_schema
         self.has_output = has_output
         self.output_schema = output_schema
+        self.success_status = success_status
         self.guards = []
         self.pipes = []
         self.interceptors = []
@@ -62,11 +69,13 @@ class HookState:
     guards: list[(HttpContext) -> bool]
     pipes: list[(HttpContext) -> None]
     interceptors: list[InterceptorFns]
+    exception_filters: list[(HttpError) -> HttpResponse | None]
 
     def __init__(self: HookState) -> None:
         self.guards = []
         self.pipes = []
         self.interceptors = []
+        self.exception_filters = []
 
 class ModuleBuilder:
     _table: RouteTable
@@ -76,6 +85,7 @@ class ModuleBuilder:
     _route_pipes: list[(HttpContext) -> None]
     _route_interceptors: list[InterceptorFns]
     _default_tag: str
+    _prefix: str
 
     def __init__(
         self: ModuleBuilder,
@@ -90,11 +100,16 @@ class ModuleBuilder:
         self._route_pipes = []
         self._route_interceptors = []
         self._default_tag = ""
+        self._prefix = ""
 
     def tag(self: ModuleBuilder, name: str) -> None:
         self._default_tag = name
 
+    def prefix(self: ModuleBuilder, path: str) -> None:
+        self._prefix = path
+
     def provide(self: ModuleBuilder, name: str) -> None:
+        # Name registry only — hold instances in closures.
         self._container.register_name(name)
 
     def use_guard(self: ModuleBuilder, guard: (HttpContext) -> bool) -> None:
@@ -114,6 +129,12 @@ class ModuleBuilder:
         xs: list[InterceptorFns] = hooks.interceptors
         xs.append(interceptor)
         hooks.interceptors = xs
+
+    def use_exception_filter(self: ModuleBuilder, filt: (HttpError) -> HttpResponse | None) -> None:
+        hooks: HookState = self._hooks
+        fs: list[(HttpError) -> HttpResponse | None] = hooks.exception_filters
+        fs.append(filt)
+        hooks.exception_filters = fs
 
     def route_guard(self: ModuleBuilder, guard: (HttpContext) -> bool) -> None:
         gs: list[(HttpContext) -> bool] = self._route_guards
@@ -135,6 +156,20 @@ class ModuleBuilder:
         self._route_pipes = []
         self._route_interceptors = []
 
+    def _join(self: ModuleBuilder, pattern: str) -> str:
+        if len(self._prefix) == 0:
+            return pattern
+        if len(pattern) == 0:
+            return self._prefix
+        pref: str = self._prefix
+        if pattern[0] == "/":
+            if pref[len(pref) - 1] == "/":
+                return pref + _drop1(pattern)
+            return pref + pattern
+        if pref[len(pref) - 1] == "/":
+            return pref + pattern
+        return pref + "/" + pattern
+
     def _add(
         self: ModuleBuilder,
         method: str,
@@ -144,18 +179,20 @@ class ModuleBuilder:
         has_input: bool,
         input_schema: DtoSchema,
         has_output: bool,
-        output_schema: DtoSchema
+        output_schema: DtoSchema,
+        success_status: int
     ) -> None:
         route: RouteDef = RouteDef(
             method,
-            pattern,
+            self._join(pattern),
             handler,
             summary,
             self._default_tag + "",
             has_input,
             input_schema,
             has_output,
-            output_schema
+            output_schema,
+            success_status
         )
         rg: list[(HttpContext) -> bool] = route.guards
         i: int = 0
@@ -185,19 +222,19 @@ class ModuleBuilder:
 
     def get(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("GET", pattern, handler, "", False, empty, False, empty)
+        self._add("GET", pattern, handler, "", False, empty, False, empty, 200)
 
     def post(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("POST", pattern, handler, "", False, empty, False, empty)
+        self._add("POST", pattern, handler, "", False, empty, False, empty, 201)
 
     def put(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("PUT", pattern, handler, "", False, empty, False, empty)
+        self._add("PUT", pattern, handler, "", False, empty, False, empty, 200)
 
     def delete(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("DELETE", pattern, handler, "", False, empty, False, empty)
+        self._add("DELETE", pattern, handler, "", False, empty, False, empty, 204)
 
     def get_documented(
         self: ModuleBuilder,
@@ -207,7 +244,7 @@ class ModuleBuilder:
         output_schema: DtoSchema
     ) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("GET", pattern, handler, summary, False, empty, True, output_schema)
+        self._add("GET", pattern, handler, summary, False, empty, True, output_schema, 200)
 
     def post_body(
         self: ModuleBuilder,
@@ -217,4 +254,31 @@ class ModuleBuilder:
         input_schema: DtoSchema,
         output_schema: DtoSchema
     ) -> None:
-        self._add("POST", pattern, handler, summary, True, input_schema, True, output_schema)
+        self._add("POST", pattern, handler, summary, True, input_schema, True, output_schema, 201)
+
+    def put_body(
+        self: ModuleBuilder,
+        pattern: str,
+        handler: (HttpContext) -> HttpResponse,
+        summary: str,
+        input_schema: DtoSchema,
+        output_schema: DtoSchema
+    ) -> None:
+        self._add("PUT", pattern, handler, summary, True, input_schema, True, output_schema, 200)
+
+    def delete_documented(
+        self: ModuleBuilder,
+        pattern: str,
+        handler: (HttpContext) -> HttpResponse,
+        summary: str
+    ) -> None:
+        empty: DtoSchema = DtoSchema("")
+        self._add("DELETE", pattern, handler, summary, False, empty, False, empty, 204)
+
+def _drop1(s: str) -> str:
+    out: str = ""
+    i: int = 1
+    while i < len(s):
+        out = out + s[i]
+        i = i + 1
+    return out

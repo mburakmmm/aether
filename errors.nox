@@ -1,11 +1,13 @@
-# aether.errors — structured HTTP errors (JSON body via application.dispatch).
-#
-# Note: nox.http also defines a bare HttpError(Exception). Prefer importing
-# from aether.errors explicitly; never `from nox.http import HttpError`.
+# aether.errors — structured HTTP errors.
 
 import nox.json
 
 class HttpError(Exception):
+    status: int
+    code: str
+    message: str
+    details: list[str]
+
     def __init__(self: HttpError, status: int, code: str, message: str, details: list[str]) -> None:
         self.status = status
         self.code = code
@@ -32,14 +34,29 @@ class NotFoundError(HttpError):
         details: list[str] = []
         super().__init__(404, "not_found", message, details)
 
+class MethodNotAllowedError(HttpError):
+    def __init__(self: MethodNotAllowedError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(405, "method_not_allowed", message, details)
+
 class ConflictError(HttpError):
     def __init__(self: ConflictError, message: str) -> None:
         details: list[str] = []
         super().__init__(409, "conflict", message, details)
 
+class PayloadTooLargeError(HttpError):
+    def __init__(self: PayloadTooLargeError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(413, "payload_too_large", message, details)
+
 class ValidationError(HttpError):
     def __init__(self: ValidationError, message: str, details: list[str]) -> None:
         super().__init__(422, "validation_error", message, details)
+
+class TooManyRequestsError(HttpError):
+    def __init__(self: TooManyRequestsError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(429, "too_many_requests", message, details)
 
 class InternalError(HttpError):
     def __init__(self: InternalError, message: str) -> None:

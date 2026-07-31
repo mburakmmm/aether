@@ -22,7 +22,13 @@ class Config:
         tls_cert_path: str,
         tls_key_path: str,
         trust_x_forwarded_for: bool,
-        ws_enabled: bool
+        ws_enabled: bool,
+        max_body_bytes: int,
+        rate_limit_enabled: bool,
+        rate_limit_max: int,
+        rate_limit_window_ms: int,
+        cors_origins: str,
+        job_stale_ms: int
     ) -> None:
         self.env = env
         self.host = host
@@ -37,6 +43,12 @@ class Config:
         self.tls_key_path = tls_key_path
         self.trust_x_forwarded_for = trust_x_forwarded_for
         self.ws_enabled = ws_enabled
+        self.max_body_bytes = max_body_bytes
+        self.rate_limit_enabled = rate_limit_enabled
+        self.rate_limit_max = rate_limit_max
+        self.rate_limit_window_ms = rate_limit_window_ms
+        self.cors_origins = cors_origins
+        self.job_stale_ms = job_stale_ms
 
     def is_development(self: Config) -> bool:
         return self.env == "development"
@@ -81,25 +93,36 @@ def defaults(env: str) -> Config:
     log_req: bool = True
     workers: int = 1
     jobs: str = "db/jobs.sqlite"
+    openapi_on: bool = True
+    rate_on: bool = False
     if env == "test":
         log_req = False
         jobs = ":memory:"
+        rate_on = False
     if env == "production":
         workers = 0
+        openapi_on = False
+        rate_on = True
     return Config(
         env,
         "0.0.0.0",
         3000,
         workers,
         log_req,
-        True,
+        openapi_on,
         "Aether API",
-        "0.1.0",
+        "0.2.0",
         jobs,
         "",
         "",
         False,
-        False
+        False,
+        1048576,
+        rate_on,
+        100,
+        60000,
+        "*",
+        300000
     )
 
 def from_env() -> Config:
@@ -117,6 +140,12 @@ def from_env() -> Config:
     cfg.tls_key_path = _env_or("AETHER_TLS_KEY", cfg.tls_key_path)
     cfg.trust_x_forwarded_for = _env_bool("AETHER_TRUST_X_FORWARDED_FOR", cfg.trust_x_forwarded_for)
     cfg.ws_enabled = _env_bool("AETHER_WS", cfg.ws_enabled)
+    cfg.max_body_bytes = _env_int("AETHER_MAX_BODY_BYTES", cfg.max_body_bytes)
+    cfg.rate_limit_enabled = _env_bool("AETHER_RATE_LIMIT", cfg.rate_limit_enabled)
+    cfg.rate_limit_max = _env_int("AETHER_RATE_LIMIT_MAX", cfg.rate_limit_max)
+    cfg.rate_limit_window_ms = _env_int("AETHER_RATE_LIMIT_WINDOW_MS", cfg.rate_limit_window_ms)
+    cfg.cors_origins = _env_or("AETHER_CORS_ORIGINS", cfg.cors_origins)
+    cfg.job_stale_ms = _env_int("AETHER_JOB_STALE_MS", cfg.job_stale_ms)
     return cfg
 
 def load() -> Config:
