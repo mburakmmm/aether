@@ -1,0 +1,159 @@
+# aether.application — boot, dispatch, lifecycle.
+
+import nox.uuid
+import nox.log
+import nox.time
+from nox.http import HttpRequest, HttpResponse
+import aether.config
+import aether.container
+import aether.context
+import aether.module
+import aether.pipeline
+import aether.errors
+import aether.response
+import aether.openapi
+import aether.guard
+import aether.pipe
+import aether.interceptor
+from aether.config import Config
+from aether.container import Container
+from aether.context import HttpContext, begin, end, path_only
+from aether.module import ModuleBuilder, RouteDef, AppModule
+from aether.pipeline import MatchResult, find_route, execute
+from aether.errors import HttpError, NotFoundError, error_json
+from aether.guard import Guard
+from aether.pipe import Pipe
+from aether.interceptor import Interceptor, RequestIdInterceptor
+from aether.dto import DtoSchema
+
+class AppError(Exception):
+    def __init__(self: AppError, message: str) -> None:
+        self.message = message
+
+class Application:
+    def __init__(
+        self: Application,
+        cfg: Config,
+        container: Container,
+        routes: list[RouteDef],
+        global_guards: list[Guard],
+        global_pipes: list[Pipe],
+        global_interceptors: list[Interceptor],
+        hooks: list[() -> None],
+        openapi_doc: str
+    ) -> None:
+        self.config = cfg
+        self.container = container
+        self.routes = routes
+        self.global_guards = global_guards
+        self.global_pipes = global_pipes
+        self.global_interceptors = global_interceptors
+        self._shutdown_hooks = hooks
+        self.openapi_doc = openapi_doc
+        self._closed = False
+
+    def import_module(self: Application, mod: AppModule) -> None:
+        builder: ModuleBuilder = ModuleBuilder(
+            self.routes,
+            self.container,
+            self.global_guards,
+            self.global_pipes,
+            self.global_interceptors
+        )
+        mod.configure(builder)
+
+    def on_shutdown(self: Application, hook: () -> None) -> None:
+        self._shutdown_hooks.append(hook)
+
+def _mount_framework_routes(app: Application) -> None:
+    empty: DtoSchema = DtoSchema("")
+
+    def health(ctx: HttpContext) -> HttpResponse:
+        return aether.response.json_ok("{\"status\":\"ok\"}")
+
+    def openapi_handler(ctx: HttpContext) -> HttpResponse:
+        return aether.response.json_ok(app.openapi_doc + "")
+
+    app.routes.append(RouteDef("GET", "/health", health, "Health check", "system", False, empty, False, empty))
+    if app.config.openapi_enabled:
+        app.routes.append(
+            RouteDef("GET", "/openapi.json", openapi_handler, "OpenAPI document", "system", False, empty, False, empty)
+        )
+
+def boot(build: (Application) -> None) -> Application:
+    cfg: Config = aether.config.load()
+    return boot_with_config(cfg, build)
+
+def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
+    container: Container = Container()
+    routes: list[RouteDef] = []
+    guards: list[Guard] = []
+    pipes: list[Pipe] = []
+    interceptors: list[Interceptor] = []
+    interceptors.append(RequestIdInterceptor())
+    hooks: list[() -> None] = []
+    app: Application = Application(cfg, container, routes, guards, pipes, interceptors, hooks, "{}")
+    build(app)
+    app.openapi_doc = aether.openapi.build_document(cfg, app.routes)
+    _mount_framework_routes(app)
+    # Rebuild openapi after framework routes so /health appears.
+    if cfg.openapi_enabled:
+        app.openapi_doc = aether.openapi.build_document(cfg, app.routes)
+    return app
+
+def _error_response(cfg: Config, err: HttpError, kind: str) -> HttpResponse:
+    include_kind: bool = cfg.is_development() or cfg.is_test()
+    body: str = error_json(err, include_kind, kind)
+    return aether.response.json(err.status, body)
+
+def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
+    rid: str = nox.uuid.uuid4()
+    path: str = path_only(req.target)
+    begin(rid, req.method, path)
+    app.container.clear_request()
+    started: int = nox.time.now_ms()
+    resp: HttpResponse = aether.response.json(500, "{\"error\":{\"code\":\"internal_error\",\"message\":\"unset\"}}")
+    try:
+        try:
+            matched: MatchResult | None = find_route(app.routes, req.method, path)
+            if matched == None:
+                raise NotFoundError("route not found: " + req.method + " " + path)
+            ctx: HttpContext = HttpContext(req, matched.params, app.container, rid, "")
+            resp = execute(
+                matched.route,
+                ctx,
+                app.global_guards,
+                app.global_pipes,
+                app.global_interceptors
+            )
+        except HttpError as e:
+            resp = _error_response(app.config, e, "HttpError")
+        except Exception as e:
+            msg: str = e.message
+            if not app.config.is_production():
+                internal: HttpError = HttpError(500, "internal_error", msg, [])
+                resp = _error_response(app.config, internal, "Exception")
+            else:
+                internal2: HttpError = HttpError(500, "internal_error", "internal server error", [])
+                resp = _error_response(app.config, internal2, "Exception")
+    finally:
+        if app.config.log_requests:
+            elapsed: int = nox.time.now_ms() - started
+            nox.log.info(
+                req.method + " " + path + " -> " + str(resp.status) + " " + str(elapsed) + "ms id=" + rid
+            )
+        end()
+    return resp
+
+def shutdown(app: Application) -> None:
+    if app._closed:
+        return
+    app._closed = True
+    i: int = 0
+    while i < len(app._shutdown_hooks):
+        hook: () -> None = app._shutdown_hooks[i]
+        try:
+            hook()
+        except Exception:
+            nox.log.error("shutdown hook failed")
+        i = i + 1

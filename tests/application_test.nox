@@ -1,0 +1,52 @@
+import nox.test
+import aether.config
+import aether.application
+import aether.testing
+import aether.errors
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from aether.errors import NotFoundError, HttpError
+from nox.http import HttpResponse
+
+class DemoModule:
+    def configure(self: DemoModule, m: ModuleBuilder) -> None:
+        m.get("/ping", self._ping())
+        m.get("/boom", self._boom())
+
+    def _ping(self: DemoModule) -> (HttpContext) -> HttpResponse:
+        def ping(ctx: HttpContext) -> HttpResponse:
+            return json_ok("{\"pong\":true}")
+        return ping
+
+    def _boom(self: DemoModule) -> (HttpContext) -> HttpResponse:
+        def boom(ctx: HttpContext) -> HttpResponse:
+            raise NotFoundError("missing")
+        return boom
+
+def build(app: Application) -> None:
+    app.import_module(DemoModule())
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+app: Application = aether.application.boot_with_config(cfg, build)
+
+r1: HttpResponse = aether.testing.get(app, "/ping")
+nox.test.assert_eq_int(r1.status, 200, "ping status")
+
+r2: HttpResponse = aether.testing.get(app, "/health")
+nox.test.assert_eq_int(r2.status, 200, "health status")
+
+r3: HttpResponse = aether.testing.get(app, "/missing")
+nox.test.assert_eq_int(r3.status, 404, "missing status")
+
+r4: HttpResponse = aether.testing.get(app, "/boom")
+nox.test.assert_eq_int(r4.status, 404, "boom status")
+
+r5: HttpResponse = aether.testing.get(app, "/openapi.json")
+nox.test.assert_eq_int(r5.status, 200, "openapi status")
+
+aether.application.shutdown(app)
+print("application_test ok")

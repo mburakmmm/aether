@@ -1,0 +1,19 @@
+# aether.testing — in-process request helpers.
+
+from nox.http import HttpRequest, HttpResponse
+import aether.application
+from aether.application import Application
+
+def request(app: Application, method: str, target: str, body: str) -> HttpResponse:
+    headers: dict[str, str] = {}
+    req: HttpRequest = HttpRequest(method, target, body, headers)
+    return aether.application.dispatch(app, req)
+
+def get(app: Application, target: str) -> HttpResponse:
+    return request(app, "GET", target, "")
+
+def post(app: Application, target: str, body: str) -> HttpResponse:
+    headers: dict[str, str] = {}
+    headers["Content-Type"] = "application/json"
+    req: HttpRequest = HttpRequest("POST", target, body, headers)
+    return aether.application.dispatch(app, req)

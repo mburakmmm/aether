@@ -1,0 +1,161 @@
+# aether.openapi — OpenAPI 3 document from RouteDef + DtoSchema metadata.
+
+import nox.json
+import nox.strings
+import aether.module
+import aether.dto
+import aether.config
+from aether.module import RouteDef
+from aether.dto import DtoSchema, Field
+from aether.config import Config
+
+def _field_schema_json(field: Field) -> str:
+    body: str = "{\"type\":" + nox.json.encode_string(field.kind)
+    if len(field.format_name) > 0:
+        body = body + ",\"format\":" + nox.json.encode_string(field.format_name)
+    if len(field.description) > 0 and field.kind == "object":
+        body = body + ",\"description\":" + nox.json.encode_string(field.description)
+    if field.kind == "array" and len(field.item_kind) > 0:
+        body = body + ",\"items\":{\"type\":" + nox.json.encode_string(field.item_kind) + "}"
+    body = body + "}"
+    return body
+
+def _dto_schema_json(schema: DtoSchema) -> str:
+    props: str = "{"
+    required: list[str] = []
+    i: int = 0
+    while i < len(schema.fields):
+        field: Field = schema.fields[i]
+        if i > 0:
+            props = props + ","
+        props = props + nox.json.encode_string(field.name) + ":" + _field_schema_json(field)
+        if field.required:
+            required.append(field.name)
+        i = i + 1
+    props = props + "}"
+    body: str = "{\"type\":\"object\",\"properties\":" + props
+    if len(required) > 0:
+        body = body + ",\"required\":["
+        j: int = 0
+        while j < len(required):
+            if j > 0:
+                body = body + ","
+            body = body + nox.json.encode_string(required[j])
+            j = j + 1
+        body = body + "]"
+    body = body + "}"
+    return body
+
+def _path_params_json(pattern: str) -> str:
+    parts: list[str] = nox.strings.split(pattern, "/")
+    out: str = "["
+    first: bool = True
+    i: int = 0
+    while i < len(parts):
+        p: str = parts[i]
+        if nox.strings.starts_with(p, ":"):
+            name: str = ""
+            k: int = 1
+            while k < len(p):
+                name = name + p[k]
+                k = k + 1
+            if not first:
+                out = out + ","
+            first = False
+            out = out + "{\"name\":" + nox.json.encode_string(name)
+            out = out + ",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}"
+        i = i + 1
+    out = out + "]"
+    return out
+
+def _operation_json(route: RouteDef) -> str:
+    body: str = "{"
+    if len(route.summary) > 0:
+        body = body + "\"summary\":" + nox.json.encode_string(route.summary) + ","
+    if len(route.tag) > 0:
+        body = body + "\"tags\":[" + nox.json.encode_string(route.tag) + "],"
+    params: str = _path_params_json(route.pattern)
+    if params != "[]":
+        body = body + "\"parameters\":" + params + ","
+    if route.has_input:
+        body = body + "\"requestBody\":{\"required\":true,\"content\":{\"application/json\":{\"schema\":"
+        body = body + _dto_schema_json(route.input_schema) + "}}},"
+    body = body + "\"responses\":{\"200\":{\"description\":\"OK\""
+    if route.has_output:
+        body = body + ",\"content\":{\"application/json\":{\"schema\":" + _dto_schema_json(route.output_schema) + "}}"
+    body = body + "}}"
+    body = body + "}"
+    return body
+
+def _openapi_path(pattern: str) -> str:
+    parts: list[str] = nox.strings.split(pattern, "/")
+    out: str = ""
+    i: int = 0
+    while i < len(parts):
+        p: str = parts[i]
+        if i > 0 or len(p) > 0:
+            out = out + "/"
+        if nox.strings.starts_with(p, ":"):
+            name: str = ""
+            k: int = 1
+            while k < len(p):
+                name = name + p[k]
+                k = k + 1
+            out = out + "{" + name + "}"
+        else:
+            out = out + p
+        i = i + 1
+    if len(out) == 0:
+        return "/"
+    return out
+
+def build_document(cfg: Config, routes: list[RouteDef]) -> str:
+    paths_json: str = "{"
+    emitted: list[str] = []
+    pi: int = 0
+    first_path: bool = True
+    while pi < len(routes):
+        route: RouteDef = routes[pi]
+        opath: str = _openapi_path(route.pattern)
+        seen: bool = False
+        s: int = 0
+        while s < len(emitted):
+            if emitted[s] == opath:
+                seen = True
+            s = s + 1
+        if not seen:
+            if not first_path:
+                paths_json = paths_json + ","
+            first_path = False
+            paths_json = paths_json + nox.json.encode_string(opath) + ":{"
+            first_op: bool = True
+            rj: int = 0
+            while rj < len(routes):
+                r2: RouteDef = routes[rj]
+                if _openapi_path(r2.pattern) == opath:
+                    if not first_op:
+                        paths_json = paths_json + ","
+                    first_op = False
+                    method_key: str = "get"
+                    mk: str = r2.method
+                    if mk == "GET":
+                        method_key = "get"
+                    if mk == "POST":
+                        method_key = "post"
+                    if mk == "PUT":
+                        method_key = "put"
+                    if mk == "DELETE":
+                        method_key = "delete"
+                    paths_json = paths_json + nox.json.encode_string(method_key) + ":" + _operation_json(r2)
+                rj = rj + 1
+            paths_json = paths_json + "}"
+            emitted.append(opath)
+        pi = pi + 1
+    paths_json = paths_json + "}"
+    doc: str = "{"
+    doc = doc + "\"openapi\":\"3.0.3\","
+    doc = doc + "\"info\":{\"title\":" + nox.json.encode_string(cfg.openapi_title)
+    doc = doc + ",\"version\":" + nox.json.encode_string(cfg.openapi_version) + "},"
+    doc = doc + "\"paths\":" + paths_json
+    doc = doc + "}"
+    return doc

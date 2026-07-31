@@ -1,0 +1,24 @@
+import nox.test
+import aether.queue
+from nox.sqlite import Connection
+from aether.queue import JobRegistry
+
+db: Connection = aether.queue.open_db(":memory:")
+aether.queue.ensure_schema(db)
+
+seen: list[str] = []
+
+def handle_job(payload: str) -> None:
+    seen.append(payload)
+
+registry: JobRegistry = JobRegistry()
+registry.register("demo", handle_job)
+
+id: int = aether.queue.enqueue(db, "demo", "{\"n\":1}", 0)
+nox.test.assert_true(id > 0, "enqueue id")
+
+n: int = aether.queue.work(db, registry, 5)
+nox.test.assert_eq_int(n, 1, "processed")
+nox.test.assert_eq_int(len(seen), 1, "handler called")
+
+print("queue_test ok")

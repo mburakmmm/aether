@@ -1,0 +1,10 @@
+{
+  "packages": [
+    {
+      "alias": "aether",
+      "repo": "/Users/melihburakmemis/Documents/aether",
+      "ref": "master",
+      "resolved": "local-dev"
+    }
+  ]
+}

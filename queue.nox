@@ -1,0 +1,218 @@
+# aether.queue — SQLite background job queue + worker.
+
+import nox.sqlite
+import nox.json
+import nox.time
+from nox.sqlite import Connection, Statement, SqliteError
+from nox.db import Row
+from nox.json import JsonError
+
+class QueueError(Exception):
+    def __init__(self: QueueError, message: str) -> None:
+        self.message = message
+
+def status_queued() -> str:
+    return "queued"
+
+def status_running() -> str:
+    return "running"
+
+def status_completed() -> str:
+    return "completed"
+
+def status_failed() -> str:
+    return "failed"
+
+def max_attempts() -> int:
+    return 5
+
+def open_db(path: str) -> Connection:
+    return nox.sqlite.open(path)
+
+def ensure_schema(db: Connection) -> None:
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS aether_jobs (" +
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+        "job_name TEXT NOT NULL, " +
+        "payload TEXT NOT NULL, " +
+        "status TEXT NOT NULL, " +
+        "run_at_ms INTEGER NOT NULL, " +
+        "attempts INTEGER NOT NULL DEFAULT 0, " +
+        "last_error TEXT NOT NULL DEFAULT '', " +
+        "created_at_ms INTEGER NOT NULL, " +
+        "updated_at_ms INTEGER NOT NULL" +
+        ")"
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_aether_jobs_status_run_at ON aether_jobs (status, run_at_ms)"
+    )
+
+def enqueue(db: Connection, job_name: str, payload_json: str, run_at_ms: int) -> int:
+    if len(job_name) == 0:
+        raise QueueError("job_name empty")
+    nox.json.decode(payload_json)
+    now: int = nox.time.now_ms()
+    stmt: Statement = db.prepare(
+        "INSERT INTO aether_jobs (job_name, payload, status, run_at_ms, attempts, last_error, created_at_ms, updated_at_ms) " +
+        "VALUES (?, ?, 'queued', ?, 0, '', ?, ?)"
+    )
+    stmt.bind_str(0, job_name)
+    stmt.bind_str(1, payload_json)
+    stmt.bind_int(2, run_at_ms)
+    stmt.bind_int(3, now)
+    stmt.bind_int(4, now)
+    stmt.execute()
+    return db.last_insert_rowid()
+
+def _job_json(id: int, job_name: str, payload_json: str, status: str, attempts: int, run_at_ms: int) -> str:
+    return (
+        "{\"id\":" + str(id) +
+        ",\"job_name\":" + nox.json.encode_string(job_name) +
+        ",\"payload\":" + payload_json +
+        ",\"status\":" + nox.json.encode_string(status) +
+        ",\"attempts\":" + str(attempts) +
+        ",\"run_at_ms\":" + str(run_at_ms) + "}"
+    )
+
+def reserve(db: Connection) -> str | None:
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        now: int = nox.time.now_ms()
+        stmt: Statement = db.prepare(
+            "SELECT id, job_name, payload, attempts, run_at_ms FROM aether_jobs " +
+            "WHERE status = ? AND run_at_ms <= ? ORDER BY run_at_ms ASC, id ASC LIMIT 1"
+        )
+        stmt.bind_str(0, status_queued())
+        stmt.bind_int(1, now)
+        rows: list[Row] = stmt.query()
+        if len(rows) == 0:
+            db.execute("COMMIT")
+            return None
+        row: Row = rows[0]
+        id: int = row.get_int(0)
+        job_name: str = row.get_str(1)
+        payload: str = row.get_str(2)
+        attempts: int = row.get_int(3)
+        run_at: int = row.get_int(4)
+        upd: Statement = db.prepare(
+            "UPDATE aether_jobs SET status = ?, updated_at_ms = ? WHERE id = ?"
+        )
+        upd.bind_str(0, status_running())
+        upd.bind_int(1, now)
+        upd.bind_int(2, id)
+        upd.execute()
+        db.execute("COMMIT")
+        return _job_json(id, job_name, payload, status_running(), attempts, run_at)
+    except SqliteError as e:
+        db.execute("ROLLBACK")
+        raise QueueError(e.message)
+
+def complete(db: Connection, id: int) -> None:
+    now: int = nox.time.now_ms()
+    stmt: Statement = db.prepare(
+        "UPDATE aether_jobs SET status = ?, updated_at_ms = ? WHERE id = ?"
+    )
+    stmt.bind_str(0, status_completed())
+    stmt.bind_int(1, now)
+    stmt.bind_int(2, id)
+    stmt.execute()
+
+def fail(db: Connection, id: int, error: str) -> None:
+    now: int = nox.time.now_ms()
+    sel: Statement = db.prepare("SELECT attempts FROM aether_jobs WHERE id = ?")
+    sel.bind_int(0, id)
+    rows: list[Row] = sel.query()
+    if len(rows) == 0:
+        raise QueueError("job not found: " + str(id))
+    attempts: int = rows[0].get_int(0) + 1
+    if attempts < max_attempts():
+        backoff_ms: int = attempts * attempts * 1000
+        stmt: Statement = db.prepare(
+            "UPDATE aether_jobs SET status = ?, attempts = ?, last_error = ?, run_at_ms = ?, updated_at_ms = ? WHERE id = ?"
+        )
+        stmt.bind_str(0, status_queued())
+        stmt.bind_int(1, attempts)
+        stmt.bind_str(2, error)
+        stmt.bind_int(3, now + backoff_ms)
+        stmt.bind_int(4, now)
+        stmt.bind_int(5, id)
+        stmt.execute()
+    else:
+        stmt2: Statement = db.prepare(
+            "UPDATE aether_jobs SET status = ?, attempts = ?, last_error = ?, updated_at_ms = ? WHERE id = ?"
+        )
+        stmt2.bind_str(0, status_failed())
+        stmt2.bind_int(1, attempts)
+        stmt2.bind_str(2, error)
+        stmt2.bind_int(3, now)
+        stmt2.bind_int(4, id)
+        stmt2.execute()
+
+class JobRegistry:
+    def __init__(self: JobRegistry) -> None:
+        self._names: list[str] = []
+        self._handlers: list[(str) -> None] = []
+
+    def register(self: JobRegistry, name: str, handler: (str) -> None) -> None:
+        self._names.append(name)
+        self._handlers.append(handler)
+
+    def get(self: JobRegistry, name: str) -> (str) -> None:
+        i: int = 0
+        while i < len(self._names):
+            if self._names[i] == name:
+                return self._handlers[i]
+            i = i + 1
+        raise QueueError("job handler not found: " + name)
+
+def _field_str(v: JsonValue, name: str) -> str:
+    i: int = 0
+    n: int = nox.json.object_len(v)
+    while i < n:
+        if nox.json.object_key(v, i) == name:
+            val: JsonValue = nox.json.object_value(v, i)
+            if nox.json.is_string(val):
+                return nox.json.as_string(val)
+            return nox.json.encode(val)
+        i = i + 1
+    raise QueueError("missing field: " + name)
+
+def _field_int(v: JsonValue, name: str) -> int:
+    i: int = 0
+    n: int = nox.json.object_len(v)
+    while i < n:
+        if nox.json.object_key(v, i) == name:
+            val: JsonValue = nox.json.object_value(v, i)
+            if nox.json.is_number(val):
+                return int(nox.json.as_number(val))
+        i = i + 1
+    raise QueueError("missing int field: " + name)
+
+def work(db: Connection, registry: JobRegistry, limit: int) -> int:
+    processed: int = 0
+    while processed < limit:
+        raw: str | None = reserve(db)
+        if raw == None:
+            return processed
+        job: JsonValue = nox.json.decode(raw)
+        id: int = _field_int(job, "id")
+        name: str = _field_str(job, "job_name")
+        payload: str = _field_str(job, "payload")
+        try:
+            handler: (str) -> None = registry.get(name)
+            handler(payload)
+            complete(db, id)
+            processed = processed + 1
+        except QueueError as e:
+            fail(db, id, e.message)
+            processed = processed + 1
+        except Exception as e:
+            fail(db, id, e.message)
+            processed = processed + 1
+    return processed
+
+def work_forever(db: Connection, registry: JobRegistry, idle_sleep_ms: int) -> None:
+    while True:
+        n: int = work(db, registry, 10)
+        if n == 0:
+            nox.time.sleep_ms(idle_sleep_ms)

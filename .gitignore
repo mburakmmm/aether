@@ -1,0 +1,8 @@
+.nox/
+*.o
+*.s
+*.ssa
+tmp/
+db/*.sqlite
+db/*.sqlite-*
+.DS_Store

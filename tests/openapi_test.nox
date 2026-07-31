@@ -1,0 +1,39 @@
+import nox.test
+import nox.strings
+import aether.config
+import aether.application
+import aether.openapi
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from aether.dto import DtoSchema
+from nox.http import HttpResponse
+
+class DocModule:
+    def configure(self: DocModule, m: ModuleBuilder) -> None:
+        out: DtoSchema = DtoSchema("Pong")
+        out.require("pong", "bool")
+        m.tag("demo")
+        m.get_documented("/ping", self._ping(), "Ping", out)
+
+    def _ping(self: DocModule) -> (HttpContext) -> HttpResponse:
+        def ping(ctx: HttpContext) -> HttpResponse:
+            return json_ok("{\"pong\":true}")
+        return ping
+
+def build(app: Application) -> None:
+    app.import_module(DocModule())
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+cfg.openapi_title = "Test API"
+app: Application = aether.application.boot_with_config(cfg, build)
+doc: str = app.openapi_doc
+nox.test.assert_true(nox.strings.contains(doc, "openapi"), "has openapi")
+nox.test.assert_true(nox.strings.contains(doc, "/ping"), "has ping path")
+nox.test.assert_true(nox.strings.contains(doc, "Test API"), "has title")
+
+aether.application.shutdown(app)
+print("openapi_test ok")

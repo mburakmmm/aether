@@ -1,0 +1,30 @@
+import nox.test
+import aether.dto
+from aether.dto import DtoSchema, validate_json_str
+from aether.errors import ValidationError
+
+address: DtoSchema = DtoSchema("Address")
+address.require("city", "string")
+
+user: DtoSchema = DtoSchema("User")
+user.require("name", "string")
+user.require_object("address", address)
+
+ok: list[str] = validate_json_str("{\"name\":\"ada\",\"address\":{\"city\":\"paris\"}}", user)
+nox.test.assert_eq_int(len(ok), 0, "valid nested")
+
+bad: list[str] = validate_json_str("{\"name\":\"ada\",\"address\":{\"city\":1}}", user)
+nox.test.assert_true(len(bad) > 0, "invalid nested city type")
+
+arr: DtoSchema = DtoSchema("Tags")
+arr.require_array("tags", "string")
+bad_arr: list[str] = validate_json_str("{\"tags\":[1,2]}", arr)
+nox.test.assert_true(len(bad_arr) > 0, "invalid array items")
+
+try:
+    aether.dto.parse_or_raise("{}", user)
+    nox.test.assert_true(False, "should raise")
+except ValidationError as e:
+    nox.test.assert_eq_int(e.status, 422, "validation status")
+
+print("dto_test ok")

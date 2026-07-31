@@ -1,0 +1,65 @@
+# aether.errors — structured HTTP errors (JSON body via application.dispatch).
+#
+# Note: nox.http also defines a bare HttpError(Exception). Prefer importing
+# from aether.errors explicitly; never `from nox.http import HttpError`.
+
+import nox.json
+
+class HttpError(Exception):
+    def __init__(self: HttpError, status: int, code: str, message: str, details: list[str]) -> None:
+        self.status = status
+        self.code = code
+        self.message = message
+        self.details = details
+
+class BadRequestError(HttpError):
+    def __init__(self: BadRequestError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(400, "bad_request", message, details)
+
+class UnauthorizedError(HttpError):
+    def __init__(self: UnauthorizedError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(401, "unauthorized", message, details)
+
+class ForbiddenError(HttpError):
+    def __init__(self: ForbiddenError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(403, "forbidden", message, details)
+
+class NotFoundError(HttpError):
+    def __init__(self: NotFoundError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(404, "not_found", message, details)
+
+class ConflictError(HttpError):
+    def __init__(self: ConflictError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(409, "conflict", message, details)
+
+class ValidationError(HttpError):
+    def __init__(self: ValidationError, message: str, details: list[str]) -> None:
+        super().__init__(422, "validation_error", message, details)
+
+class InternalError(HttpError):
+    def __init__(self: InternalError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(500, "internal_error", message, details)
+
+def error_json(err: HttpError, include_kind: bool, kind: str) -> str:
+    body: str = "{\"error\":{"
+    body = body + "\"code\":" + nox.json.encode_string(err.code) + ","
+    body = body + "\"message\":" + nox.json.encode_string(err.message)
+    if include_kind:
+        body = body + ",\"kind\":" + nox.json.encode_string(kind)
+    if len(err.details) > 0:
+        body = body + ",\"details\":["
+        i: int = 0
+        while i < len(err.details):
+            if i > 0:
+                body = body + ","
+            body = body + nox.json.encode_string(err.details[i])
+            i = i + 1
+        body = body + "]"
+    body = body + "}}"
+    return body

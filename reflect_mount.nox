@@ -1,0 +1,47 @@
+# aether.reflect_mount — mount top-level @get/@post/@put/@delete into Application.
+
+import nox.reflect
+import nox.strings
+from nox.http import HttpResponse
+from nox.router import Context
+import aether.application
+import aether.context
+import aether.module
+import aether.dto
+from aether.application import Application
+from aether.context import HttpContext
+from aether.module import RouteDef
+from aether.dto import DtoSchema
+
+def mount_decorators(app: Application) -> None:
+    empty: DtoSchema = DtoSchema("")
+    n: int = nox.reflect.decorator_count()
+    i: int = 0
+    while i < n:
+        name: str = nox.reflect.decorator_name(i)
+        is_route: bool = name == "get" or name == "post" or name == "put" or name == "delete"
+        if is_route and nox.reflect.decorator_is_handler(i):
+            pattern: str = nox.reflect.decorator_arg(i, 0)
+            raw_handler: (Context) -> HttpResponse = nox.reflect.decorator_handler(i)
+            method: str = nox.strings.upper(name)
+
+            def make_handler(inner: (Context) -> HttpResponse) -> (HttpContext) -> HttpResponse:
+                def wrapped(ctx: HttpContext) -> HttpResponse:
+                    rctx: Context = Context(ctx.request, ctx.params)
+                    return inner(rctx)
+                return wrapped
+
+            app.routes.append(
+                RouteDef(
+                    method,
+                    pattern,
+                    make_handler(raw_handler),
+                    "",
+                    "decorated",
+                    False,
+                    empty,
+                    False,
+                    empty
+                )
+            )
+        i = i + 1

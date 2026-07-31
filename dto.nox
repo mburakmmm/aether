@@ -1,0 +1,131 @@
+# aether.dto — schema builder + nested validation on top of nox.validate.
+
+import nox.json
+import nox.validate
+from nox.json import JsonError
+from nox.validate import Schema
+import aether.errors
+from aether.errors import ValidationError
+
+class Field:
+    def __init__(
+        self: Field,
+        name: str,
+        kind: str,
+        required: bool,
+        format_name: str,
+        description: str,
+        item_kind: str
+    ) -> None:
+        self.name = name
+        self.kind = kind
+        self.required = required
+        self.format_name = format_name
+        self.description = description
+        self.item_kind = item_kind
+
+class DtoSchema:
+    def __init__(self: DtoSchema, name: str) -> None:
+        self.name = name
+        self.fields: list[Field] = []
+        self.nested_names: list[str] = []
+        self.nested_schemas: list[DtoSchema] = []
+        self._flat: Schema = Schema()
+
+    def require(self: DtoSchema, name: str, kind: str) -> None:
+        self.fields.append(Field(name, kind, True, "", "", ""))
+        self._flat.require(name, kind)
+
+    def optional(self: DtoSchema, name: str, kind: str) -> None:
+        self.fields.append(Field(name, kind, False, "", "", ""))
+        self._flat.optional(name, kind)
+
+    def require_format(self: DtoSchema, name: str, kind: str, format_name: str) -> None:
+        self.fields.append(Field(name, kind, True, format_name, "", ""))
+        self._flat.require(name, kind)
+
+    def require_object(self: DtoSchema, name: str, nested: DtoSchema) -> None:
+        self.fields.append(Field(name, "object", True, "", nested.name, ""))
+        self._flat.require(name, "object")
+        self.nested_names.append(name)
+        self.nested_schemas.append(nested)
+
+    def require_array(self: DtoSchema, name: str, item_kind: str) -> None:
+        self.fields.append(Field(name, "array", True, "", "", item_kind))
+        self._flat.require(name, "array")
+
+    def flat(self: DtoSchema) -> Schema:
+        return self._flat
+
+def _object_get(v: JsonValue, key: str) -> JsonValue | None:
+    i: int = 0
+    n: int = nox.json.object_len(v)
+    while i < n:
+        if nox.json.object_key(v, i) == key:
+            return nox.json.object_value(v, i)
+        i = i + 1
+    return None
+
+def _matches_kind(v: JsonValue, kind: str) -> bool:
+    if kind == "string":
+        return nox.json.is_string(v)
+    if kind == "number":
+        return nox.json.is_number(v)
+    if kind == "bool":
+        return nox.json.is_bool(v)
+    if kind == "array":
+        return nox.json.is_array(v)
+    if kind == "object":
+        return nox.json.is_object(v)
+    if kind == "null":
+        return nox.json.is_null(v)
+    return False
+
+def validate_value(v: JsonValue, schema: DtoSchema) -> list[str]:
+    errors: list[str] = nox.validate.validate(v, schema.flat())
+    if len(errors) > 0:
+        return errors
+    i: int = 0
+    while i < len(schema.nested_names):
+        nest_name: str = schema.nested_names[i]
+        nest_schema: DtoSchema = schema.nested_schemas[i]
+        child: JsonValue | None = _object_get(v, nest_name)
+        if child != None:
+            nested_errors: list[str] = validate_value(child, nest_schema)
+            j: int = 0
+            while j < len(nested_errors):
+                errors.append(nest_name + "." + nested_errors[j])
+                j = j + 1
+        i = i + 1
+    i = 0
+    while i < len(schema.fields):
+        field: Field = schema.fields[i]
+        if field.kind == "array" and len(field.item_kind) > 0:
+            arr: JsonValue | None = _object_get(v, field.name)
+            if arr != None and nox.json.is_array(arr):
+                n: int = nox.json.array_len(arr)
+                k: int = 0
+                while k < n:
+                    item: JsonValue = nox.json.array_get(arr, k)
+                    if not _matches_kind(item, field.item_kind):
+                        errors.append(
+                            "alan '" + field.name + "[" + str(k) + "]' icin beklenen tip: " + field.item_kind
+                        )
+                    k = k + 1
+        i = i + 1
+    return errors
+
+def validate_json_str(raw: str, schema: DtoSchema) -> list[str]:
+    try:
+        v: JsonValue = nox.json.decode(raw)
+        return validate_value(v, schema)
+    except JsonError as e:
+        errors: list[str] = []
+        errors.append(e.message)
+        return errors
+
+def parse_or_raise(raw: str, schema: DtoSchema) -> str:
+    errors: list[str] = validate_json_str(raw, schema)
+    if len(errors) > 0:
+        raise ValidationError("request body validation failed", errors)
+    return raw + ""

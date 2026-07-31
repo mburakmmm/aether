@@ -1,0 +1,18 @@
+# {{APP_NAME}} worker — background job consumer
+
+import aether.queue
+import aether.config
+from aether.config import Config
+from nox.sqlite import Connection
+from aether.queue import JobRegistry
+
+def handle_ping(payload: str) -> None:
+    print("ping job: " + payload)
+
+cfg: Config = aether.config.load()
+db: Connection = aether.queue.open_db(cfg.jobs_db_path)
+aether.queue.ensure_schema(db)
+registry: JobRegistry = JobRegistry()
+registry.register("ping", handle_ping)
+print("aether worker started jobs_db=" + cfg.jobs_db_path)
+aether.queue.work_forever(db, registry, 500)

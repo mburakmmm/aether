@@ -1,0 +1,168 @@
+# aether.module — ModuleBuilder, RouteDef, AppModule protocol.
+
+from nox.http import HttpResponse
+import aether.container
+import aether.context
+import aether.dto
+import aether.guard
+import aether.pipe
+import aether.interceptor
+from aether.container import Container, Injectable
+from aether.context import HttpContext
+from aether.dto import DtoSchema
+from aether.guard import Guard
+from aether.pipe import Pipe, ValidationPipe
+from aether.interceptor import Interceptor
+
+class RouteDef:
+    def __init__(
+        self: RouteDef,
+        method: str,
+        pattern: str,
+        handler: (HttpContext) -> HttpResponse,
+        summary: str,
+        tag: str,
+        has_input: bool,
+        input_schema: DtoSchema,
+        has_output: bool,
+        output_schema: DtoSchema
+    ) -> None:
+        self.method = method
+        self.pattern = pattern
+        self.handler = handler
+        self.summary = summary
+        self.tag = tag
+        self.has_input = has_input
+        self.input_schema = input_schema
+        self.has_output = has_output
+        self.output_schema = output_schema
+        self.guards: list[Guard] = []
+        self.pipes: list[Pipe] = []
+        self.interceptors: list[Interceptor] = []
+
+class ModuleBuilder:
+    def __init__(
+        self: ModuleBuilder,
+        routes: list[RouteDef],
+        container: Container,
+        global_guards: list[Guard],
+        global_pipes: list[Pipe],
+        global_interceptors: list[Interceptor]
+    ) -> None:
+        self._routes = routes
+        self._container = container
+        self._global_guards = global_guards
+        self._global_pipes = global_pipes
+        self._global_interceptors = global_interceptors
+        self._route_guards: list[Guard] = []
+        self._route_pipes: list[Pipe] = []
+        self._route_interceptors: list[Interceptor] = []
+        self._default_tag = ""
+
+    def tag(self: ModuleBuilder, name: str) -> None:
+        self._default_tag = name
+
+    def provide(self: ModuleBuilder, name: str, service: Injectable) -> None:
+        self._container.provide(name, service)
+
+    def use_guard(self: ModuleBuilder, guard: Guard) -> None:
+        self._global_guards.append(guard)
+
+    def use_pipe(self: ModuleBuilder, pipe: Pipe) -> None:
+        self._global_pipes.append(pipe)
+
+    def use_interceptor(self: ModuleBuilder, interceptor: Interceptor) -> None:
+        self._global_interceptors.append(interceptor)
+
+    def route_guard(self: ModuleBuilder, guard: Guard) -> None:
+        self._route_guards.append(guard)
+
+    def route_pipe(self: ModuleBuilder, pipe: Pipe) -> None:
+        self._route_pipes.append(pipe)
+
+    def route_interceptor(self: ModuleBuilder, interceptor: Interceptor) -> None:
+        self._route_interceptors.append(interceptor)
+
+    def clear_route_meta(self: ModuleBuilder) -> None:
+        self._route_guards = []
+        self._route_pipes = []
+        self._route_interceptors = []
+
+    def _add(
+        self: ModuleBuilder,
+        method: str,
+        pattern: str,
+        handler: (HttpContext) -> HttpResponse,
+        summary: str,
+        has_input: bool,
+        input_schema: DtoSchema,
+        has_output: bool,
+        output_schema: DtoSchema
+    ) -> None:
+        route: RouteDef = RouteDef(
+            method,
+            pattern,
+            handler,
+            summary,
+            self._default_tag + "",
+            has_input,
+            input_schema,
+            has_output,
+            output_schema
+        )
+        i: int = 0
+        while i < len(self._route_guards):
+            route.guards.append(self._route_guards[i])
+            i = i + 1
+        i = 0
+        while i < len(self._route_pipes):
+            route.pipes.append(self._route_pipes[i])
+            i = i + 1
+        i = 0
+        while i < len(self._route_interceptors):
+            route.interceptors.append(self._route_interceptors[i])
+            i = i + 1
+        if has_input:
+            route.pipes.append(ValidationPipe(input_schema))
+        self._routes.append(route)
+        self.clear_route_meta()
+
+    def get(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
+        empty: DtoSchema = DtoSchema("")
+        self._add("GET", pattern, handler, "", False, empty, False, empty)
+
+    def post(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
+        empty: DtoSchema = DtoSchema("")
+        self._add("POST", pattern, handler, "", False, empty, False, empty)
+
+    def put(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
+        empty: DtoSchema = DtoSchema("")
+        self._add("PUT", pattern, handler, "", False, empty, False, empty)
+
+    def delete(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
+        empty: DtoSchema = DtoSchema("")
+        self._add("DELETE", pattern, handler, "", False, empty, False, empty)
+
+    def get_documented(
+        self: ModuleBuilder,
+        pattern: str,
+        handler: (HttpContext) -> HttpResponse,
+        summary: str,
+        output_schema: DtoSchema
+    ) -> None:
+        empty: DtoSchema = DtoSchema("")
+        self._add("GET", pattern, handler, summary, False, empty, True, output_schema)
+
+    def post_body(
+        self: ModuleBuilder,
+        pattern: str,
+        handler: (HttpContext) -> HttpResponse,
+        summary: str,
+        input_schema: DtoSchema,
+        output_schema: DtoSchema
+    ) -> None:
+        self._add("POST", pattern, handler, summary, True, input_schema, True, output_schema)
+
+protocol AppModule:
+    def configure(self, m: ModuleBuilder) -> None:
+        pass

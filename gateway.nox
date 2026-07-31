@@ -1,0 +1,66 @@
+# aether.gateway — WebSocket message routing (process-local hub).
+
+import nox.json
+from nox.json import JsonError
+from nox.websocket import WebSocketServerConn
+
+class GatewayError(Exception):
+    def __init__(self: GatewayError, message: str) -> None:
+        self.message = message
+
+class GatewayHandler:
+    def handle(self: GatewayHandler, conn: WebSocketServerConn, event: str, payload: str) -> None:
+        pass
+
+class Gateway:
+    def __init__(self: Gateway) -> None:
+        self._events: list[str] = []
+        self._handlers: list[GatewayHandler] = []
+
+    def on(self: Gateway, event: str, handler: GatewayHandler) -> None:
+        if len(event) == 0:
+            raise GatewayError("event name empty")
+        self._events.append(event)
+        self._handlers.append(handler)
+
+    def dispatch_message(self: Gateway, conn: WebSocketServerConn, raw: str) -> None:
+        event: str = ""
+        payload: str = raw + ""
+        try:
+            v: JsonValue = nox.json.decode(raw)
+            if nox.json.is_object(v):
+                i: int = 0
+                n: int = nox.json.object_len(v)
+                while i < n:
+                    key: str = nox.json.object_key(v, i)
+                    if key == "event":
+                        val: JsonValue = nox.json.object_value(v, i)
+                        if nox.json.is_string(val):
+                            event = nox.json.as_string(val)
+                    if key == "payload":
+                        payload = nox.json.encode(nox.json.object_value(v, i))
+                    i = i + 1
+        except JsonError:
+            event = "message"
+            payload = raw + ""
+        if len(event) == 0:
+            event = "message"
+        i2: int = 0
+        while i2 < len(self._events):
+            if self._events[i2] == event:
+                self._handlers[i2].handle(conn, event, payload)
+                return
+            i2 = i2 + 1
+        # Default: echo
+        conn.send_text("{\"event\":\"error\",\"payload\":{\"message\":\"unknown event\"}}")
+
+class EchoHandler(GatewayHandler):
+    def handle(self: EchoHandler, conn: WebSocketServerConn, event: str, payload: str) -> None:
+        conn.send_text("{\"event\":" + nox.json.encode_string(event) + ",\"payload\":" + payload + "}")
+
+def run_connection(gateway: Gateway, conn: WebSocketServerConn) -> None:
+    while conn.is_open():
+        msg: str = conn.recv()
+        if len(msg) == 0:
+            return
+        gateway.dispatch_message(conn, msg)

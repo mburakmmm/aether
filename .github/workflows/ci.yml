@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential curl
+
+      - name: Install Nox
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.26.0 bash
+          echo "$HOME/.nox-lang/bin" >> "$GITHUB_PATH"
+
+      - name: Point package at checkout
+        run: |
+          python3 - <<'PY'
+          import json, os
+          ws = os.environ["GITHUB_WORKSPACE"]
+          sha = os.environ["GITHUB_SHA"]
+          data = {
+            "name": "aether",
+            "entry": "examples/hello_api/main.nox",
+            "bin": {"name": "aether", "path": "cli.nox"},
+            "requires": [{
+              "alias": "aether",
+              "repo": ws,
+              "ref": "master",
+            }],
+          }
+          with open("nox.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+          lock = {
+            "packages": [{
+              "alias": "aether",
+              "repo": ws,
+              "ref": "master",
+              "resolved": sha,
+            }]
+          }
+          with open("nox.lock", "w", encoding="utf-8") as f:
+            json.dump(lock, f, indent=2)
+            f.write("\n")
+          PY
+
+      - name: Fetch & test
+        run: |
+          noxc --version
+          noxc fetch
+          fail=0
+          for t in tests/*.nox; do
+            echo "==> $t"
+            if ! noxc test "$t"; then
+              echo "FAILED: $t"
+              fail=1
+            fi
+          done
+          exit "$fail"

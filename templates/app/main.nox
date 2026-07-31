@@ -1,0 +1,40 @@
+# {{APP_NAME}} — Aether application
+
+import nox.http
+from nox.http import HttpRequest, HttpResponse
+import aether.application
+import aether.server
+import aether.config
+from aether.application import Application
+from aether.config import Config
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+
+class RootModule:
+    def configure(self: RootModule, m: ModuleBuilder) -> None:
+        m.get("/", self._root())
+
+    def _root(self: RootModule) -> (HttpContext) -> HttpResponse:
+        def root(ctx: HttpContext) -> HttpResponse:
+            return json_ok("{\"name\":\"{{APP_NAME}}\"}")
+        return root
+
+def build(app: Application) -> None:
+    app.import_module(RootModule())
+
+cfg: Config = aether.config.load()
+app: Application = aether.application.boot_with_config(cfg, build)
+
+def handle(req: HttpRequest) -> HttpResponse:
+    return aether.application.dispatch(app, req)
+
+aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
+try:
+    workers: int = aether.server.effective_workers(cfg)
+    if workers > 1:
+        nox.http.serve_multicore(cfg.port, handle, workers)
+    else:
+        nox.http.serve(cfg.port, handle)
+finally:
+    aether.application.shutdown(app)

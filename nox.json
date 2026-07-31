@@ -1,0 +1,15 @@
+{
+  "name": "aether",
+  "entry": "examples/hello_api/main.nox",
+  "bin": {
+    "name": "aether",
+    "path": "cli.nox"
+  },
+  "requires": [
+    {
+      "alias": "aether",
+      "repo": "github.com/mburakmmm/aether",
+      "ref": "v0.1.0"
+    }
+  ]
+}

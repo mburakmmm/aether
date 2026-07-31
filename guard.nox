@@ -1,0 +1,30 @@
+# aether.guard — request guards (Nest CanActivate).
+
+import aether.context
+from aether.context import HttpContext
+import aether.errors
+from aether.errors import ForbiddenError, UnauthorizedError
+
+class Guard:
+    def can_activate(self: Guard, ctx: HttpContext) -> bool:
+        return True
+
+class BearerGuard(Guard):
+    def __init__(self: BearerGuard, token: str) -> None:
+        self.token = token
+
+    def can_activate(self: BearerGuard, ctx: HttpContext) -> bool:
+        auth: str = ctx.header("Authorization")
+        expected: str = "Bearer " + self.token
+        if auth != expected:
+            raise UnauthorizedError("missing or invalid bearer token")
+        return True
+
+def run_guards(guards: list[Guard], ctx: HttpContext) -> None:
+    i: int = 0
+    while i < len(guards):
+        g: Guard = guards[i]
+        ok: bool = g.can_activate(ctx)
+        if not ok:
+            raise ForbiddenError("guard rejected request")
+        i = i + 1

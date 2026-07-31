@@ -1,0 +1,111 @@
+# hello_api — Aether dogfood example
+
+import nox.http
+import nox.json
+from nox.http import HttpRequest, HttpResponse
+import aether.application
+import aether.server
+import aether.config
+from aether.application import Application
+from aether.config import Config
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.container import Injectable
+from aether.response import json_ok, json_created, encode_str_map
+from aether.errors import NotFoundError
+from aether.dto import DtoSchema
+
+class UserService(Injectable):
+    def __init__(self: UserService) -> None:
+        super().__init__()
+        self._users: dict[str, str] = {}
+        self._users["1"] = "ada"
+        self._next = 2
+
+    def find(self: UserService, id: str) -> str | None:
+        keys: list[str] = self._users.keys()
+        i: int = 0
+        while i < len(keys):
+            if keys[i] == id:
+                return self._users[id]
+            i = i + 1
+        return None
+
+    def create(self: UserService, name: str) -> str:
+        id: str = str(self._next)
+        self._next = self._next + 1
+        self._users[id] = name
+        return id
+
+class UsersModule:
+    def configure(self: UsersModule, m: ModuleBuilder) -> None:
+        svc: UserService = UserService()
+        m.provide("UserService", svc)
+        m.tag("users")
+
+        create_schema: DtoSchema = DtoSchema("CreateUser")
+        create_schema.require("name", "string")
+        user_schema: DtoSchema = DtoSchema("User")
+        user_schema.require("id", "string")
+        user_schema.require("name", "string")
+
+        m.get_documented("/users/:id", self._show(svc), "Get user by id", user_schema)
+        m.post_body("/users", self._create(svc), "Create user", create_schema, user_schema)
+
+    def _show(self: UsersModule, svc: UserService) -> (HttpContext) -> HttpResponse:
+        def show(ctx: HttpContext) -> HttpResponse:
+            id: str = ctx.param("id")
+            name: str | None = svc.find(id)
+            if name == None:
+                raise NotFoundError("user not found")
+            data: dict[str, str] = {}
+            data["id"] = id
+            data["name"] = name
+            return json_ok(encode_str_map(data))
+        return show
+
+    def _create(self: UsersModule, svc: UserService) -> (HttpContext) -> HttpResponse:
+        def create(ctx: HttpContext) -> HttpResponse:
+            raw: str = ctx.input()
+            v: JsonValue = nox.json.decode(raw)
+            name: str = ""
+            i: int = 0
+            n: int = nox.json.object_len(v)
+            while i < n:
+                if nox.json.object_key(v, i) == "name":
+                    val: JsonValue = nox.json.object_value(v, i)
+                    if nox.json.is_string(val):
+                        name = nox.json.as_string(val)
+                i = i + 1
+            id: str = svc.create(name)
+            data: dict[str, str] = {}
+            data["id"] = id
+            data["name"] = name
+            return json_created(encode_str_map(data))
+        return create
+
+def build(app: Application) -> None:
+    app.import_module(UsersModule())
+
+cfg: Config = aether.config.load()
+app: Application = aether.application.boot_with_config(cfg, build)
+
+def handle(req: HttpRequest) -> HttpResponse:
+    return aether.application.dispatch(app, req)
+
+aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
+try:
+    workers: int = aether.server.effective_workers(cfg)
+    if aether.server.has_tls(cfg):
+        aether.server.require_tls_files(cfg)
+        if workers > 1:
+            nox.http.serve_multicore_tls(cfg.port, handle, workers, cfg.tls_cert_path, cfg.tls_key_path)
+        else:
+            nox.http.serve_tls(cfg.port, handle, cfg.tls_cert_path, cfg.tls_key_path)
+    else:
+        if workers > 1:
+            nox.http.serve_multicore(cfg.port, handle, workers)
+        else:
+            nox.http.serve(cfg.port, handle)
+finally:
+    aether.application.shutdown(app)

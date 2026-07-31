@@ -1,0 +1,11 @@
+{
+  "name": "aether-app",
+  "entry": "main.nox",
+  "requires": [
+    {
+      "alias": "aether",
+      "repo": "github.com/mburakmmm/aether",
+      "ref": "v0.1.0"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+# aether.server — TLS / worker helpers.
+#
+# Nox `serve*` intrinsikleri DERLEME ZAMANI bare fonksiyon adı ister.
+# Bu yüzden Aether, `nox.http.serve(port, handle)` çağrısını SARMALAMAZ.
+# Kullanım (scaffold / examples):
+#
+#   def handle(req: HttpRequest) -> HttpResponse:
+#       return aether.application.dispatch(app, req)
+#   nox.http.serve(app.config.port, handle)
+#
+# Multicore:
+#   nox.http.serve_multicore(app.config.port, handle, aether.server.effective_workers(app.config))
+#
+# WebSocket:
+#   nox.http.serve_ws(app.config.port, handle, ws_handle)
+
+import nox.fs
+import aether.config
+from aether.config import Config
+
+class ServerError(Exception):
+    def __init__(self: ServerError, message: str) -> None:
+        self.message = message
+
+def has_tls(cfg: Config) -> bool:
+    if len(cfg.tls_cert_path) == 0:
+        return False
+    if len(cfg.tls_key_path) == 0:
+        return False
+    return True
+
+def require_tls_files(cfg: Config) -> None:
+    if not nox.fs.exists(cfg.tls_cert_path):
+        raise ServerError("TLS cert missing: " + cfg.tls_cert_path)
+    if not nox.fs.exists(cfg.tls_key_path):
+        raise ServerError("TLS key missing: " + cfg.tls_key_path)
+
+def effective_workers(cfg: Config) -> int:
+    if cfg.workers > 0:
+        return cfg.workers
+    if cfg.is_production():
+        return 2
+    return 1
+
+# "plain" | "tls" | "ws" | "ws_tls"
+def serve_mode(cfg: Config, want_ws: bool) -> str:
+    tls: bool = has_tls(cfg)
+    if tls:
+        if want_ws:
+            return "ws_tls"
+        return "tls"
+    if want_ws:
+        return "ws"
+    return "plain"
+
+def print_listen(cfg: Config, mode: str) -> None:
+    print("aether listening on :" + str(cfg.port) + " env=" + cfg.env + " mode=" + mode)

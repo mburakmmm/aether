@@ -1,0 +1,31 @@
+# aether.interceptor — before/after response hooks (onion owned by Aether).
+
+from nox.http import HttpResponse
+import aether.context
+import aether.response
+from aether.context import HttpContext
+
+class Interceptor:
+    def before(self: Interceptor, ctx: HttpContext) -> None:
+        pass
+
+    def after(self: Interceptor, ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
+        return resp
+
+class RequestIdInterceptor(Interceptor):
+    def after(self: RequestIdInterceptor, ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
+        return aether.response.with_header(resp, "X-Request-Id", ctx.request_id + "")
+
+def run_before(interceptors: list[Interceptor], ctx: HttpContext) -> None:
+    i: int = 0
+    while i < len(interceptors):
+        interceptors[i].before(ctx)
+        i = i + 1
+
+def run_after(interceptors: list[Interceptor], ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
+    out: HttpResponse = resp
+    i: int = len(interceptors) - 1
+    while i >= 0:
+        out = interceptors[i].after(ctx, out)
+        i = i - 1
+    return out

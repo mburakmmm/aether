@@ -1,0 +1,81 @@
+# aether.pipeline — path match + Guard → Pipe → Interceptor → Handler.
+
+import nox.strings
+from nox.http import HttpResponse
+import aether.context
+import aether.guard
+import aether.pipe
+import aether.interceptor
+import aether.module
+from aether.context import HttpContext
+from aether.guard import Guard, run_guards
+from aether.pipe import Pipe, run_pipes
+from aether.interceptor import Interceptor, run_before, run_after
+from aether.module import RouteDef
+
+def _drop_first_char(s: str) -> str:
+    result: str = ""
+    i: int = 1
+    while i < len(s):
+        result = result + s[i]
+        i = i + 1
+    return result
+
+def match_path(pattern: str, target: str) -> dict[str, str] | None:
+    pattern_parts: list[str] = nox.strings.split(pattern, "/")
+    target_parts: list[str] = nox.strings.split(target, "/")
+    if len(pattern_parts) != len(target_parts):
+        return None
+    params: dict[str, str] = {}
+    i: int = 0
+    while i < len(pattern_parts):
+        p: str = pattern_parts[i]
+        t: str = target_parts[i]
+        if nox.strings.starts_with(p, ":"):
+            name: str = _drop_first_char(p)
+            params[name] = t
+        else:
+            if p != t:
+                return None
+        i = i + 1
+    return params
+
+class MatchResult:
+    def __init__(self: MatchResult, route: RouteDef, params: dict[str, str]) -> None:
+        self.route = route
+        self.params = params
+
+def find_route(routes: list[RouteDef], method: str, path: str) -> MatchResult | None:
+    i: int = 0
+    while i < len(routes):
+        route: RouteDef = routes[i]
+        if route.method == method:
+            params: dict[str, str] | None = match_path(route.pattern, path)
+            if params != None:
+                return MatchResult(route, params)
+        i = i + 1
+    return None
+
+def execute(
+    route: RouteDef,
+    ctx: HttpContext,
+    global_guards: list[Guard],
+    global_pipes: list[Pipe],
+    global_interceptors: list[Interceptor]
+) -> HttpResponse:
+    run_guards(global_guards, ctx)
+    run_guards(route.guards, ctx)
+    run_pipes(global_pipes, ctx)
+    run_pipes(route.pipes, ctx)
+    combined: list[Interceptor] = []
+    i: int = 0
+    while i < len(global_interceptors):
+        combined.append(global_interceptors[i])
+        i = i + 1
+    i = 0
+    while i < len(route.interceptors):
+        combined.append(route.interceptors[i])
+        i = i + 1
+    run_before(combined, ctx)
+    resp: HttpResponse = route.handler(ctx)
+    return run_after(combined, ctx, resp)

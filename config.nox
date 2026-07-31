@@ -1,0 +1,123 @@
+# aether.config — AETHER_* environment configuration.
+
+import nox.os
+from nox.os import OsError
+
+class ConfigError(Exception):
+    def __init__(self: ConfigError, message: str) -> None:
+        self.message = message
+
+class Config:
+    def __init__(
+        self: Config,
+        env: str,
+        host: str,
+        port: int,
+        workers: int,
+        log_requests: bool,
+        openapi_enabled: bool,
+        openapi_title: str,
+        openapi_version: str,
+        jobs_db_path: str,
+        tls_cert_path: str,
+        tls_key_path: str,
+        trust_x_forwarded_for: bool,
+        ws_enabled: bool
+    ) -> None:
+        self.env = env
+        self.host = host
+        self.port = port
+        self.workers = workers
+        self.log_requests = log_requests
+        self.openapi_enabled = openapi_enabled
+        self.openapi_title = openapi_title
+        self.openapi_version = openapi_version
+        self.jobs_db_path = jobs_db_path
+        self.tls_cert_path = tls_cert_path
+        self.tls_key_path = tls_key_path
+        self.trust_x_forwarded_for = trust_x_forwarded_for
+        self.ws_enabled = ws_enabled
+
+    def is_development(self: Config) -> bool:
+        return self.env == "development"
+
+    def is_test(self: Config) -> bool:
+        return self.env == "test"
+
+    def is_production(self: Config) -> bool:
+        return self.env == "production"
+
+    def has_tls(self: Config) -> bool:
+        return len(self.tls_cert_path) > 0 and len(self.tls_key_path) > 0
+
+def _env_or(name: str, default: str) -> str:
+    try:
+        return nox.os.getenv(name)
+    except OsError:
+        return default
+
+def _env_int(name: str, default: int) -> int:
+    raw: str = _env_or(name, "")
+    if len(raw) == 0:
+        return default
+    return int(raw)
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw: str = _env_or(name, "")
+    if len(raw) == 0:
+        return default
+    if raw == "1" or raw == "true" or raw == "TRUE" or raw == "yes" or raw == "on":
+        return True
+    if raw == "0" or raw == "false" or raw == "FALSE" or raw == "no" or raw == "off":
+        return False
+    return default
+
+def _validate_env(env: str) -> None:
+    if env != "development" and env != "test" and env != "production":
+        raise ConfigError("invalid AETHER_ENV: " + env + " (development|test|production)")
+
+def defaults(env: str) -> Config:
+    _validate_env(env)
+    log_req: bool = True
+    workers: int = 1
+    jobs: str = "db/jobs.sqlite"
+    if env == "test":
+        log_req = False
+        jobs = ":memory:"
+    if env == "production":
+        workers = 0
+    return Config(
+        env,
+        "0.0.0.0",
+        3000,
+        workers,
+        log_req,
+        True,
+        "Aether API",
+        "0.1.0",
+        jobs,
+        "",
+        "",
+        False,
+        False
+    )
+
+def from_env() -> Config:
+    env: str = _env_or("AETHER_ENV", "development")
+    cfg: Config = defaults(env)
+    cfg.host = _env_or("AETHER_HOST", cfg.host)
+    cfg.port = _env_int("AETHER_PORT", cfg.port)
+    cfg.workers = _env_int("AETHER_WORKERS", cfg.workers)
+    cfg.log_requests = _env_bool("AETHER_LOG_REQUESTS", cfg.log_requests)
+    cfg.openapi_enabled = _env_bool("AETHER_OPENAPI", cfg.openapi_enabled)
+    cfg.openapi_title = _env_or("AETHER_OPENAPI_TITLE", cfg.openapi_title)
+    cfg.openapi_version = _env_or("AETHER_OPENAPI_VERSION", cfg.openapi_version)
+    cfg.jobs_db_path = _env_or("AETHER_JOBS_DB", cfg.jobs_db_path)
+    cfg.tls_cert_path = _env_or("AETHER_TLS_CERT", cfg.tls_cert_path)
+    cfg.tls_key_path = _env_or("AETHER_TLS_KEY", cfg.tls_key_path)
+    cfg.trust_x_forwarded_for = _env_bool("AETHER_TRUST_X_FORWARDED_FOR", cfg.trust_x_forwarded_for)
+    cfg.ws_enabled = _env_bool("AETHER_WS", cfg.ws_enabled)
+    return cfg
+
+def load() -> Config:
+    return from_env()

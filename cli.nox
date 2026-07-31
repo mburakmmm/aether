@@ -1,0 +1,58 @@
+# aether CLI — scaffold new apps from templates/app
+
+import nox.os
+import nox.fs
+import nox.strings
+from nox.os import OsError
+
+def _usage() -> None:
+    print("aether new <name>   create a new Aether app scaffold")
+    print("aether version      print version")
+
+def _replace_all(text: str, needle: str, replacement: str) -> str:
+    return nox.strings.replace(text, needle, replacement)
+
+def _copy_template_file(src: str, dst: str, app_name: str) -> None:
+    raw: str = nox.fs.read_to_string(src)
+    out: str = _replace_all(raw, "{{APP_NAME}}", app_name)
+    nox.fs.write_string(dst, out)
+
+def cmd_new(name: str) -> None:
+    if len(name) == 0:
+        print("name required")
+        nox.os.exit(1)
+    if nox.fs.exists(name):
+        print("path already exists: " + name)
+        nox.os.exit(1)
+    nox.fs.create_dir(name)
+    # Resolve template relative to package root (cwd when installed via noxc run,
+    # or alongside this file when developing).
+    template_root: str = "templates/app"
+    if not nox.fs.exists(template_root + "/main.nox"):
+        print("template not found: templates/app (run from aether package root)")
+        nox.os.exit(1)
+    _copy_template_file(template_root + "/main.nox", name + "/main.nox", name)
+    _copy_template_file(template_root + "/worker.nox", name + "/worker.nox", name)
+    _copy_template_file(template_root + "/nox.json", name + "/nox.json", name)
+    print("created " + name)
+    print("  cd " + name + " && noxc fetch && AETHER_ENV=development noxc run main.nox")
+
+def main() -> None:
+    n: int = nox.os.arg_count()
+    if n < 2:
+        _usage()
+        nox.os.exit(1)
+    cmd: str = nox.os.arg(1)
+    if cmd == "version":
+        print("aether 0.1.0")
+        return
+    if cmd == "new":
+        if n < 3:
+            _usage()
+            nox.os.exit(1)
+        cmd_new(nox.os.arg(2))
+        return
+    _usage()
+    nox.os.exit(1)
+
+main()
