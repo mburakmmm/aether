@@ -2,16 +2,15 @@ import nox.test
 import aether.config
 import aether.application
 import aether.testing
-import aether.errors
 from aether.config import Config
 from aether.application import Application
-from aether.module import ModuleBuilder, ModuleBase
+from aether.module import ModuleBuilder
 from aether.context import HttpContext
 from aether.response import json_ok
-from aether.errors import NotFoundError, HttpError
+from aether.errors import NotFoundError
 from nox.http import HttpResponse
 
-class DemoModule(ModuleBase):
+class DemoModule:
     def configure(self: DemoModule, m: ModuleBuilder) -> None:
         m.get("/ping", self._ping())
         m.get("/boom", self._boom())
@@ -27,7 +26,7 @@ class DemoModule(ModuleBase):
         return boom
 
 def build(app: Application) -> None:
-    app.import_module(DemoModule())
+    DemoModule().configure(app.module())
 
 cfg: Config = aether.config.defaults("test")
 cfg.log_requests = False

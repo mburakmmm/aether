@@ -1,20 +1,14 @@
 import nox.test
 import aether.container
-from aether.container import Container, Injectable, ContainerError
-
-class Svc(Injectable):
-    def __init__(self: Svc) -> None:
-        super().__init__()
-        self.value = 42
+from aether.container import Container, ContainerError
 
 c: Container = Container()
-c.provide("Svc", Svc())
+c.register_name("Svc")
 nox.test.assert_true(c.has("Svc"), "has")
-got: Injectable = c.get("Svc")
-nox.test.assert_true(got._aether_injectable, "injectable marker")
+nox.test.assert_eq_int(len(c.names()), 1, "names len")
 
 try:
-    c.get("Nope")
+    c.register_name("")
     nox.test.assert_true(False, "should raise")
 except ContainerError as e:
     nox.test.assert_true(len(e.message) > 0, "error message")

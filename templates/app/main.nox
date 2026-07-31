@@ -7,11 +7,11 @@ import aether.server
 import aether.config
 from aether.application import Application
 from aether.config import Config
-from aether.module import ModuleBuilder, ModuleBase
+from aether.module import ModuleBuilder
 from aether.context import HttpContext
 from aether.response import json_ok
 
-class RootModule(ModuleBase):
+class RootModule:
     def configure(self: RootModule, m: ModuleBuilder) -> None:
         m.get("/", self._root())
 
@@ -21,7 +21,7 @@ class RootModule(ModuleBase):
         return root
 
 def build(app: Application) -> None:
-    app.import_module(RootModule())
+    RootModule().configure(app.module())
 
 cfg: Config = aether.config.load()
 app: Application = aether.application.boot_with_config(cfg, build)

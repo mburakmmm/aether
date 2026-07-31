@@ -1,4 +1,4 @@
-# aether.gateway - WebSocket message routing (process-local hub).
+# aether.gateway — WebSocket message routing (process-local hub).
 
 import nox.json
 from nox.json import JsonError
@@ -8,22 +8,18 @@ class GatewayError(Exception):
     def __init__(self: GatewayError, message: str) -> None:
         self.message = message
 
-class GatewayHandler:
-    def handle(self: GatewayHandler, conn: WebSocketServerConn, event: str, payload: str) -> None:
-        pass
-
 class Gateway:
     def __init__(self: Gateway) -> None:
         events: list[str] = []
-        handlers: list[GatewayHandler] = []
+        handlers: list[(WebSocketServerConn, str, str) -> None] = []
         self._events = events
         self._handlers = handlers
 
-    def on(self: Gateway, event: str, handler: GatewayHandler) -> None:
+    def on(self: Gateway, event: str, handler: (WebSocketServerConn, str, str) -> None) -> None:
         if len(event) == 0:
             raise GatewayError("event name empty")
         events: list[str] = self._events
-        handlers: list[GatewayHandler] = self._handlers
+        handlers: list[(WebSocketServerConn, str, str) -> None] = self._handlers
         events.append(event)
         handlers.append(handler)
         self._events = events
@@ -54,15 +50,13 @@ class Gateway:
         i2: int = 0
         while i2 < len(self._events):
             if self._events[i2] == event:
-                self._handlers[i2].handle(conn, event, payload)
+                self._handlers[i2](conn, event, payload)
                 return
             i2 = i2 + 1
-        # Default: echo
         conn.send_text("{\"event\":\"error\",\"payload\":{\"message\":\"unknown event\"}}")
 
-class EchoHandler(GatewayHandler):
-    def handle(self: EchoHandler, conn: WebSocketServerConn, event: str, payload: str) -> None:
-        conn.send_text("{\"event\":" + nox.json.encode_string(event) + ",\"payload\":" + payload + "}")
+def echo_handler(conn: WebSocketServerConn, event: str, payload: str) -> None:
+    conn.send_text("{\"event\":" + nox.json.encode_string(event) + ",\"payload\":" + payload + "}")
 
 def run_connection(gateway: Gateway, conn: WebSocketServerConn) -> None:
     while conn.is_open():

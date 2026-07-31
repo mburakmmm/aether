@@ -1,40 +1,35 @@
-# aether.container — string-token provider registry.
-# Typed access: prefer closure injection in ModuleBuilder handlers.
-# container.get returns Injectable (subclass your services).
+# aether.container — provider name registry + request-scoped string bag.
+# Cross-module class inheritance is not supported in Nox, so typed service
+# instances are held via closures in ModuleBuilder handlers (not here).
 
 class ContainerError(Exception):
     def __init__(self: ContainerError, message: str) -> None:
         self.message = message
 
-class Injectable:
-    def __init__(self: Injectable) -> None:
-        self._aether_injectable = True
-
 class Container:
     def __init__(self: Container) -> None:
-        services: dict[str, Injectable] = {}
+        names: list[str] = []
         request: dict[str, str] = {}
-        self._services = services
+        self._names = names
         self._request = request
 
-    def provide(self: Container, name: str, service: Injectable) -> None:
+    def register_name(self: Container, name: str) -> None:
         if len(name) == 0:
             raise ContainerError("provider name empty")
-        self._services[name] = service
+        names: list[str] = self._names
+        names.append(name)
+        self._names = names
 
     def has(self: Container, name: str) -> bool:
-        keys: list[str] = self._services.keys()
         i: int = 0
-        while i < len(keys):
-            if keys[i] == name:
+        while i < len(self._names):
+            if self._names[i] == name:
                 return True
             i = i + 1
         return False
 
-    def get(self: Container, name: str) -> Injectable:
-        if not self.has(name):
-            raise ContainerError("provider not found: " + name)
-        return self._services[name]
+    def names(self: Container) -> list[str]:
+        return self._names
 
     def set_request_value(self: Container, key: str, value: str) -> None:
         self._request[key] = value

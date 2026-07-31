@@ -1,26 +1,19 @@
-# aether.pipe - transform / validate request input.
+# aether.pipe — (HttpContext) -> None transforms.
 
 import aether.context
 from aether.context import HttpContext
 import aether.dto
 from aether.dto import DtoSchema, parse_or_raise
 
-class Pipe:
-    def transform(self: Pipe, ctx: HttpContext) -> None:
-        pass
-
-class ValidationPipe(Pipe):
-    def __init__(self: ValidationPipe, schema: DtoSchema) -> None:
-        self.schema = schema
-
-    def transform(self: ValidationPipe, ctx: HttpContext) -> None:
-        raw: str = ctx.body()
-        validated: str = parse_or_raise(raw, self.schema)
-        ctx.set_input(validated)
-
-def run_pipes(pipes: list[Pipe], ctx: HttpContext) -> None:
+def run_pipes(pipes: list[(HttpContext) -> None], ctx: HttpContext) -> None:
     i: int = 0
     while i < len(pipes):
-        p: Pipe = pipes[i]
-        p.transform(ctx)
+        pipes[i](ctx)
         i = i + 1
+
+def validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
+    def transform(ctx: HttpContext) -> None:
+        raw: str = ctx.body()
+        validated: str = parse_or_raise(raw, schema)
+        ctx.set_input(validated)
+    return transform

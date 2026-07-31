@@ -205,7 +205,19 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ---
 
-## Priority asks for Nox (Aether ranking)
+## 13. Cross-module class inheritance
+
+**Status:** `workaround`
+
+**Impact:** User app classes cannot subclass framework bases (`Injectable`, `Guard`, `ModuleBase`, …) defined in the `aether` package. Nest-style `class X(Injectable)` across package boundaries fails typecheck (`UndefinedClass` base).
+
+**Evidence:**
+- Reproduced: `class Svc(Injectable)` with `from aether.container import Injectable` → `sınıf 'Svc' bilinmeyen bir taban sınıfa sahip: Injectable`
+- Same-module inheritance works (stdlib / intra-file); package import + subclass does not
+
+**Desired Nox change:** Allow imported classes as inheritance bases (mangled name resolution for bases).
+
+**Aether workaround:** Closure DI; guards/pipes as first-class functions; `app.module()` + `UsersModule().configure(m)`; provider **name** registry only.
 
 1. Class + method decorators + bound methods (Nest DX)
 2. Constructor/param type metadata (real DI)

@@ -1,8 +1,8 @@
-# aether.context - request-scoped HttpContext + TaskLocal bag.
+# aether.context — request-scoped HttpContext + TaskLocal bag.
 
 from nox.http import HttpRequest
 import aether.container
-from aether.container import Container, Injectable
+from aether.container import Container
 import nox.strings
 
 class RequestState:
@@ -108,8 +108,8 @@ class HttpContext:
     def body(self: HttpContext) -> str:
         return self.request.body
 
-    def resolve(self: HttpContext, name: str) -> Injectable:
-        return self.container.get(name)
+    def has_provider(self: HttpContext, name: str) -> bool:
+        return self.container.has(name)
 
     def set_input(self: HttpContext, raw: str) -> None:
         self.input_body = raw

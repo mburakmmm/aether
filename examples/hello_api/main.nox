@@ -8,16 +8,14 @@ import aether.server
 import aether.config
 from aether.application import Application
 from aether.config import Config
-from aether.module import ModuleBuilder, ModuleBase
+from aether.module import ModuleBuilder
 from aether.context import HttpContext
-from aether.container import Injectable
 from aether.response import json_ok, json_created, encode_str_map
 from aether.errors import NotFoundError
 from aether.dto import DtoSchema
 
-class UserService(Injectable):
+class UserService:
     def __init__(self: UserService) -> None:
-        super().__init__()
         users: dict[str, str] = {}
         users["1"] = "ada"
         self._users = users
@@ -38,10 +36,10 @@ class UserService(Injectable):
         self._users[id] = name
         return id
 
-class UsersModule(ModuleBase):
+class UsersModule:
     def configure(self: UsersModule, m: ModuleBuilder) -> None:
         svc: UserService = UserService()
-        m.provide("UserService", svc)
+        m.provide("UserService")
         m.tag("users")
 
         create_schema: DtoSchema = DtoSchema("CreateUser")
@@ -86,7 +84,7 @@ class UsersModule(ModuleBase):
         return create
 
 def build(app: Application) -> None:
-    app.import_module(UsersModule())
+    UsersModule().configure(app.module())
 
 cfg: Config = aether.config.load()
 app: Application = aether.application.boot_with_config(cfg, build)

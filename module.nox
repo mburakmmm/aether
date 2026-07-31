@@ -1,4 +1,4 @@
-# aether.module - ModuleBuilder, RouteDef, AppModule protocol.
+# aether.module — ModuleBuilder + RouteDef.
 
 from nox.http import HttpResponse
 import aether.container
@@ -7,12 +7,11 @@ import aether.dto
 import aether.guard
 import aether.pipe
 import aether.interceptor
-from aether.container import Container, Injectable
+from aether.container import Container
 from aether.context import HttpContext
 from aether.dto import DtoSchema
-from aether.guard import Guard
-from aether.pipe import Pipe, ValidationPipe
-from aether.interceptor import Interceptor
+from aether.pipe import validation_pipe
+from aether.interceptor import InterceptorFns
 
 class RouteDef:
     def __init__(
@@ -36,9 +35,9 @@ class RouteDef:
         self.input_schema = input_schema
         self.has_output = has_output
         self.output_schema = output_schema
-        guards: list[Guard] = []
-        pipes: list[Pipe] = []
-        interceptors: list[Interceptor] = []
+        guards: list[(HttpContext) -> bool] = []
+        pipes: list[(HttpContext) -> None] = []
+        interceptors: list[InterceptorFns] = []
         self.guards = guards
         self.pipes = pipes
         self.interceptors = interceptors
@@ -48,18 +47,18 @@ class ModuleBuilder:
         self: ModuleBuilder,
         routes: list[RouteDef],
         container: Container,
-        global_guards: list[Guard],
-        global_pipes: list[Pipe],
-        global_interceptors: list[Interceptor]
+        global_guards: list[(HttpContext) -> bool],
+        global_pipes: list[(HttpContext) -> None],
+        global_interceptors: list[InterceptorFns]
     ) -> None:
         self._routes = routes
         self._container = container
         self._global_guards = global_guards
         self._global_pipes = global_pipes
         self._global_interceptors = global_interceptors
-        route_guards: list[Guard] = []
-        route_pipes: list[Pipe] = []
-        route_interceptors: list[Interceptor] = []
+        route_guards: list[(HttpContext) -> bool] = []
+        route_pipes: list[(HttpContext) -> None] = []
+        route_interceptors: list[InterceptorFns] = []
         self._route_guards = route_guards
         self._route_pipes = route_pipes
         self._route_interceptors = route_interceptors
@@ -68,43 +67,43 @@ class ModuleBuilder:
     def tag(self: ModuleBuilder, name: str) -> None:
         self._default_tag = name
 
-    def provide(self: ModuleBuilder, name: str, service: Injectable) -> None:
-        self._container.provide(name, service)
+    def provide(self: ModuleBuilder, name: str) -> None:
+        self._container.register_name(name)
 
-    def use_guard(self: ModuleBuilder, guard: Guard) -> None:
-        gs: list[Guard] = self._global_guards
+    def use_guard(self: ModuleBuilder, guard: (HttpContext) -> bool) -> None:
+        gs: list[(HttpContext) -> bool] = self._global_guards
         gs.append(guard)
         self._global_guards = gs
 
-    def use_pipe(self: ModuleBuilder, pipe: Pipe) -> None:
-        ps: list[Pipe] = self._global_pipes
+    def use_pipe(self: ModuleBuilder, pipe: (HttpContext) -> None) -> None:
+        ps: list[(HttpContext) -> None] = self._global_pipes
         ps.append(pipe)
         self._global_pipes = ps
 
-    def use_interceptor(self: ModuleBuilder, interceptor: Interceptor) -> None:
-        xs: list[Interceptor] = self._global_interceptors
+    def use_interceptor(self: ModuleBuilder, interceptor: InterceptorFns) -> None:
+        xs: list[InterceptorFns] = self._global_interceptors
         xs.append(interceptor)
         self._global_interceptors = xs
 
-    def route_guard(self: ModuleBuilder, guard: Guard) -> None:
-        gs: list[Guard] = self._route_guards
+    def route_guard(self: ModuleBuilder, guard: (HttpContext) -> bool) -> None:
+        gs: list[(HttpContext) -> bool] = self._route_guards
         gs.append(guard)
         self._route_guards = gs
 
-    def route_pipe(self: ModuleBuilder, pipe: Pipe) -> None:
-        ps: list[Pipe] = self._route_pipes
+    def route_pipe(self: ModuleBuilder, pipe: (HttpContext) -> None) -> None:
+        ps: list[(HttpContext) -> None] = self._route_pipes
         ps.append(pipe)
         self._route_pipes = ps
 
-    def route_interceptor(self: ModuleBuilder, interceptor: Interceptor) -> None:
-        xs: list[Interceptor] = self._route_interceptors
+    def route_interceptor(self: ModuleBuilder, interceptor: InterceptorFns) -> None:
+        xs: list[InterceptorFns] = self._route_interceptors
         xs.append(interceptor)
         self._route_interceptors = xs
 
     def clear_route_meta(self: ModuleBuilder) -> None:
-        empty_g: list[Guard] = []
-        empty_p: list[Pipe] = []
-        empty_i: list[Interceptor] = []
+        empty_g: list[(HttpContext) -> bool] = []
+        empty_p: list[(HttpContext) -> None] = []
+        empty_i: list[InterceptorFns] = []
         self._route_guards = empty_g
         self._route_pipes = empty_p
         self._route_interceptors = empty_i
@@ -131,21 +130,21 @@ class ModuleBuilder:
             has_output,
             output_schema
         )
-        rg: list[Guard] = route.guards
+        rg: list[(HttpContext) -> bool] = route.guards
         i: int = 0
         while i < len(self._route_guards):
             rg.append(self._route_guards[i])
             i = i + 1
         route.guards = rg
-        rp: list[Pipe] = route.pipes
+        rp: list[(HttpContext) -> None] = route.pipes
         i = 0
         while i < len(self._route_pipes):
             rp.append(self._route_pipes[i])
             i = i + 1
         if has_input:
-            rp.append(ValidationPipe(input_schema))
+            rp.append(validation_pipe(input_schema))
         route.pipes = rp
-        ri: list[Interceptor] = route.interceptors
+        ri: list[InterceptorFns] = route.interceptors
         i = 0
         while i < len(self._route_interceptors):
             ri.append(self._route_interceptors[i])
@@ -191,7 +190,3 @@ class ModuleBuilder:
         output_schema: DtoSchema
     ) -> None:
         self._add("POST", pattern, handler, summary, True, input_schema, True, output_schema)
-
-class ModuleBase:
-    def configure(self: ModuleBase, m: ModuleBuilder) -> None:
-        pass

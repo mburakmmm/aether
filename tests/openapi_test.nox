@@ -2,16 +2,15 @@ import nox.test
 import nox.strings
 import aether.config
 import aether.application
-import aether.openapi
 from aether.config import Config
 from aether.application import Application
-from aether.module import ModuleBuilder, ModuleBase
+from aether.module import ModuleBuilder
 from aether.context import HttpContext
 from aether.response import json_ok
 from aether.dto import DtoSchema
 from nox.http import HttpResponse
 
-class DocModule(ModuleBase):
+class DocModule:
     def configure(self: DocModule, m: ModuleBuilder) -> None:
         out: DtoSchema = DtoSchema("Pong")
         out.require("pong", "bool")
@@ -24,7 +23,7 @@ class DocModule(ModuleBase):
         return ping
 
 def build(app: Application) -> None:
-    app.import_module(DocModule())
+    DocModule().configure(app.module())
 
 cfg: Config = aether.config.defaults("test")
 cfg.log_requests = False

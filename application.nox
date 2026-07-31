@@ -18,12 +18,10 @@ import aether.interceptor
 from aether.config import Config
 from aether.container import Container
 from aether.context import HttpContext, begin, finish, path_only
-from aether.module import ModuleBuilder, RouteDef, ModuleBase
+from aether.module import ModuleBuilder, RouteDef
 from aether.pipeline import MatchResult, find_route, execute
 from aether.errors import HttpError, NotFoundError, error_json
-from aether.guard import Guard
-from aether.pipe import Pipe
-from aether.interceptor import Interceptor, RequestIdInterceptor
+from aether.interceptor import InterceptorFns, request_id_interceptor
 from aether.dto import DtoSchema
 
 class AppError(Exception):
@@ -36,9 +34,9 @@ class Application:
         cfg: Config,
         container: Container,
         routes: list[RouteDef],
-        global_guards: list[Guard],
-        global_pipes: list[Pipe],
-        global_interceptors: list[Interceptor],
+        global_guards: list[(HttpContext) -> bool],
+        global_pipes: list[(HttpContext) -> None],
+        global_interceptors: list[InterceptorFns],
         hooks: list[() -> None],
         openapi_doc: str
     ) -> None:
@@ -52,15 +50,17 @@ class Application:
         self.openapi_doc = openapi_doc
         self._closed = False
 
-    def import_module(self: Application, mod: ModuleBase) -> None:
-        builder: ModuleBuilder = ModuleBuilder(
+    def module(self: Application) -> ModuleBuilder:
+        return ModuleBuilder(
             self.routes,
             self.container,
             self.global_guards,
             self.global_pipes,
             self.global_interceptors
         )
-        mod.configure(builder)
+
+    def import_configure(self: Application, configure: (ModuleBuilder) -> None) -> None:
+        configure(self.module())
 
     def on_shutdown(self: Application, hook: () -> None) -> None:
         hooks: list[() -> None] = self._shutdown_hooks
@@ -91,10 +91,10 @@ def boot(build: (Application) -> None) -> Application:
 def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
     container: Container = Container()
     routes: list[RouteDef] = []
-    guards: list[Guard] = []
-    pipes: list[Pipe] = []
-    interceptors: list[Interceptor] = []
-    interceptors.append(RequestIdInterceptor())
+    guards: list[(HttpContext) -> bool] = []
+    pipes: list[(HttpContext) -> None] = []
+    interceptors: list[InterceptorFns] = []
+    interceptors.append(request_id_interceptor())
     hooks: list[() -> None] = []
     app: Application = Application(cfg, container, routes, guards, pipes, interceptors, hooks, "{}")
     build(app)

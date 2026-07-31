@@ -1,4 +1,4 @@
-# aether.pipeline - path match + Guard -> Pipe -> Interceptor -> Handler.
+# aether.pipeline — path match + Guard → Pipe → Interceptor → Handler.
 
 import nox.strings
 from nox.http import HttpResponse
@@ -8,9 +8,9 @@ import aether.pipe
 import aether.interceptor
 import aether.module
 from aether.context import HttpContext
-from aether.guard import Guard, run_guards
-from aether.pipe import Pipe, run_pipes
-from aether.interceptor import Interceptor, run_before, run_after
+from aether.guard import run_guards
+from aether.pipe import run_pipes
+from aether.interceptor import InterceptorFns, run_before, run_after
 from aether.module import RouteDef
 
 def _drop_first_char(s: str) -> str:
@@ -59,15 +59,15 @@ def find_route(routes: list[RouteDef], method: str, path: str) -> MatchResult | 
 def execute(
     route: RouteDef,
     ctx: HttpContext,
-    global_guards: list[Guard],
-    global_pipes: list[Pipe],
-    global_interceptors: list[Interceptor]
+    global_guards: list[(HttpContext) -> bool],
+    global_pipes: list[(HttpContext) -> None],
+    global_interceptors: list[InterceptorFns]
 ) -> HttpResponse:
     run_guards(global_guards, ctx)
     run_guards(route.guards, ctx)
     run_pipes(global_pipes, ctx)
     run_pipes(route.pipes, ctx)
-    combined: list[Interceptor] = []
+    combined: list[InterceptorFns] = []
     i: int = 0
     while i < len(global_interceptors):
         combined.append(global_interceptors[i])
