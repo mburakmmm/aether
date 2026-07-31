@@ -5,36 +5,35 @@ from nox.http import HttpRequest, HttpResponse
 import aether.response
 from aether.context import header_get
 
-def _origin_allowed(origins_cfg: str, request_origin: str) -> str:
+def allow_origin_header(origins_cfg: str, origin: str) -> str:
     # Returns the Allow-Origin value to emit, or "" if none.
     cfg: str = nox.strings.trim(origins_cfg)
     if len(cfg) == 0:
         return ""
     if cfg == "*":
         return "*"
-    if len(request_origin) == 0:
+    if len(origin) == 0:
         return ""
-    # Comma-separated allowlist
     parts: list[str] = nox.strings.split(cfg, ",")
     i: int = 0
     while i < len(parts):
         item: str = nox.strings.trim(parts[i])
-        if item == request_origin:
-            return request_origin
+        if item == origin:
+            return origin
         i = i + 1
     return ""
 
-def apply_cors_headers(resp: HttpResponse, origins_cfg: str, request_origin: str) -> HttpResponse:
-    allow: str = _origin_allowed(origins_cfg, request_origin)
+def apply_cors_headers(resp: HttpResponse, origins_cfg: str, origin: str) -> HttpResponse:
+    allow: str = allow_origin_header(origins_cfg, origin)
     if len(allow) == 0:
         return resp
     out: HttpResponse = aether.response.with_header(resp, "Access-Control-Allow-Origin", allow)
     out = aether.response.with_header(out, "Vary", "Origin")
     return out
 
-def preflight_response(origins_cfg: str, request_origin: str) -> HttpResponse:
+def preflight_response(origins_cfg: str, origin: str) -> HttpResponse:
     headers: dict[str, str] = {}
-    allow: str = _origin_allowed(origins_cfg, request_origin)
+    allow: str = allow_origin_header(origins_cfg, origin)
     if len(allow) > 0:
         headers["Access-Control-Allow-Origin"] = allow
         headers["Vary"] = "Origin"
@@ -43,5 +42,5 @@ def preflight_response(origins_cfg: str, request_origin: str) -> HttpResponse:
     headers["Access-Control-Max-Age"] = "86400"
     return HttpResponse(204, "", headers)
 
-def request_origin(req: HttpRequest) -> str:
+def read_origin(req: HttpRequest) -> str:
     return header_get(req.headers, "Origin")

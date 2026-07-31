@@ -200,7 +200,7 @@ def _finalize_response(app: Application, req: HttpRequest, rid: str, resp: HttpR
     # Always-on finalizers (error and success paths).
     out: HttpResponse = aether.response.with_header(resp, "X-Request-Id", rid + "")
     if len(app.config.cors_origins) > 0:
-        origin: str = aether.cors.request_origin(req)
+        origin: str = aether.cors.read_origin(req)
         out = aether.cors.apply_cors_headers(out, app.config.cors_origins, origin)
     return out
 
@@ -215,7 +215,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
             if app.config.max_body_bytes > 0 and len(req.body) > app.config.max_body_bytes:
                 raise PayloadTooLargeError("request body too large")
             if req.method == "OPTIONS" and len(app.config.cors_origins) > 0:
-                origin: str = aether.cors.request_origin(req)
+                origin: str = aether.cors.read_origin(req)
                 resp = aether.cors.preflight_response(app.config.cors_origins, origin)
             else:
                 matched: MatchResult | None = find_route(app.route_table.routes, req.method, path)
