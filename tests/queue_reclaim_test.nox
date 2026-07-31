@@ -2,7 +2,7 @@ import nox.test
 import nox.time
 import aether.queue
 from nox.sqlite import Connection
-from aether.queue import JobRegistry
+from aether.queue import JobRegistry, QueueError
 
 db: Connection = aether.queue.open_db(":memory:")
 aether.queue.ensure_schema(db)
@@ -30,7 +30,7 @@ nox.test.assert_eq_int(n, 1, "processed after reclaim")
 nox.test.assert_eq_int(len(seen), 1, "handler called")
 
 def boom(payload: str) -> None:
-    raise aether.queue.QueueError("always fail")
+    raise QueueError("always fail")
 
 registry.register("boom", boom)
 boom_id: int = aether.queue.enqueue(db, "boom", "{\"x\":1}", 0)
@@ -76,7 +76,7 @@ aether.queue.reclaim_stale(db3, 1)
 try:
     aether.queue.complete(db3, 1, "not-the-token")
     nox.test.assert_true(False, "complete should reject")
-except aether.queue.QueueError:
-    nox.test.assert_true(True, "stale lease rejected")
+except QueueError as e:
+    nox.test.assert_true(len(e.message) > 0, "stale lease rejected")
 
 print("queue_reclaim_test ok")
