@@ -30,22 +30,30 @@ Raw wrk logs land in `benchmarks/results/*.txt` (gitignored).
 ## Fairness notes
 
 - Nest uses the default Express adapter (common Nest production path).
-- Aether runs with `AETHER_OPENAPI=0` and `AETHER_LOG_REQUESTS=0`.
-- Default `AETHER_WORKERS=1`: multicore workers do not re-run module init, so `AppBind` is empty on worker threads (see `NOX_LIMITATIONS` §12 + §19). Scale-out needs per-worker boot support from Nox.
+- Aether runs with `AETHER_OPENAPI=0`, `AETHER_LOG_REQUESTS=0`, production CORS default off, route metrics off.
+- Default `AETHER_WORKERS=1`: multicore workers do not re-run module init (`AppBind` empty on workers). See `NOX_LIMITATIONS` §12 + §19.
 - Query/header validation and JWT are **not** on the ping/echo hot path.
 
-## Results (local run)
+## Results
 
-Machine: darwin arm64 · Date: 2026-07-31 · `wrk -t4 -c40 -d8s`
+### 0.4.1 hot-path (local probe, `wrk -t4 -c40 -d5s`, darwin arm64)
+
+| Target | GET /ping req/s | Notes |
+|--------|----------------:|-------|
+| Bare Nox `HttpResponse` | ~240k | No framework |
+| Aether production defaults (CORS off) | ~162k+ | After 0.4.1 opts; re-run for exact |
+| Aether `AETHER_CORS_ORIGINS=*` | ~90k | CORS header copy cost |
+
+### 0.4.0 published cross-stack (`wrk -t4 -c40 -d8s`)
 
 | Target | GET /ping req/s | POST /echo req/s | Notes |
-|--------|-----------------|------------------|-------|
-| Aether (`AETHER_WORKERS=1`) | **90 383** | **48 350** | Some socket read errors under load |
-| NestJS Express | **66 773** | **51 696** | |
-| Gin | **190 588** | **181 159** | |
+|--------|----------------:|-----------------:|-------|
+| Aether (`AETHER_WORKERS=1`, CORS `*` default then) | ~90k | ~48k | Pre-0.4.1 |
+| NestJS Express | ~67k | ~52k | |
+| Gin | ~191k | ~181k | |
 
-Relative ranking on this machine: **Gin ≫ Aether ≳ Nest on ping**; **Gin ≫ Nest ≳ Aether on echo** (DTO validation path on Aether/Nest-ish JSON body).
+Re-run `./benchmarks/run.sh` after upgrading to 0.4.1 for updated cross-stack numbers (production CORS off should lift Aether ping toward ~150–170k on this machine).
 
-## What the bench exposes about Nox
+## What the bench exposes about Nox / Aether
 
-See `docs/NOX_LIMITATIONS.md` §§16–19: no stdlib base64/JWT, string-only query maps, hot-path string JSON building, bare `serve` handlers, **serve cannot close over `Application`**, multicore isolation vs `AppBind`.
+See `docs/NOX_LIMITATIONS.md` §§16–19 and `docs/PERF.md`.

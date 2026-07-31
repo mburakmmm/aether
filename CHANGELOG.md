@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.1 — 2026-07-31
+
+Hot-path performance (production-safe).
+
+- Production CORS default **off** (empty); set `AETHER_CORS_ORIGINS` to enable (`*` or allowlist). Dev/test still default `*`
+- `*` CORS skips `Origin` header read; finalize applies `X-Request-Id` + CORS in **one** header copy (`with_headers`)
+- Lazy query parse (`HttpContext.ensure_query`)
+- Route hit metrics opt-in via `AETHER_METRICS_ROUTES` (off in production by default; status counters always on)
+- Method-bucket route index + empty guard/pipe/interceptor short-circuit
+- Dispatch no longer allocates a dummy 500 on every request
+
 ## 0.4.0 — 2026-07-31
 
 Query/header validation, JWT HS256 primitives, queue docs, cross-stack benchmarks.

@@ -4,24 +4,29 @@
 
 - Development / test: `AETHER_WORKERS=1` (single `nox.http.serve`)
 - Production: set `AETHER_WORKERS=0` (auto → 2) or an explicit count and use `nox.http.serve_multicore`
-- Prefer bare `handle` at the call site (Nox intrinsic requirement)
+- Prefer bare `handle` + `dispatch_bound` (do not close over `Application`)
+- Production CORS is **off** unless `AETHER_CORS_ORIGINS` is set (largest hot-path win)
+- Production route metrics off unless `AETHER_METRICS_ROUTES=1`
 
-## Hot path
+## Hot path (0.4.1+)
 
-- Route/guard/pipe/interceptor lists are bound at boot (via `RouteTable` / `HookState`)
-- OpenAPI document is built once at boot; `GET /openapi.json` returns the cached string
-- One `HttpContext` allocation per request; `TaskLocal` request bag cleared in `finish()`
-- Response helpers copy bodies with `+ ""` where module-global strings might otherwise UAF under ARC
+- Route lists indexed by method at boot (`rebuild_route_index`)
+- Empty guard/pipe/interceptor lists short-circuit
+- Query string parsed lazily (`ensure_query` / first `query_param`)
+- Finalize writes `X-Request-Id` (+ CORS when enabled) in **one** `with_headers` copy
+- `cors_origins=*` does not read the `Origin` request header
+- Status metrics always; per-route hits optional
 
 ## Multicore
 
-Each `serve_multicore` worker gets a **fresh** module-global copy (non-atomic ARC). In-memory gateway hubs and containers are process-local. Use `aether.queue` (SQLite) for cross-worker background work.
+Each `serve_multicore` worker gets a **fresh** module-global copy (non-atomic ARC). `AppBind` / in-memory hubs are process-local per worker and may be empty unless each worker re-boots. Prefer `AETHER_WORKERS=1` until Nox provides per-worker init; use `aether.queue` (SQLite) for cross-worker work.
 
 ## Bench
 
 See [BENCHMARKS.md](BENCHMARKS.md) for Aether vs NestJS vs Gin (`benchmarks/run.sh`).
 
 ```sh
-AETHER_ENV=production AETHER_WORKERS=4 AETHER_PORT=3000 AETHER_OPENAPI=0 noxc run benchmarks/aether/main.nox
-# then wrk / benchmarks/run.sh
+AETHER_ENV=production AETHER_WORKERS=1 AETHER_PORT=3000 AETHER_OPENAPI=0 \
+  AETHER_CORS_ORIGINS= AETHER_METRICS_ROUTES=0 \
+  noxc run benchmarks/aether/main.nox
 ```

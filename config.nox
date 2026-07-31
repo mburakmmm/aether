@@ -27,6 +27,7 @@ class Config:
     rate_limit_window_ms: int
     cors_origins: str
     job_stale_ms: int
+    metrics_routes: bool
 
     def __init__(
         self: Config,
@@ -48,7 +49,8 @@ class Config:
         rate_limit_max: int,
         rate_limit_window_ms: int,
         cors_origins: str,
-        job_stale_ms: int
+        job_stale_ms: int,
+        metrics_routes: bool
     ) -> None:
         self.env = env
         self.host = host
@@ -69,6 +71,7 @@ class Config:
         self.rate_limit_window_ms = rate_limit_window_ms
         self.cors_origins = cors_origins
         self.job_stale_ms = job_stale_ms
+        self.metrics_routes = metrics_routes
 
     def is_development(self: Config) -> bool:
         return self.env == "development"
@@ -115,6 +118,8 @@ def defaults(env: str) -> Config:
     jobs: str = "db/jobs.sqlite"
     openapi_on: bool = True
     rate_on: bool = False
+    cors: str = "*"
+    metrics_routes: bool = True
     if env == "test":
         log_req = False
         jobs = ":memory:"
@@ -123,6 +128,9 @@ def defaults(env: str) -> Config:
         workers = 0
         openapi_on = False
         rate_on = False
+        # Opt-in like rate limit: avoid per-request CORS cost unless configured.
+        cors = ""
+        metrics_routes = False
     return Config(
         env,
         "0.0.0.0",
@@ -131,7 +139,7 @@ def defaults(env: str) -> Config:
         log_req,
         openapi_on,
         "Aether API",
-        "0.3.0",
+        "0.4.1",
         jobs,
         "",
         "",
@@ -141,8 +149,9 @@ def defaults(env: str) -> Config:
         rate_on,
         100,
         60000,
-        "*",
-        300000
+        cors,
+        300000,
+        metrics_routes
     )
 
 def from_env() -> Config:
@@ -166,6 +175,7 @@ def from_env() -> Config:
     cfg.rate_limit_window_ms = _env_int("AETHER_RATE_LIMIT_WINDOW_MS", cfg.rate_limit_window_ms)
     cfg.cors_origins = _env_or("AETHER_CORS_ORIGINS", cfg.cors_origins)
     cfg.job_stale_ms = _env_int("AETHER_JOB_STALE_MS", cfg.job_stale_ms)
+    cfg.metrics_routes = _env_bool("AETHER_METRICS_ROUTES", cfg.metrics_routes)
     return cfg
 
 def load() -> Config:

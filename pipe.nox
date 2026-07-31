@@ -37,6 +37,7 @@ def _dict_to_json_object(data: dict[str, str]) -> str:
 
 def query_validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
     def transform(ctx: HttpContext) -> None:
+        ctx.ensure_query()
         raw: str = _dict_to_json_object(ctx.query)
         errors: list[str] = validate_json_str(raw, schema)
         if len(errors) > 0:

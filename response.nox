@@ -23,7 +23,7 @@ def text(status: int, body: str) -> HttpResponse:
     headers["Content-Type"] = "text/plain; charset=utf-8"
     return HttpResponse(status, body, headers)
 
-def with_header(resp: HttpResponse, key: str, value: str) -> HttpResponse:
+def _copy_headers(resp: HttpResponse) -> dict[str, str]:
     out: dict[str, str] = {}
     keys: list[str] = resp.headers.keys()
     i: int = 0
@@ -31,7 +31,22 @@ def with_header(resp: HttpResponse, key: str, value: str) -> HttpResponse:
         k: str = keys[i]
         out[k] = resp.headers[k]
         i = i + 1
+    return out
+
+def with_header(resp: HttpResponse, key: str, value: str) -> HttpResponse:
+    out: dict[str, str] = _copy_headers(resp)
     out[key] = value
+    return HttpResponse(resp.status, resp.body + "", out)
+
+def with_headers(resp: HttpResponse, extra: dict[str, str]) -> HttpResponse:
+    # Single header-map copy for multiple keys (finalize / CORS hot path).
+    out: dict[str, str] = _copy_headers(resp)
+    keys: list[str] = extra.keys()
+    i: int = 0
+    while i < len(keys):
+        k: str = keys[i]
+        out[k] = extra[k]
+        i = i + 1
     return HttpResponse(resp.status, resp.body + "", out)
 
 def encode_str_map(data: dict[str, str]) -> str:

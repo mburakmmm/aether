@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.4.0 · **License:** MIT · **Requires Nox ≥ 1.26.0**  
+**Version:** 0.4.1 · **License:** MIT · **Requires Nox ≥ 1.26.0**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.4.0"
+      "ref": "v0.4.1"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.4.0
+noxc install github.com/mburakmmm/aether@v0.4.1
 aether new myapi
 cd myapi && noxc fetch && AETHER_ENV=development noxc run main.nox
 ```
@@ -97,6 +97,11 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.4.1
+
+Hot-path speedups: production CORS opt-in, single header finalize copy, lazy query
+parse, optional route metrics, method-indexed routes. See `docs/PERF.md`.
 
 ## What’s new in 0.4.0
 
@@ -161,7 +166,8 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 | `AETHER_HOST` / `AETHER_PORT` | `0.0.0.0` / `3000` | Bind |
 | `AETHER_OPENAPI` | on (off in prod) | `/openapi.json`, `/docs` |
 | `AETHER_RATE_LIMIT` | off | Opt-in; requires identifiable client IP (`AETHER_TRUST_X_FORWARDED_FOR` today) |
-| `AETHER_CORS_ORIGINS` | `*` | `*` or comma-separated allowlist (reflects request `Origin`, sets `Vary`) |
+| `AETHER_CORS_ORIGINS` | `*` (dev/test); **empty in production** | Opt-in CORS: `*` or comma-separated allowlist |
+| `AETHER_METRICS_ROUTES` | on (dev/test); **off in production** | Per-route hit counters in `/metrics` |
 | `AETHER_TRUST_X_FORWARDED_FOR` | `false` | Enable only behind a trusted proxy |
 | `AETHER_JOBS_DB` | `db/jobs.sqlite` | Queue SQLite path |
 | `AETHER_JOB_STALE_MS` | `300000` | Stuck `running` reclaim window |

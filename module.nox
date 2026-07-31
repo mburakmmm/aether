@@ -101,9 +101,46 @@ class RouteOptions:
 
 class RouteTable:
     routes: list[RouteDef]
+    get_routes: list[RouteDef]
+    post_routes: list[RouteDef]
+    put_routes: list[RouteDef]
+    delete_routes: list[RouteDef]
+    other_routes: list[RouteDef]
 
     def __init__(self: RouteTable) -> None:
         self.routes = []
+        self.get_routes = []
+        self.post_routes = []
+        self.put_routes = []
+        self.delete_routes = []
+        self.other_routes = []
+
+def rebuild_route_index(table: RouteTable) -> None:
+    # Preserve registration order within each method bucket.
+    gets: list[RouteDef] = []
+    posts: list[RouteDef] = []
+    puts: list[RouteDef] = []
+    deletes: list[RouteDef] = []
+    others: list[RouteDef] = []
+    i: int = 0
+    while i < len(table.routes):
+        r: RouteDef = table.routes[i]
+        if r.method == "GET":
+            gets.append(r)
+        elif r.method == "POST":
+            posts.append(r)
+        elif r.method == "PUT":
+            puts.append(r)
+        elif r.method == "DELETE":
+            deletes.append(r)
+        else:
+            others.append(r)
+        i = i + 1
+    table.get_routes = gets
+    table.post_routes = posts
+    table.put_routes = puts
+    table.delete_routes = deletes
+    table.other_routes = others
 
 class HookState:
     guards: list[(HttpContext) -> bool]

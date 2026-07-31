@@ -11,7 +11,7 @@ from aether.context import HttpContext, normalize_path
 from aether.guard import run_guards
 from aether.pipe import run_pipes
 from aether.interceptor import InterceptorFns, BeforeResult, run_before, run_after
-from aether.module import RouteDef
+from aether.module import RouteDef, RouteTable
 
 def _drop_first_char(s: str) -> str:
     result: str = ""
@@ -48,7 +48,18 @@ class MatchResult:
         self.route = route
         self.params = params
 
+def _find_in(routes: list[RouteDef], path: str) -> MatchResult | None:
+    i: int = 0
+    while i < len(routes):
+        route: RouteDef = routes[i]
+        params: dict[str, str] | None = match_path(route.pattern, path)
+        if params != None:
+            return MatchResult(route, params)
+        i = i + 1
+    return None
+
 def find_route(routes: list[RouteDef], method: str, path: str) -> MatchResult | None:
+    # Legacy full-list scan (tests / callers without RouteTable index).
     norm: str = normalize_path(path)
     i: int = 0
     while i < len(routes):
@@ -59,6 +70,18 @@ def find_route(routes: list[RouteDef], method: str, path: str) -> MatchResult | 
                 return MatchResult(route, params)
         i = i + 1
     return None
+
+def find_route_indexed(table: RouteTable, method: str, path: str) -> MatchResult | None:
+    norm: str = normalize_path(path)
+    if method == "GET":
+        return _find_in(table.get_routes, norm)
+    if method == "POST":
+        return _find_in(table.post_routes, norm)
+    if method == "PUT":
+        return _find_in(table.put_routes, norm)
+    if method == "DELETE":
+        return _find_in(table.delete_routes, norm)
+    return _find_in(table.other_routes, norm)
 
 def path_exists(routes: list[RouteDef], path: str) -> bool:
     norm: str = normalize_path(path)
@@ -77,17 +100,25 @@ def execute(
     global_pipes: list[(HttpContext) -> None],
     global_interceptors: list[InterceptorFns]
 ) -> HttpResponse:
-    run_guards(global_guards, ctx)
-    run_guards(route.guards, ctx)
-    run_pipes(global_pipes, ctx)
-    run_pipes(route.pipes, ctx)
+    if len(global_guards) > 0:
+        run_guards(global_guards, ctx)
+    if len(route.guards) > 0:
+        run_guards(route.guards, ctx)
+    if len(global_pipes) > 0:
+        run_pipes(global_pipes, ctx)
+    if len(route.pipes) > 0:
+        run_pipes(route.pipes, ctx)
+    g_n: int = len(global_interceptors)
+    r_n: int = len(route.interceptors)
+    if g_n == 0 and r_n == 0:
+        return route.handler(ctx)
     combined: list[InterceptorFns] = []
     i: int = 0
-    while i < len(global_interceptors):
+    while i < g_n:
         combined.append(global_interceptors[i])
         i = i + 1
     i = 0
-    while i < len(route.interceptors):
+    while i < r_n:
         combined.append(route.interceptors[i])
         i = i + 1
     before: BeforeResult = run_before(combined, ctx)

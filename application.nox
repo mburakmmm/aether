@@ -20,8 +20,8 @@ import aether.swagger
 from aether.config import Config
 from aether.container import Container
 from aether.context import HttpContext, begin, finish, path_only, normalize_path
-from aether.module import ModuleBuilder, RouteDef, RouteTable, HookState
-from aether.pipeline import MatchResult, find_route, path_exists, execute
+from aether.module import ModuleBuilder, RouteDef, RouteTable, HookState, rebuild_route_index
+from aether.pipeline import MatchResult, find_route_indexed, path_exists, execute
 from aether.errors import HttpError, NotFoundError, MethodNotAllowedError, PayloadTooLargeError, error_json
 from aether.interceptor import InterceptorFns
 from aether.dto import DtoSchema
@@ -179,6 +179,7 @@ def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
     _mount_framework_routes(app)
     if cfg.openapi_enabled:
         app.openapi_doc = aether.openapi.build_document(cfg, app.route_table.routes)
+    rebuild_route_index(app.route_table)
     bind(app)
     return app
 
@@ -198,11 +199,37 @@ def _error_response(cfg: Config, err: HttpError, kind: str) -> HttpResponse:
     return aether.response.json(err.status, body)
 
 def _finalize_response(app: Application, req: HttpRequest, rid: str, resp: HttpResponse) -> HttpResponse:
-    # Always-on finalizers (error and success paths).
-    out: HttpResponse = aether.response.with_header(resp, "X-Request-Id", rid + "")
-    if len(app.config.cors_origins) > 0:
-        origin: str = aether.cors.read_origin(req)
-        out = aether.cors.apply_cors_headers(out, app.config.cors_origins, origin)
+    # Always-on finalizers (error and success paths). One header-map copy.
+    extra: dict[str, str] = {}
+    extra["X-Request-Id"] = rid + ""
+    cors_cfg: str = app.config.cors_origins
+    if len(cors_cfg) > 0:
+        origin: str = ""
+        if cors_cfg != "*":
+            origin = aether.cors.read_origin(req)
+        allow: str = aether.cors.allow_origin_header(cors_cfg, origin)
+        if len(allow) > 0:
+            extra["Access-Control-Allow-Origin"] = allow
+            extra["Vary"] = "Origin"
+    return aether.response.with_headers(resp, extra)
+
+def _complete_request(
+    app: Application,
+    req: HttpRequest,
+    rid: str,
+    path: str,
+    started: int,
+    resp: HttpResponse
+) -> HttpResponse:
+    out: HttpResponse = _finalize_response(app, req, rid, resp)
+    app.metrics.record(out.status)
+    if app.config.metrics_routes:
+        app.metrics.record_route(req.method, path)
+    if app.config.log_requests:
+        elapsed: int = nox.time.now_ms() - started
+        nox.log.info(
+            req.method + " " + path + " -> " + str(out.status) + " " + str(elapsed) + "ms id=" + rid
+        )
     return out
 
 def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
@@ -210,16 +237,18 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
     path: str = normalize_path(path_only(req.target))
     begin(rid, req.method, path)
     started: int = nox.time.now_ms()
-    resp: HttpResponse = aether.response.json(500, "{\"error\":{\"code\":\"internal_error\",\"message\":\"unset\"}}")
+    resp_opt: HttpResponse | None = None
     try:
         try:
             if app.config.max_body_bytes > 0 and len(req.body) > app.config.max_body_bytes:
                 raise PayloadTooLargeError("request body too large")
             if req.method == "OPTIONS" and len(app.config.cors_origins) > 0:
-                origin: str = aether.cors.read_origin(req)
-                resp = aether.cors.preflight_response(app.config.cors_origins, origin)
+                origin: str = ""
+                if app.config.cors_origins != "*":
+                    origin = aether.cors.read_origin(req)
+                resp_opt = aether.cors.preflight_response(app.config.cors_origins, origin)
             else:
-                matched: MatchResult | None = find_route(app.route_table.routes, req.method, path)
+                matched: MatchResult | None = find_route_indexed(app.route_table, req.method, path)
                 if matched == None:
                     if path_exists(app.route_table.routes, path):
                         raise MethodNotAllowedError("method not allowed: " + req.method + " " + path)
@@ -234,7 +263,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                         "",
                         app.config.trust_x_forwarded_for
                     )
-                    resp = execute(
+                    resp_opt = execute(
                         hit.route,
                         ctx,
                         app.hooks.guards,
@@ -244,28 +273,28 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
         except HttpError as e:
             filtered: HttpResponse | None = _apply_filters(app, e)
             if filtered != None:
-                resp = filtered
+                resp_opt = filtered
             else:
-                resp = _error_response(app.config, e, "HttpError")
+                resp_opt = _error_response(app.config, e, "HttpError")
         except Exception as e:
             msg: str = e.message
             if not app.config.is_production():
                 internal: HttpError = HttpError(500, "internal_error", msg, [])
-                resp = _error_response(app.config, internal, "Exception")
+                resp_opt = _error_response(app.config, internal, "Exception")
             else:
                 internal2: HttpError = HttpError(500, "internal_error", "internal server error", [])
-                resp = _error_response(app.config, internal2, "Exception")
+                resp_opt = _error_response(app.config, internal2, "Exception")
     finally:
-        resp = _finalize_response(app, req, rid, resp)
-        app.metrics.record(resp.status)
-        app.metrics.record_route(req.method, path)
-        if app.config.log_requests:
-            elapsed: int = nox.time.now_ms() - started
-            nox.log.info(
-                req.method + " " + path + " -> " + str(resp.status) + " " + str(elapsed) + "ms id=" + rid
-            )
         finish()
-    return resp
+    if resp_opt == None:
+        unset: HttpResponse = _error_response(
+            app.config,
+            HttpError(500, "internal_error", "unset response", []),
+            "HttpError"
+        )
+        return _complete_request(app, req, rid, path, started, unset)
+    else:
+        return _complete_request(app, req, rid, path, started, resp_opt)
 
 # Serve handlers must not close over Application directly — Nox codegen rejects
 # that combination. Prefer dispatch_bound() after boot (boot auto-bind) or bind().

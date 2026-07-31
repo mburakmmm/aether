@@ -160,6 +160,7 @@ class HttpContext:
     request: HttpRequest
     params: dict[str, str]
     query: dict[str, str]
+    _query_parsed: bool
     container: Container
     request_id: str
     input_body: str
@@ -176,15 +177,23 @@ class HttpContext:
         input_body: str,
         trust_xff: bool
     ) -> None:
+        empty_q: dict[str, str] = {}
         self.request = request
         self.params = params
-        self.query = parse_query(request.target)
+        self.query = empty_q
+        self._query_parsed = False
         self.container = container
         self.request_id = request_id_value
         self.input_body = input_body
         self.path = normalize_path(path_only(request.target))
         self.method = request.method
         self.trust_xff = trust_xff
+
+    def ensure_query(self: HttpContext) -> None:
+        if self._query_parsed:
+            return
+        self.query = parse_query(self.request.target)
+        self._query_parsed = True
 
     def param(self: HttpContext, name: str) -> str:
         keys: list[str] = self.params.keys()
@@ -196,6 +205,7 @@ class HttpContext:
         return ""
 
     def query_param(self: HttpContext, name: str) -> str:
+        self.ensure_query()
         keys: list[str] = self.query.keys()
         i: int = 0
         while i < len(keys):

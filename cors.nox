@@ -27,9 +27,10 @@ def apply_cors_headers(resp: HttpResponse, origins_cfg: str, origin: str) -> Htt
     allow: str = allow_origin_header(origins_cfg, origin)
     if len(allow) == 0:
         return resp
-    out: HttpResponse = aether.response.with_header(resp, "Access-Control-Allow-Origin", allow)
-    out = aether.response.with_header(out, "Vary", "Origin")
-    return out
+    extra: dict[str, str] = {}
+    extra["Access-Control-Allow-Origin"] = allow
+    extra["Vary"] = "Origin"
+    return aether.response.with_headers(resp, extra)
 
 def preflight_response(origins_cfg: str, origin: str) -> HttpResponse:
     headers: dict[str, str] = {}
