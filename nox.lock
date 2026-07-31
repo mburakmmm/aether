@@ -2,9 +2,9 @@
   "packages": [
     {
       "alias": "aether",
-      "repo": "/Users/melihburakmemis/Documents/aether",
-      "ref": "master",
-      "resolved": "5ea45fb4c95b667525d81922dceeb5bc24a3d15c"
+      "repo": "github.com/mburakmmm/aether",
+      "ref": "v0.2.1",
+      "resolved": "8da9d662c66e1683220e29287177fc032ab2db2e"
     }
   ]
 }
