@@ -122,7 +122,7 @@ def defaults(env: str) -> Config:
     if env == "production":
         workers = 0
         openapi_on = False
-        rate_on = True
+        rate_on = False
     return Config(
         env,
         "0.0.0.0",

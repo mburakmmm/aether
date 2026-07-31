@@ -59,7 +59,9 @@ r3: HttpResponse = aether.testing.post(app, "/api/ping", "{}")
 nox.test.assert_eq_int(r3.status, 405, "method not allowed")
 
 # CORS preflight
-r4: HttpResponse = aether.testing.request(app, "OPTIONS", "/api/ping", "")
+r4_headers: dict[str, str] = {}
+r4_headers["Origin"] = "https://example.com"
+r4: HttpResponse = aether.testing.request_headers(app, "OPTIONS", "/api/ping", "", r4_headers)
 nox.test.assert_eq_int(r4.status, 204, "cors options")
 
 # validation 422

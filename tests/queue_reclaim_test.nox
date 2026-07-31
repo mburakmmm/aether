@@ -29,7 +29,6 @@ n: int = aether.queue.work(db, registry, 5)
 nox.test.assert_eq_int(n, 1, "processed after reclaim")
 nox.test.assert_eq_int(len(seen), 1, "handler called")
 
-# Exhaust attempts with zero backoff between tries.
 def boom(payload: str) -> None:
     raise aether.queue.QueueError("always fail")
 
@@ -47,10 +46,37 @@ nox.test.assert_true(len(dead) >= 1, "has dead letter")
 
 aether.queue.requeue_dead(db, boom_id)
 
-# Direct DLQ helper
 dead2_id: int = aether.queue.enqueue(db, "boom", "{\"y\":1}", 0)
 aether.queue.mark_dead(db, dead2_id, "manual dead")
 dead2: list[str] = aether.queue.list_dead(db, 10)
 nox.test.assert_true(len(dead2) >= 1, "mark_dead works")
+
+# Lease failure exhaustion → DLQ (dedicated db)
+db2: Connection = aether.queue.open_db(":memory:")
+aether.queue.ensure_schema(db2)
+lease_id: int = aether.queue.enqueue(db2, "demo", "{\"lease\":1}", 0)
+lf: int = 0
+while lf < aether.queue.max_lease_failures():
+    rsv: str | None = aether.queue.reserve(db2)
+    nox.test.assert_true(rsv != None, "lease reserve")
+    nox.time.sleep_ms(20)
+    aether.queue.reclaim_stale(db2, 1)
+    lf = lf + 1
+dead_lease: list[str] = aether.queue.list_dead(db2, 50)
+nox.test.assert_true(len(dead_lease) >= 1, "lease failures to dead")
+
+# Stale lease cannot complete
+db3: Connection = aether.queue.open_db(":memory:")
+aether.queue.ensure_schema(db3)
+aether.queue.enqueue(db3, "demo", "{\"z\":1}", 0)
+raw_lease: str | None = aether.queue.reserve(db3)
+nox.test.assert_true(raw_lease != None, "lease raw")
+nox.time.sleep_ms(20)
+aether.queue.reclaim_stale(db3, 1)
+try:
+    aether.queue.complete(db3, 1, "not-the-token")
+    nox.test.assert_true(False, "complete should reject")
+except aether.queue.QueueError:
+    nox.test.assert_true(True, "stale lease rejected")
 
 print("queue_reclaim_test ok")

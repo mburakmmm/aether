@@ -1,4 +1,4 @@
-# aether.metrics — simple in-process counters (per-worker).
+# aether.metrics — per-Application counters (not process-global).
 
 class Metrics:
     requests: int
@@ -32,8 +32,3 @@ class Metrics:
             ",\"status_4xx\":" + str(self.status_4xx) +
             ",\"status_5xx\":" + str(self.status_5xx) + "}"
         )
-
-_global: Metrics = Metrics()
-
-def global_metrics() -> Metrics:
-    return _global

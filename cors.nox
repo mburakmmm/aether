@@ -1,25 +1,88 @@
-# aether.cors — simple CORS interceptor factory.
+# aether.cors — allowlist CORS with Origin reflection + Vary.
 
-from nox.http import HttpResponse
+import nox.strings
+from nox.http import HttpRequest, HttpResponse
 import aether.context
 import aether.response
-import aether.interceptor
-from aether.context import HttpContext
-from aether.interceptor import InterceptorFns
+from aether.context import header_get
 
-def cors_interceptor(origins: str) -> InterceptorFns:
-    def before(ctx: HttpContext) -> HttpResponse | None:
-        if ctx.method == "OPTIONS":
-            headers: dict[str, str] = {}
-            headers["Access-Control-Allow-Origin"] = origins + ""
-            headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
-            headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,X-Request-Id"
-            headers["Access-Control-Max-Age"] = "86400"
-            return HttpResponse(204, "", headers)
-        return None
-
-    def after(ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
-        out: HttpResponse = aether.response.with_header(resp, "Access-Control-Allow-Origin", origins + "")
+def parse_origins(raw: str) -> list[str]:
+    out: list[str] = []
+    if len(raw) == 0:
         return out
+    parts: list[str] = nox.strings.split(raw, ",")
+    i: int = 0
+    while i < len(parts):
+        p: str = _trim(parts[i])
+        if len(p) > 0:
+            out.append(p)
+        i = i + 1
+    return out
 
-    return InterceptorFns(before, after)
+def _trim(s: str) -> str:
+    out: str = ""
+    started: bool = False
+    i: int = 0
+    while i < len(s):
+        ch: str = s[i]
+        if ch == " " or ch == "\t":
+            if started:
+                # defer trailing spaces — rebuild without trailing at end
+                out = out + ch
+        else:
+            started = True
+            out = out + ch
+        i = i + 1
+    # strip trailing spaces
+    end: int = len(out)
+    while end > 0:
+        last: str = out[end - 1]
+        if last == " " or last == "\t":
+            end = end - 1
+        else:
+            break
+    if end == len(out):
+        return out
+    cleaned: str = ""
+    j: int = 0
+    while j < end:
+        cleaned = cleaned + out[j]
+        j = j + 1
+    return cleaned
+
+def resolve_allow_origin(origins_cfg: str, request_origin: str) -> str:
+    origins: list[str] = parse_origins(origins_cfg)
+    if len(origins) == 0:
+        return ""
+    if len(origins) == 1 and origins[0] == "*":
+        return "*"
+    if len(request_origin) == 0:
+        return ""
+    i: int = 0
+    while i < len(origins):
+        if origins[i] == request_origin:
+            return request_origin
+        i = i + 1
+    return ""
+
+def apply_cors_headers(resp: HttpResponse, origins_cfg: str, request_origin: str) -> HttpResponse:
+    allow: str = resolve_allow_origin(origins_cfg, request_origin)
+    if len(allow) == 0:
+        return resp
+    out: HttpResponse = aether.response.with_header(resp, "Access-Control-Allow-Origin", allow)
+    out = aether.response.with_header(out, "Vary", "Origin")
+    return out
+
+def preflight_response(origins_cfg: str, request_origin: str) -> HttpResponse:
+    headers: dict[str, str] = {}
+    allow: str = resolve_allow_origin(origins_cfg, request_origin)
+    if len(allow) > 0:
+        headers["Access-Control-Allow-Origin"] = allow
+        headers["Vary"] = "Origin"
+    headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
+    headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,X-Request-Id"
+    headers["Access-Control-Max-Age"] = "86400"
+    return HttpResponse(204, "", headers)
+
+def request_origin(req: HttpRequest) -> str:
+    return header_get(req.headers, "Origin")

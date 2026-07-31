@@ -89,7 +89,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Desired Nox change:** Optional compile-time export of constructor parameter types (names + type ids) for DI containers.
 
-**Aether workaround:** Explicit `m.provide("UserService", svc)` + **closure injection** in route factories (fully typed).
+**Aether workaround:** Official DI is **closure injection**. `m.provide("UserService")` registers a **name only** (duplicate names rejected at boot). Hold the instance in a local/module field and capture it when registering handlers: `m.get("/users/:id", self._show(svc))`.
 
 ---
 
@@ -106,7 +106,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Desired Nox change:** Generic methods, or a sanctioned downcast/`as` for DI.
 
-**Aether workaround:** `Injectable` base + `container.get(name) -> Injectable`; typed access via closures. Free generic helpers where useful.
+**Aether workaround:** No cross-package `Injectable` base (see §15). Name registry via `Container.register_name` / `has`; typed services via **closures** only. Free generic helpers where useful.
 
 ---
 

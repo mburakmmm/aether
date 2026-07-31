@@ -1,0 +1,144 @@
+import nox.test
+import nox.strings
+import aether.config
+import aether.application
+import aether.testing
+import aether.context
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder
+from aether.context import HttpContext, begin, finish, set_request_value, get_request_value
+from aether.response import json_ok
+from aether.errors import UnauthorizedError
+from aether.interceptor import InterceptorFns, BeforeResult, run_before, run_after
+from aether.container import Container
+from nox.http import HttpResponse, HttpRequest
+
+def _join(xs2: list[str]) -> str:
+    s: str = ""
+    i: int = 0
+    while i < len(xs2):
+        if i > 0:
+            s = s + ","
+        s = s + xs2[i]
+        i = i + 1
+    return s
+
+# --- TaskLocal request values ---
+begin("rid-a", "GET", "/a")
+set_request_value("k", "va")
+nox.test.assert_true(get_request_value("k") == "va", "tl value a")
+finish()
+begin("rid-b", "GET", "/b")
+nox.test.assert_true(get_request_value("k") == "", "tl cleared")
+set_request_value("k", "vb")
+nox.test.assert_true(get_request_value("k") == "vb", "tl value b")
+finish()
+
+# --- Interceptor entered_count unwind ---
+calls: list[str] = []
+
+def mk(name: str, early: bool) -> InterceptorFns:
+    def before(ctx: HttpContext) -> HttpResponse | None:
+        calls.append("b:" + name)
+        if early:
+            return json_ok("{\"early\":true}")
+        return None
+    def after(ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
+        calls.append("a:" + name)
+        return resp
+    return InterceptorFns(before, after)
+
+xs: list[InterceptorFns] = []
+xs.append(mk("1", False))
+xs.append(mk("2", True))
+xs.append(mk("3", False))
+
+cfg0: Config = aether.config.defaults("test")
+cfg0.log_requests = False
+
+class EmptyMod:
+    def configure(self: EmptyMod, m: ModuleBuilder) -> None:
+        m.get("/x", self._x())
+    def _x(self: EmptyMod) -> (HttpContext) -> HttpResponse:
+        def x(ctx: HttpContext) -> HttpResponse:
+            return json_ok("{}")
+        return x
+
+def build0(app: Application) -> None:
+    EmptyMod().configure(app.module())
+
+app0: Application = aether.application.boot_with_config(cfg0, build0)
+headers0: dict[str, str] = {}
+req: HttpRequest = HttpRequest("GET", "/x", "", headers0)
+params: dict[str, str] = {}
+begin("i1", "GET", "/x")
+ctx: HttpContext = HttpContext(req, params, app0.container, "i1", "", False)
+br: BeforeResult = run_before(xs, ctx)
+nox.test.assert_true(br.response != None, "early response")
+nox.test.assert_eq_int(br.entered_count, 2, "entered 1 and 2")
+early_resp: HttpResponse = br.response
+out: HttpResponse = run_after(xs, ctx, early_resp, br.entered_count)
+joined: str = _join(calls)
+nox.test.assert_true(nox.strings.contains(joined, "a:2"), "after 2")
+nox.test.assert_true(nox.strings.contains(joined, "a:1"), "after 1")
+nox.test.assert_true(not nox.strings.contains(joined, "a:3"), "no after 3")
+nox.test.assert_true(not nox.strings.contains(joined, "b:3"), "no before 3")
+finish()
+
+# --- Error path finalizers: X-Request-Id + CORS ---
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+cfg.cors_origins = "https://app.example.com"
+
+class BoomMod:
+    def configure(self: BoomMod, m: ModuleBuilder) -> None:
+        m.get("/secure", self._boom())
+    def _boom(self: BoomMod) -> (HttpContext) -> HttpResponse:
+        def boom(ctx: HttpContext) -> HttpResponse:
+            raise UnauthorizedError("nope")
+        return boom
+
+def build(app: Application) -> None:
+    BoomMod().configure(app.module())
+
+app: Application = aether.application.boot_with_config(cfg, build)
+h: dict[str, str] = {}
+h["Origin"] = "https://app.example.com"
+r: HttpResponse = aether.testing.get_headers(app, "/secure", h)
+nox.test.assert_eq_int(r.status, 401, "unauthorized")
+nox.test.assert_true(len(r.headers["X-Request-Id"]) > 0, "request id on error")
+nox.test.assert_true(r.headers["Access-Control-Allow-Origin"] == "https://app.example.com", "cors on error")
+nox.test.assert_true(r.headers["Vary"] == "Origin", "vary origin")
+
+h2: dict[str, str] = {}
+h2["Origin"] = "https://evil.example.com"
+r2: HttpResponse = aether.testing.get_headers(app, "/secure", h2)
+nox.test.assert_eq_int(r2.status, 401, "still 401")
+has_acao: bool = False
+keys: list[str] = r2.headers.keys()
+ki: int = 0
+while ki < len(keys):
+    if keys[ki] == "Access-Control-Allow-Origin":
+        has_acao = True
+    ki = ki + 1
+nox.test.assert_true(not has_acao, "no acao for evil origin")
+
+# Per-app metrics isolation
+cfg_a: Config = aether.config.defaults("test")
+cfg_a.log_requests = False
+cfg_b: Config = aether.config.defaults("test")
+cfg_b.log_requests = False
+app_a: Application = aether.application.boot_with_config(cfg_a, build0)
+app_b: Application = aether.application.boot_with_config(cfg_b, build0)
+aether.testing.get(app_a, "/x")
+aether.testing.get(app_a, "/x")
+aether.testing.get(app_b, "/x")
+nox.test.assert_eq_int(app_a.metrics.requests, 2, "app a metrics")
+nox.test.assert_eq_int(app_b.metrics.requests, 1, "app b metrics")
+
+aether.application.shutdown(app0)
+aether.application.shutdown(app)
+aether.application.shutdown(app_a)
+aether.application.shutdown(app_b)
+print("hardening_test ok")

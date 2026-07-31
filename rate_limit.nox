@@ -1,4 +1,7 @@
-# aether.rate_limit — in-process sliding window (per-worker; peer IP limited by Nox).
+# aether.rate_limit — in-process window with eviction (per-worker).
+#
+# Safe default: disabled in production until peer IP or trusted XFF is available.
+# Empty client_ip skips limiting (does NOT collapse into a shared "unknown" bucket).
 
 import nox.time
 from nox.http import HttpResponse
@@ -21,12 +24,25 @@ class RateBucket:
 
 class RateStore:
     buckets: list[RateBucket]
+    max_buckets: int
 
-    def __init__(self: RateStore) -> None:
+    def __init__(self: RateStore, max_buckets: int) -> None:
         self.buckets = []
+        self.max_buckets = max_buckets
+
+    def _evict_expired(self: RateStore, now: int, window_ms: int) -> None:
+        fresh: list[RateBucket] = []
+        i: int = 0
+        while i < len(self.buckets):
+            b: RateBucket = self.buckets[i]
+            if now - b.window_start_ms < window_ms:
+                fresh.append(b)
+            i = i + 1
+        self.buckets = fresh
 
     def allow(self: RateStore, key: str, max_n: int, window_ms: int) -> bool:
         now: int = nox.time.now_ms()
+        self._evict_expired(now, window_ms)
         i: int = 0
         while i < len(self.buckets):
             b: RateBucket = self.buckets[i]
@@ -40,18 +56,27 @@ class RateStore:
                 b.count = b.count + 1
                 return True
             i = i + 1
+        if self.max_buckets > 0 and len(self.buckets) >= self.max_buckets:
+            # Drop oldest window to bound memory.
+            drop: list[RateBucket] = []
+            j: int = 1
+            while j < len(self.buckets):
+                drop.append(self.buckets[j])
+                j = j + 1
+            self.buckets = drop
         buckets: list[RateBucket] = self.buckets
         buckets.append(RateBucket(key, 1, now))
         self.buckets = buckets
         return True
 
-_store: RateStore = RateStore()
+_store: RateStore = RateStore(10000)
 
 def rate_limit_interceptor(max_n: int, window_ms: int) -> InterceptorFns:
     def before(ctx: HttpContext) -> HttpResponse | None:
         key: str = ctx.client_ip()
         if len(key) == 0:
-            key = "unknown"
+            # No peer identity — do not share a global "unknown" bucket.
+            return None
         if not _store.allow(key, max_n, window_ms):
             raise TooManyRequestsError("rate limit exceeded")
         return None

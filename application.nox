@@ -23,9 +23,9 @@ from aether.context import HttpContext, begin, finish, path_only, normalize_path
 from aether.module import ModuleBuilder, RouteDef, RouteTable, HookState
 from aether.pipeline import MatchResult, find_route, path_exists, execute
 from aether.errors import HttpError, NotFoundError, MethodNotAllowedError, PayloadTooLargeError, error_json
-from aether.interceptor import InterceptorFns, request_id_interceptor
+from aether.interceptor import InterceptorFns
 from aether.dto import DtoSchema
-from aether.metrics import Metrics, global_metrics
+from aether.metrics import Metrics
 
 class AppError(Exception):
     def __init__(self: AppError, message: str) -> None:
@@ -67,7 +67,6 @@ class Application:
         configure(self.module())
 
     def import_module(self: Application, configure: (ModuleBuilder) -> None) -> None:
-        # Alias: pass a configure function, e.g. UsersModule().configure
         configure(self.module())
 
     def on_shutdown(self: Application, hook: () -> None) -> None:
@@ -109,6 +108,57 @@ def _mount_framework_routes(app: Application) -> None:
         )
     table.routes = routes
 
+def _route_key(method: str, pattern: str) -> str:
+    return method + " " + pattern
+
+def _collect_schema_names(routes: list[RouteDef]) -> None:
+    # Iterative — avoid recursive helpers (Nox codegen limits).
+    seen: list[str] = []
+    queue: list[DtoSchema] = []
+    i: int = 0
+    while i < len(routes):
+        r: RouteDef = routes[i]
+        if r.has_input and len(r.input_schema.name) > 0:
+            queue.append(r.input_schema)
+        if r.has_output and len(r.output_schema.name) > 0:
+            queue.append(r.output_schema)
+        i = i + 1
+    qi: int = 0
+    while qi < len(queue):
+        schema: DtoSchema = queue[qi]
+        name: str = schema.name
+        already: bool = False
+        k: int = 0
+        while k < len(seen):
+            if seen[k] == name:
+                already = True
+            k = k + 1
+        if not already:
+            seen.append(name)
+            ni: int = 0
+            while ni < len(schema.nested_schemas):
+                nest: DtoSchema = schema.nested_schemas[ni]
+                if len(nest.name) > 0:
+                    queue.append(nest)
+                ni = ni + 1
+        qi = qi + 1
+
+def _validate_boot(app: Application) -> None:
+    routes: list[RouteDef] = app.route_table.routes
+    seen_routes: list[str] = []
+    i: int = 0
+    while i < len(routes):
+        r: RouteDef = routes[i]
+        key: str = _route_key(r.method, r.pattern)
+        j: int = 0
+        while j < len(seen_routes):
+            if seen_routes[j] == key:
+                raise AppError("duplicate route: " + key)
+            j = j + 1
+        seen_routes.append(key)
+        i = i + 1
+    _collect_schema_names(routes)
+
 def boot(build: (Application) -> None) -> Application:
     cfg: Config = aether.config.load()
     return boot_with_config(cfg, build)
@@ -118,15 +168,13 @@ def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
     table: RouteTable = RouteTable()
     hooks: HookState = HookState()
     xs: list[InterceptorFns] = hooks.interceptors
-    xs.append(request_id_interceptor())
-    if len(cfg.cors_origins) > 0:
-        xs.append(aether.cors.cors_interceptor(cfg.cors_origins))
     if cfg.rate_limit_enabled:
         xs.append(aether.rate_limit.rate_limit_interceptor(cfg.rate_limit_max, cfg.rate_limit_window_ms))
     hooks.interceptors = xs
     shutdown_hooks: list[() -> None] = []
-    app: Application = Application(cfg, container, table, hooks, shutdown_hooks, "{}", global_metrics())
+    app: Application = Application(cfg, container, table, hooks, shutdown_hooks, "{}", Metrics())
     build(app)
+    _validate_boot(app)
     app.openapi_doc = aether.openapi.build_document(cfg, app.route_table.routes)
     _mount_framework_routes(app)
     if cfg.openapi_enabled:
@@ -148,25 +196,27 @@ def _error_response(cfg: Config, err: HttpError, kind: str) -> HttpResponse:
     body: str = error_json(err, include_kind, kind)
     return aether.response.json(err.status, body)
 
+def _finalize_response(app: Application, req: HttpRequest, rid: str, resp: HttpResponse) -> HttpResponse:
+    # Always-on finalizers (error and success paths).
+    out: HttpResponse = aether.response.with_header(resp, "X-Request-Id", rid + "")
+    if len(app.config.cors_origins) > 0:
+        origin: str = aether.cors.request_origin(req)
+        out = aether.cors.apply_cors_headers(out, app.config.cors_origins, origin)
+    return out
+
 def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
     rid: str = nox.uuid.uuid4()
     path: str = normalize_path(path_only(req.target))
     begin(rid, req.method, path)
-    app.container.clear_request()
     started: int = nox.time.now_ms()
     resp: HttpResponse = aether.response.json(500, "{\"error\":{\"code\":\"internal_error\",\"message\":\"unset\"}}")
     try:
         try:
             if app.config.max_body_bytes > 0 and len(req.body) > app.config.max_body_bytes:
                 raise PayloadTooLargeError("request body too large")
-            # CORS preflight: answer OPTIONS without requiring a registered OPTIONS route.
             if req.method == "OPTIONS" and len(app.config.cors_origins) > 0:
-                headers: dict[str, str] = {}
-                headers["Access-Control-Allow-Origin"] = app.config.cors_origins + ""
-                headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
-                headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,X-Request-Id"
-                headers["Access-Control-Max-Age"] = "86400"
-                resp = HttpResponse(204, "", headers)
+                origin: str = aether.cors.request_origin(req)
+                resp = aether.cors.preflight_response(app.config.cors_origins, origin)
             else:
                 matched: MatchResult | None = find_route(app.route_table.routes, req.method, path)
                 if matched == None:
@@ -205,6 +255,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                 internal2: HttpError = HttpError(500, "internal_error", "internal server error", [])
                 resp = _error_response(app.config, internal2, "Exception")
     finally:
+        resp = _finalize_response(app, req, rid, resp)
         app.metrics.record(resp.status)
         if app.config.log_requests:
             elapsed: int = nox.time.now_ms() - started

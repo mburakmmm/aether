@@ -10,7 +10,7 @@ import aether.module
 from aether.context import HttpContext, normalize_path
 from aether.guard import run_guards
 from aether.pipe import run_pipes
-from aether.interceptor import InterceptorFns, run_before, run_after
+from aether.interceptor import InterceptorFns, BeforeResult, run_before, run_after
 from aether.module import RouteDef
 
 def _drop_first_char(s: str) -> str:
@@ -90,8 +90,8 @@ def execute(
     while i < len(route.interceptors):
         combined.append(route.interceptors[i])
         i = i + 1
-    early: HttpResponse | None = run_before(combined, ctx)
-    if early != None:
-        return run_after(combined, ctx, early)
+    before: BeforeResult = run_before(combined, ctx)
+    if before.response != None:
+        return run_after(combined, ctx, before.response, before.entered_count)
     resp: HttpResponse = route.handler(ctx)
-    return run_after(combined, ctx, resp)
+    return run_after(combined, ctx, resp, before.entered_count)

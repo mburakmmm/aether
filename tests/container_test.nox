@@ -9,8 +9,14 @@ nox.test.assert_eq_int(len(c.names()), 1, "names len")
 
 try:
     c.register_name("")
-    nox.test.assert_true(False, "should raise")
+    nox.test.assert_true(False, "should raise empty")
 except ContainerError as e:
     nox.test.assert_true(len(e.message) > 0, "error message")
+
+try:
+    c.register_name("Svc")
+    nox.test.assert_true(False, "should raise duplicate")
+except ContainerError as e2:
+    nox.test.assert_true(True, "duplicate rejected")
 
 print("container_test ok")

@@ -1,6 +1,5 @@
-# aether.container — provider name registry + request-scoped string bag.
-# Cross-module class inheritance is not supported in Nox, so typed service
-# instances are held via closures in ModuleBuilder handlers (not here).
+# aether.container — provider name registry only (no request bag).
+# Request-scoped values live in TaskLocal RequestState (aether.context).
 
 class ContainerError(Exception):
     def __init__(self: ContainerError, message: str) -> None:
@@ -8,15 +7,15 @@ class ContainerError(Exception):
 
 class Container:
     _names: list[str]
-    _request: dict[str, str]
 
     def __init__(self: Container) -> None:
         self._names = []
-        self._request = {}
 
     def register_name(self: Container, name: str) -> None:
         if len(name) == 0:
             raise ContainerError("provider name empty")
+        if self.has(name):
+            raise ContainerError("duplicate provider name: " + name)
         names: list[str] = self._names
         names.append(name)
         self._names = names
@@ -31,18 +30,3 @@ class Container:
 
     def names(self: Container) -> list[str]:
         return self._names
-
-    def set_request_value(self: Container, key: str, value: str) -> None:
-        self._request[key] = value
-
-    def get_request_value(self: Container, key: str) -> str:
-        keys: list[str] = self._request.keys()
-        i: int = 0
-        while i < len(keys):
-            if keys[i] == key:
-                return self._request[key]
-            i = i + 1
-        return ""
-
-    def clear_request(self: Container) -> None:
-        self._request = {}

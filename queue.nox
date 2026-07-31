@@ -1,8 +1,12 @@
-# aether.queue — SQLite background job queue + worker + reclaim + DLQ.
+# aether.queue — SQLite job queue with lease tokens, reclaim, DLQ.
+#
+# Delivery is at-least-once. Handlers must be idempotent.
+# complete/fail require the lease_token from reserve().
 
 import nox.sqlite
 import nox.json
 import nox.time
+import nox.uuid
 from nox.sqlite import Connection, Statement, SqliteError
 from nox.db import Row
 from nox.json import JsonError
@@ -26,6 +30,9 @@ def status_failed() -> str:
 def max_attempts() -> int:
     return 5
 
+def max_lease_failures() -> int:
+    return 5
+
 def default_stale_ms() -> int:
     return 300000
 
@@ -41,11 +48,22 @@ def ensure_schema(db: Connection) -> None:
         "status TEXT NOT NULL, " +
         "run_at_ms INTEGER NOT NULL, " +
         "attempts INTEGER NOT NULL DEFAULT 0, " +
+        "lease_failures INTEGER NOT NULL DEFAULT 0, " +
+        "lease_token TEXT NOT NULL DEFAULT '', " +
         "last_error TEXT NOT NULL DEFAULT '', " +
         "created_at_ms INTEGER NOT NULL, " +
         "updated_at_ms INTEGER NOT NULL" +
         ")"
     )
+    # Best-effort upgrades for older schemas.
+    try:
+        db.execute("ALTER TABLE aether_jobs ADD COLUMN lease_failures INTEGER NOT NULL DEFAULT 0")
+    except SqliteError:
+        pass
+    try:
+        db.execute("ALTER TABLE aether_jobs ADD COLUMN lease_token TEXT NOT NULL DEFAULT ''")
+    except SqliteError:
+        pass
     db.execute(
         "CREATE INDEX IF NOT EXISTS idx_aether_jobs_status_run_at ON aether_jobs (status, run_at_ms)"
     )
@@ -59,8 +77,8 @@ def enqueue(db: Connection, job_name: str, payload_json: str, run_at_ms: int) ->
     nox.json.decode(payload_json)
     now: int = nox.time.now_ms()
     stmt: Statement = db.prepare(
-        "INSERT INTO aether_jobs (job_name, payload, status, run_at_ms, attempts, last_error, created_at_ms, updated_at_ms) " +
-        "VALUES (?, ?, 'queued', ?, 0, '', ?, ?)"
+        "INSERT INTO aether_jobs (job_name, payload, status, run_at_ms, attempts, lease_failures, lease_token, last_error, created_at_ms, updated_at_ms) " +
+        "VALUES (?, ?, 'queued', ?, 0, 0, '', '', ?, ?)"
     )
     stmt.bind_str(0, job_name)
     stmt.bind_str(1, payload_json)
@@ -70,14 +88,23 @@ def enqueue(db: Connection, job_name: str, payload_json: str, run_at_ms: int) ->
     stmt.execute()
     return db.last_insert_rowid()
 
-def _job_json(id: int, job_name: str, payload_json: str, status: str, attempts: int, run_at_ms: int) -> str:
+def _job_json(
+    id: int,
+    job_name: str,
+    payload_json: str,
+    status: str,
+    attempts: int,
+    run_at_ms: int,
+    lease_token: str
+) -> str:
     return (
         "{\"id\":" + str(id) +
         ",\"job_name\":" + nox.json.encode_string(job_name) +
         ",\"payload\":" + payload_json +
         ",\"status\":" + nox.json.encode_string(status) +
         ",\"attempts\":" + str(attempts) +
-        ",\"run_at_ms\":" + str(run_at_ms) + "}"
+        ",\"run_at_ms\":" + str(run_at_ms) +
+        ",\"lease_token\":" + nox.json.encode_string(lease_token) + "}"
     )
 
 def _job_row_json(row: Row) -> str:
@@ -89,7 +116,8 @@ def _job_row_json(row: Row) -> str:
         ",\"attempts\":" + str(row.get_int(4)) +
         ",\"run_at_ms\":" + str(row.get_int(5)) +
         ",\"last_error\":" + nox.json.encode_string(row.get_str(6)) +
-        ",\"updated_at_ms\":" + str(row.get_int(7)) + "}"
+        ",\"updated_at_ms\":" + str(row.get_int(7)) +
+        ",\"lease_failures\":" + str(row.get_int(8)) + "}"
     )
 
 def reserve(db: Connection) -> str | None:
@@ -112,55 +140,71 @@ def reserve(db: Connection) -> str | None:
         payload: str = row.get_str(2)
         attempts: int = row.get_int(3)
         run_at: int = row.get_int(4)
+        token: str = nox.uuid.uuid4()
         upd: Statement = db.prepare(
-            "UPDATE aether_jobs SET status = ?, updated_at_ms = ? WHERE id = ?"
+            "UPDATE aether_jobs SET status = ?, lease_token = ?, updated_at_ms = ? WHERE id = ?"
         )
         upd.bind_str(0, status_running())
-        upd.bind_int(1, now)
-        upd.bind_int(2, id)
+        upd.bind_str(1, token)
+        upd.bind_int(2, now)
+        upd.bind_int(3, id)
         upd.execute()
         db.execute("COMMIT")
-        return _job_json(id, job_name, payload, status_running(), attempts, run_at)
+        return _job_json(id, job_name, payload, status_running(), attempts, run_at, token)
     except SqliteError as e:
         db.execute("ROLLBACK")
         raise QueueError(e.message)
 
 def reclaim_stale(db: Connection, stale_ms: int) -> int:
-    # Stuck `running` jobs (worker crash) go back to queued.
     if stale_ms <= 0:
         stale_ms = default_stale_ms()
     now: int = nox.time.now_ms()
     cutoff: int = now - stale_ms
-    cnt: Statement = db.prepare(
-        "SELECT COUNT(*) FROM aether_jobs WHERE status = ? AND updated_at_ms < ?"
+    sel: Statement = db.prepare(
+        "SELECT id, lease_failures FROM aether_jobs WHERE status = ? AND updated_at_ms < ?"
     )
-    cnt.bind_str(0, status_running())
-    cnt.bind_int(1, cutoff)
-    cnt_rows: list[Row] = cnt.query()
+    sel.bind_str(0, status_running())
+    sel.bind_int(1, cutoff)
+    rows: list[Row] = sel.query()
     n: int = 0
-    if len(cnt_rows) > 0:
-        n = cnt_rows[0].get_int(0)
-    if n == 0:
-        return 0
-    stmt: Statement = db.prepare(
-        "UPDATE aether_jobs SET status = ?, last_error = ?, updated_at_ms = ?, run_at_ms = ? " +
-        "WHERE status = ? AND updated_at_ms < ?"
-    )
-    stmt.bind_str(0, status_queued())
-    stmt.bind_str(1, "reclaimed: stale running job")
-    stmt.bind_int(2, now)
-    stmt.bind_int(3, now)
-    stmt.bind_str(4, status_running())
-    stmt.bind_int(5, cutoff)
-    stmt.execute()
+    i: int = 0
+    while i < len(rows):
+        id: int = rows[i].get_int(0)
+        failures: int = rows[i].get_int(1) + 1
+        if failures >= max_lease_failures():
+            upd: Statement = db.prepare(
+                "UPDATE aether_jobs SET status = ?, lease_failures = ?, lease_token = '', " +
+                "last_error = ?, updated_at_ms = ? WHERE id = ? AND status = ?"
+            )
+            upd.bind_str(0, status_failed())
+            upd.bind_int(1, failures)
+            upd.bind_str(2, "reclaimed: exceeded lease failures")
+            upd.bind_int(3, now)
+            upd.bind_int(4, id)
+            upd.bind_str(5, status_running())
+            upd.execute()
+        else:
+            upd2: Statement = db.prepare(
+                "UPDATE aether_jobs SET status = ?, lease_failures = ?, lease_token = '', " +
+                "last_error = ?, run_at_ms = ?, updated_at_ms = ? WHERE id = ? AND status = ?"
+            )
+            upd2.bind_str(0, status_queued())
+            upd2.bind_int(1, failures)
+            upd2.bind_str(2, "reclaimed: stale running job")
+            upd2.bind_int(3, now)
+            upd2.bind_int(4, now)
+            upd2.bind_int(5, id)
+            upd2.bind_str(6, status_running())
+            upd2.execute()
+        n = n + 1
+        i = i + 1
     return n
 
 def list_dead(db: Connection, limit: int) -> list[str]:
-    # Dead-letter: permanently failed jobs.
     if limit <= 0:
         limit = 50
     stmt: Statement = db.prepare(
-        "SELECT id, job_name, payload, status, attempts, run_at_ms, last_error, updated_at_ms " +
+        "SELECT id, job_name, payload, status, attempts, run_at_ms, last_error, updated_at_ms, lease_failures " +
         "FROM aether_jobs WHERE status = ? ORDER BY updated_at_ms DESC, id DESC LIMIT ?"
     )
     stmt.bind_str(0, status_failed())
@@ -184,8 +228,8 @@ def requeue_dead(db: Connection, id: int) -> None:
     if len(found) == 0:
         raise QueueError("dead job not found: " + str(id))
     stmt: Statement = db.prepare(
-        "UPDATE aether_jobs SET status = ?, attempts = 0, last_error = '', run_at_ms = ?, updated_at_ms = ? " +
-        "WHERE id = ? AND status = ?"
+        "UPDATE aether_jobs SET status = ?, attempts = 0, lease_failures = 0, lease_token = '', " +
+        "last_error = '', run_at_ms = ?, updated_at_ms = ? WHERE id = ? AND status = ?"
     )
     stmt.bind_str(0, status_queued())
     stmt.bind_int(1, now)
@@ -195,7 +239,6 @@ def requeue_dead(db: Connection, id: int) -> None:
     stmt.execute()
 
 def mark_dead(db: Connection, id: int, error: str) -> None:
-    # Move a job straight to the dead-letter (failed) state.
     now: int = nox.time.now_ms()
     sel: Statement = db.prepare("SELECT attempts FROM aether_jobs WHERE id = ?")
     sel.bind_int(0, id)
@@ -206,7 +249,7 @@ def mark_dead(db: Connection, id: int, error: str) -> None:
     if attempts < max_attempts():
         attempts = max_attempts()
     stmt: Statement = db.prepare(
-        "UPDATE aether_jobs SET status = ?, attempts = ?, last_error = ?, updated_at_ms = ? WHERE id = ?"
+        "UPDATE aether_jobs SET status = ?, attempts = ?, lease_token = '', last_error = ?, updated_at_ms = ? WHERE id = ?"
     )
     stmt.bind_str(0, status_failed())
     stmt.bind_int(1, attempts)
@@ -225,28 +268,45 @@ def set_run_at(db: Connection, id: int, run_at_ms: int) -> None:
     stmt.bind_int(2, id)
     stmt.execute()
 
-def complete(db: Connection, id: int) -> None:
+def complete(db: Connection, id: int, lease_token: str) -> None:
     now: int = nox.time.now_ms()
     stmt: Statement = db.prepare(
-        "UPDATE aether_jobs SET status = ?, updated_at_ms = ? WHERE id = ?"
+        "UPDATE aether_jobs SET status = ?, lease_token = '', updated_at_ms = ? " +
+        "WHERE id = ? AND lease_token = ? AND status = ?"
     )
     stmt.bind_str(0, status_completed())
     stmt.bind_int(1, now)
     stmt.bind_int(2, id)
+    stmt.bind_str(3, lease_token)
+    stmt.bind_str(4, status_running())
     stmt.execute()
-
-def fail(db: Connection, id: int, error: str) -> None:
-    now: int = nox.time.now_ms()
-    sel: Statement = db.prepare("SELECT attempts FROM aether_jobs WHERE id = ?")
-    sel.bind_int(0, id)
-    rows: list[Row] = sel.query()
+    check: Statement = db.prepare(
+        "SELECT id FROM aether_jobs WHERE id = ? AND status = ?"
+    )
+    check.bind_int(0, id)
+    check.bind_str(1, status_completed())
+    rows: list[Row] = check.query()
     if len(rows) == 0:
-        raise QueueError("job not found: " + str(id))
-    attempts: int = rows[0].get_int(0) + 1
+        raise QueueError("complete rejected: stale or invalid lease for job " + str(id))
+
+def fail(db: Connection, id: int, lease_token: str, error: str) -> None:
+    now: int = nox.time.now_ms()
+    # Verify lease first.
+    own: Statement = db.prepare(
+        "SELECT attempts FROM aether_jobs WHERE id = ? AND lease_token = ? AND status = ?"
+    )
+    own.bind_int(0, id)
+    own.bind_str(1, lease_token)
+    own.bind_str(2, status_running())
+    owned: list[Row] = own.query()
+    if len(owned) == 0:
+        raise QueueError("fail rejected: stale or invalid lease for job " + str(id))
+    attempts: int = owned[0].get_int(0) + 1
     if attempts < max_attempts():
         backoff_ms: int = attempts * attempts * 1000
         stmt: Statement = db.prepare(
-            "UPDATE aether_jobs SET status = ?, attempts = ?, last_error = ?, run_at_ms = ?, updated_at_ms = ? WHERE id = ?"
+            "UPDATE aether_jobs SET status = ?, attempts = ?, lease_token = '', last_error = ?, " +
+            "run_at_ms = ?, updated_at_ms = ? WHERE id = ? AND lease_token = ?"
         )
         stmt.bind_str(0, status_queued())
         stmt.bind_int(1, attempts)
@@ -254,16 +314,19 @@ def fail(db: Connection, id: int, error: str) -> None:
         stmt.bind_int(3, now + backoff_ms)
         stmt.bind_int(4, now)
         stmt.bind_int(5, id)
+        stmt.bind_str(6, lease_token)
         stmt.execute()
     else:
         stmt2: Statement = db.prepare(
-            "UPDATE aether_jobs SET status = ?, attempts = ?, last_error = ?, updated_at_ms = ? WHERE id = ?"
+            "UPDATE aether_jobs SET status = ?, attempts = ?, lease_token = '', last_error = ?, " +
+            "updated_at_ms = ? WHERE id = ? AND lease_token = ?"
         )
         stmt2.bind_str(0, status_failed())
         stmt2.bind_int(1, attempts)
         stmt2.bind_str(2, error)
         stmt2.bind_int(3, now)
         stmt2.bind_int(4, id)
+        stmt2.bind_str(5, lease_token)
         stmt2.execute()
 
 class JobRegistry:
@@ -323,16 +386,23 @@ def work(db: Connection, registry: JobRegistry, limit: int) -> int:
             id: int = _field_int(job, "id")
             name: str = _field_str(job, "job_name")
             payload: str = _field_str(job, "payload")
+            token: str = _field_str(job, "lease_token")
             try:
                 handler: (str) -> None = registry.get(name)
                 handler(payload)
-                complete(db, id)
+                complete(db, id, token)
                 processed = processed + 1
             except QueueError as e:
-                fail(db, id, e.message)
+                try:
+                    fail(db, id, token, e.message)
+                except QueueError:
+                    pass
                 processed = processed + 1
             except Exception as e:
-                fail(db, id, e.message)
+                try:
+                    fail(db, id, token, e.message)
+                except QueueError:
+                    pass
                 processed = processed + 1
         else:
             return processed

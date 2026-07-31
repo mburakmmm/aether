@@ -1,7 +1,7 @@
-# aether.context — request-scoped HttpContext + TaskLocal + client IP helpers.
+# aether.context — request-scoped HttpContext + TaskLocal.
 #
-# DI model (official): closure injection. Container only tracks provider *names*
-# and request-scoped string values — see README / ARCHITECTURE.
+# DI model (official): closure injection. Container tracks provider *names* only.
+# Request-scoped string values live in TaskLocal RequestState (fiber-safe).
 
 from nox.http import HttpRequest
 import aether.container
@@ -16,6 +16,7 @@ class RequestState:
     input_json: str
     path: str
     method: str
+    values: dict[str, str]
 
     def __init__(self: RequestState) -> None:
         self.active = False
@@ -23,6 +24,7 @@ class RequestState:
         self.input_json = ""
         self.path = ""
         self.method = ""
+        self.values = {}
 
 _tl: TaskLocal[RequestState] = TaskLocal[RequestState]()
 
@@ -42,6 +44,7 @@ def begin(rid: str, method: str, path: str) -> None:
     st.method = method
     st.path = path
     st.input_json = ""
+    st.values = {}
 
 def finish() -> None:
     st: RequestState = _state()
@@ -50,6 +53,7 @@ def finish() -> None:
     st.input_json = ""
     st.path = ""
     st.method = ""
+    st.values = {}
     _tl.clear()
 
 def current_request_id() -> str:
@@ -60,6 +64,22 @@ def set_input_json(raw: str) -> None:
 
 def input_json() -> str:
     return _state().input_json
+
+def set_request_value(key: str, value: str) -> None:
+    st: RequestState = _state()
+    vals: dict[str, str] = st.values
+    vals[key] = value
+    st.values = vals
+
+def get_request_value(key: str) -> str:
+    vals: dict[str, str] = _state().values
+    keys: list[str] = vals.keys()
+    i: int = 0
+    while i < len(keys):
+        if keys[i] == key:
+            return vals[key]
+        i = i + 1
+    return ""
 
 def _substr(s: str, start: int, end_idx: int) -> str:
     out: str = ""
@@ -86,7 +106,6 @@ def normalize_path(path: str) -> str:
         return "/"
     if path == "/":
         return "/"
-    # Strip trailing slash (keep root).
     last: int = len(path) - 1
     if path[last] == "/":
         return _substr(path, 0, last)
@@ -115,14 +134,12 @@ def header_get(headers: dict[str, str], name: str) -> str:
     return ""
 
 def client_ip(headers: dict[str, str], trust_xff: bool) -> str:
-    # Nox has no peer address yet. Without trust_xff we cannot know the client.
     if trust_xff:
         xff: str = header_get(headers, "X-Forwarded-For")
         if len(xff) > 0:
             parts: list[str] = nox.strings.split(xff, ",")
             if len(parts) > 0:
                 hop: str = parts[0]
-                # trim spaces
                 out: str = ""
                 i: int = 0
                 while i < len(hop):
@@ -207,7 +224,7 @@ class HttpContext:
         return input_json()
 
     def set_request_value(self: HttpContext, key: str, value: str) -> None:
-        self.container.set_request_value(key, value)
+        set_request_value(key, value)
 
     def get_request_value(self: HttpContext, key: str) -> str:
-        return self.container.get_request_value(key)
+        return get_request_value(key)

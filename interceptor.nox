@@ -1,4 +1,4 @@
-# aether.interceptor — before may short-circuit with HttpResponse | None.
+# aether.interceptor — before may short-circuit; after unwinds only entered frames.
 
 from nox.http import HttpResponse
 import aether.context
@@ -17,19 +17,37 @@ class InterceptorFns:
         self.before_fn = before_fn
         self.after_fn = after_fn
 
-def run_before(interceptors: list[InterceptorFns], ctx: HttpContext) -> HttpResponse | None:
+class BeforeResult:
+    response: HttpResponse | None
+    entered_count: int
+
+    def __init__(self: BeforeResult, response: HttpResponse | None, entered_count: int) -> None:
+        self.response = response
+        self.entered_count = entered_count
+
+def run_before(interceptors: list[InterceptorFns], ctx: HttpContext) -> BeforeResult:
     i: int = 0
     while i < len(interceptors):
         item: InterceptorFns = interceptors[i]
         early: HttpResponse | None = item.before_fn(ctx)
-        if early != None:
-            return early
+        # Count this frame as entered (before ran).
         i = i + 1
-    return None
+        if early != None:
+            return BeforeResult(early, i)
+    return BeforeResult(None, i)
 
-def run_after(interceptors: list[InterceptorFns], ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
+def run_after(
+    interceptors: list[InterceptorFns],
+    ctx: HttpContext,
+    resp: HttpResponse,
+    entered_count: int
+) -> HttpResponse:
     out: HttpResponse = resp
-    i: int = len(interceptors) - 1
+    # Unwind only interceptors whose before actually ran.
+    limit: int = entered_count
+    if limit > len(interceptors):
+        limit = len(interceptors)
+    i: int = limit - 1
     while i >= 0:
         item: InterceptorFns = interceptors[i]
         out = item.after_fn(ctx, out)
@@ -43,6 +61,7 @@ def _noop_after(ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
     return resp
 
 def request_id_interceptor() -> InterceptorFns:
+    # Prefer app-level finalize for X-Request-Id; keep as optional onion layer.
     def after_fn(ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
         return aether.response.with_header(resp, "X-Request-Id", ctx.request_id + "")
     return InterceptorFns(_noop_before, after_fn)
