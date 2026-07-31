@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.1 — 2026-07-31
+
+Correctness hardening (no new feature surface).
+
+- Response finalizers always apply `X-Request-Id` + CORS (error and success)
+- Interceptor early-return unwinds only entered frames (`entered_count`)
+- Request-scoped values moved to TaskLocal `RequestState` (Container is names-only)
+- Production rate-limit default **off**; empty client IP skips limiting; bucket eviction
+- CORS allowlist + `Vary: Origin`; single OPTIONS path in `dispatch`
+- Metrics are per-`Application` (not process-global)
+- Boot rejects duplicate routes; provider name duplicates rejected
+- Queue lease tokens on reserve/complete/fail; reclaim increments lease failures → DLQ
+- Docs: DI/`provide(name)` wording aligned in `NOX_LIMITATIONS.md`
+
 ## 0.2.0 — 2026-07-31
 
 Hardening and Nest-shaped API surface for production HTTP services.

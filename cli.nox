@@ -40,7 +40,7 @@ def _read_version() -> str:
             if len(out) > 0:
                 return out
         i = i + 1
-    return "0.2.0"
+    return "0.2.1"
 
 def cmd_new(name: str) -> None:
     if len(name) == 0:
