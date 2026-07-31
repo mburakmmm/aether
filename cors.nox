@@ -20,35 +20,28 @@ def parse_origins(raw: str) -> list[str]:
     return out
 
 def _trim(s: str) -> str:
-    out: str = ""
-    started: bool = False
-    i: int = 0
-    while i < len(s):
-        ch: str = s[i]
+    start: int = 0
+    done_start: bool = False
+    while start < len(s) and not done_start:
+        ch: str = s[start]
         if ch == " " or ch == "\t":
-            if started:
-                # defer trailing spaces — rebuild without trailing at end
-                out = out + ch
+            start = start + 1
         else:
-            started = True
-            out = out + ch
-        i = i + 1
-    # strip trailing spaces
-    end: int = len(out)
-    while end > 0:
-        last: str = out[end - 1]
-        if last == " " or last == "\t":
+            done_start = True
+    end: int = len(s)
+    done_end: bool = False
+    while end > start and not done_end:
+        ch2: str = s[end - 1]
+        if ch2 == " " or ch2 == "\t":
             end = end - 1
         else:
-            break
-    if end == len(out):
-        return out
-    cleaned: str = ""
-    j: int = 0
-    while j < end:
-        cleaned = cleaned + out[j]
-        j = j + 1
-    return cleaned
+            done_end = True
+    out: str = ""
+    i: int = start
+    while i < end:
+        out = out + s[i]
+        i = i + 1
+    return out
 
 def resolve_allow_origin(origins_cfg: str, request_origin: str) -> str:
     origins: list[str] = parse_origins(origins_cfg)

@@ -75,15 +75,18 @@ params: dict[str, str] = {}
 begin("i1", "GET", "/x")
 ctx: HttpContext = HttpContext(req, params, app0.container, "i1", "", False)
 br: BeforeResult = run_before(xs, ctx)
-nox.test.assert_true(br.response != None, "early response")
+early_opt: HttpResponse | None = br.response
 nox.test.assert_eq_int(br.entered_count, 2, "entered 1 and 2")
-early_resp: HttpResponse = br.response
-out: HttpResponse = run_after(xs, ctx, early_resp, br.entered_count)
-joined: str = _join(calls)
-nox.test.assert_true(nox.strings.contains(joined, "a:2"), "after 2")
-nox.test.assert_true(nox.strings.contains(joined, "a:1"), "after 1")
-nox.test.assert_true(not nox.strings.contains(joined, "a:3"), "no after 3")
-nox.test.assert_true(not nox.strings.contains(joined, "b:3"), "no before 3")
+if early_opt == None:
+    nox.test.assert_true(False, "early response missing")
+else:
+    early_resp: HttpResponse = early_opt
+    out: HttpResponse = run_after(xs, ctx, early_resp, br.entered_count)
+    joined: str = _join(calls)
+    nox.test.assert_true(nox.strings.contains(joined, "a:2"), "after 2")
+    nox.test.assert_true(nox.strings.contains(joined, "a:1"), "after 1")
+    nox.test.assert_true(not nox.strings.contains(joined, "a:3"), "no after 3")
+    nox.test.assert_true(not nox.strings.contains(joined, "b:3"), "no before 3")
 finish()
 
 # --- Error path finalizers: X-Request-Id + CORS ---

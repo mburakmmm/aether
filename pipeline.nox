@@ -91,7 +91,8 @@ def execute(
         combined.append(route.interceptors[i])
         i = i + 1
     before: BeforeResult = run_before(combined, ctx)
-    if before.response != None:
-        return run_after(combined, ctx, before.response, before.entered_count)
+    early: HttpResponse | None = before.response
+    if early != None:
+        return run_after(combined, ctx, early, before.entered_count)
     resp: HttpResponse = route.handler(ctx)
     return run_after(combined, ctx, resp, before.entered_count)

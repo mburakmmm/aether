@@ -58,12 +58,12 @@ def ensure_schema(db: Connection) -> None:
     # Best-effort upgrades for older schemas.
     try:
         db.execute("ALTER TABLE aether_jobs ADD COLUMN lease_failures INTEGER NOT NULL DEFAULT 0")
-    except SqliteError:
-        pass
+    except SqliteError as e:
+        ignored: str = e.message
     try:
         db.execute("ALTER TABLE aether_jobs ADD COLUMN lease_token TEXT NOT NULL DEFAULT ''")
-    except SqliteError:
-        pass
+    except SqliteError as e2:
+        ignored2: str = e2.message
     db.execute(
         "CREATE INDEX IF NOT EXISTS idx_aether_jobs_status_run_at ON aether_jobs (status, run_at_ms)"
     )
