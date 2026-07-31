@@ -194,7 +194,37 @@ def requeue_dead(db: Connection, id: int) -> None:
     stmt.bind_str(4, status_failed())
     stmt.execute()
 
-def complete(db: Connection, id: int) -> None:
+def mark_dead(db: Connection, id: int, error: str) -> None:
+    # Move a job straight to the dead-letter (failed) state.
+    now: int = nox.time.now_ms()
+    sel: Statement = db.prepare("SELECT attempts FROM aether_jobs WHERE id = ?")
+    sel.bind_int(0, id)
+    rows: list[Row] = sel.query()
+    if len(rows) == 0:
+        raise QueueError("job not found: " + str(id))
+    attempts: int = rows[0].get_int(0)
+    if attempts < max_attempts():
+        attempts = max_attempts()
+    stmt: Statement = db.prepare(
+        "UPDATE aether_jobs SET status = ?, attempts = ?, last_error = ?, updated_at_ms = ? WHERE id = ?"
+    )
+    stmt.bind_str(0, status_failed())
+    stmt.bind_int(1, attempts)
+    stmt.bind_str(2, error)
+    stmt.bind_int(3, now)
+    stmt.bind_int(4, id)
+    stmt.execute()
+
+def set_run_at(db: Connection, id: int, run_at_ms: int) -> None:
+    now: int = nox.time.now_ms()
+    stmt: Statement = db.prepare(
+        "UPDATE aether_jobs SET run_at_ms = ?, updated_at_ms = ? WHERE id = ?"
+    )
+    stmt.bind_int(0, run_at_ms)
+    stmt.bind_int(1, now)
+    stmt.bind_int(2, id)
+    stmt.execute()
+
     now: int = nox.time.now_ms()
     stmt: Statement = db.prepare(
         "UPDATE aether_jobs SET status = ?, updated_at_ms = ? WHERE id = ?"

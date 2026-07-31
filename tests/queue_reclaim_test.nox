@@ -21,8 +21,7 @@ nox.test.assert_true(id > 0, "enqueue id")
 raw: str | None = aether.queue.reserve(db)
 nox.test.assert_true(raw != None, "reserved")
 
-# Force stale window: sleep then reclaim with tiny threshold.
-nox.time.sleep_ms(20)
+nox.time.sleep_ms(50)
 n_reclaim: int = aether.queue.reclaim_stale(db, 1)
 nox.test.assert_true(n_reclaim >= 1, "reclaimed")
 
@@ -30,6 +29,7 @@ n: int = aether.queue.work(db, registry, 5)
 nox.test.assert_eq_int(n, 1, "processed after reclaim")
 nox.test.assert_eq_int(len(seen), 1, "handler called")
 
+# Exhaust attempts with zero backoff between tries.
 def boom(payload: str) -> None:
     raise aether.queue.QueueError("always fail")
 
@@ -37,7 +37,8 @@ registry.register("boom", boom)
 boom_id: int = aether.queue.enqueue(db, "boom", "{\"x\":1}", 0)
 
 k: int = 0
-while k < 12:
+while k < aether.queue.max_attempts():
+    aether.queue.set_run_at(db, boom_id, 0)
     aether.queue.work(db, registry, 1)
     k = k + 1
 
@@ -45,5 +46,11 @@ dead: list[str] = aether.queue.list_dead(db, 10)
 nox.test.assert_true(len(dead) >= 1, "has dead letter")
 
 aether.queue.requeue_dead(db, boom_id)
+
+# Direct DLQ helper
+dead2_id: int = aether.queue.enqueue(db, "boom", "{\"y\":1}", 0)
+aether.queue.mark_dead(db, dead2_id, "manual dead")
+dead2: list[str] = aether.queue.list_dead(db, 10)
+nox.test.assert_true(len(dead2) >= 1, "mark_dead works")
 
 print("queue_reclaim_test ok")
