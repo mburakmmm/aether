@@ -30,7 +30,9 @@ class QhModule:
         opts.query_schema = q
         opts.has_headers = True
         opts.header_schema = h
-        opts.guards.append(jwt_bearer("qh-secret-key-32bytes-aaaaaaaa"))
+        gs: list[(HttpContext) -> bool] = opts.guards
+        gs.append(jwt_bearer("qh-secret-key-32bytes-aaaaaaaa"))
+        opts.guards = gs
         m.route("GET", "/search", self._search(), opts)
 
     def _search(self: QhModule) -> (HttpContext) -> HttpResponse:
