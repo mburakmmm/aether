@@ -2,7 +2,6 @@
 
 import nox.strings
 from nox.http import HttpRequest, HttpResponse
-import aether.context
 import aether.response
 from aether.context import header_get
 
@@ -13,46 +12,24 @@ def parse_origins(raw: str) -> list[str]:
     parts: list[str] = nox.strings.split(raw, ",")
     i: int = 0
     while i < len(parts):
-        p: str = _trim(parts[i])
+        p: str = nox.strings.trim(parts[i])
         if len(p) > 0:
             out.append(p)
         i = i + 1
     return out
 
-def _trim(s: str) -> str:
-    start: int = 0
-    done_start: bool = False
-    while start < len(s) and not done_start:
-        ch: str = s[start]
-        if ch == " " or ch == "\t":
-            start = start + 1
-        else:
-            done_start = True
-    end: int = len(s)
-    done_end: bool = False
-    while end > start and not done_end:
-        ch2: str = s[end - 1]
-        if ch2 == " " or ch2 == "\t":
-            end = end - 1
-        else:
-            done_end = True
-    out: str = ""
-    i: int = start
-    while i < end:
-        out = out + s[i]
-        i = i + 1
-    return out
-
 def resolve_allow_origin(origins_cfg: str, request_origin: str) -> str:
     origins: list[str] = parse_origins(origins_cfg)
-    if len(origins) == 0:
+    n: int = len(origins)
+    if n == 0:
         return ""
-    if len(origins) == 1 and origins[0] == "*":
-        return "*"
+    if n == 1:
+        if origins[0] == "*":
+            return "*"
     if len(request_origin) == 0:
         return ""
     i: int = 0
-    while i < len(origins):
+    while i < n:
         if origins[i] == request_origin:
             return request_origin
         i = i + 1

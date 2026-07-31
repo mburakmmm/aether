@@ -395,14 +395,14 @@ def work(db: Connection, registry: JobRegistry, limit: int) -> int:
             except QueueError as e:
                 try:
                     fail(db, id, token, e.message)
-                except QueueError:
-                    pass
+                except QueueError as e_fail:
+                    ignored_fail: str = e_fail.message
                 processed = processed + 1
             except Exception as e:
                 try:
                     fail(db, id, token, e.message)
-                except QueueError:
-                    pass
+                except QueueError as e_fail2:
+                    ignored_fail2: str = e_fail2.message
                 processed = processed + 1
         else:
             return processed
