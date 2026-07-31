@@ -59,10 +59,12 @@ class UsersModule:
             name: str | None = svc.find(id)
             if name == None:
                 raise NotFoundError("user not found")
-            data: dict[str, str] = {}
-            data["id"] = id
-            data["name"] = name
-            return json_ok(encode_str_map(data))
+            else:
+                found: str = name
+                data: dict[str, str] = {}
+                data["id"] = id
+                data["name"] = found
+                return json_ok(encode_str_map(data))
         return show
 
     def _create(self: UsersModule, svc: UserService) -> (HttpContext) -> HttpResponse:

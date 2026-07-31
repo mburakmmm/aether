@@ -18,7 +18,7 @@ import aether.interceptor
 from aether.config import Config
 from aether.container import Container
 from aether.context import HttpContext, begin, finish, path_only
-from aether.module import ModuleBuilder, RouteDef
+from aether.module import ModuleBuilder, RouteDef, RouteTable, HookState
 from aether.pipeline import MatchResult, find_route, execute
 from aether.errors import HttpError, NotFoundError, error_json
 from aether.interceptor import InterceptorFns, request_id_interceptor
@@ -31,10 +31,8 @@ class AppError(Exception):
 class Application:
     config: Config
     container: Container
-    routes: list[RouteDef]
-    global_guards: list[(HttpContext) -> bool]
-    global_pipes: list[(HttpContext) -> None]
-    global_interceptors: list[InterceptorFns]
+    route_table: RouteTable
+    hooks: HookState
     _shutdown_hooks: list[() -> None]
     openapi_doc: str
     _closed: bool
@@ -43,31 +41,21 @@ class Application:
         self: Application,
         cfg: Config,
         container: Container,
-        routes: list[RouteDef],
-        global_guards: list[(HttpContext) -> bool],
-        global_pipes: list[(HttpContext) -> None],
-        global_interceptors: list[InterceptorFns],
-        hooks: list[() -> None],
+        route_table: RouteTable,
+        hooks: HookState,
+        shutdown_hooks: list[() -> None],
         openapi_doc: str
     ) -> None:
         self.config = cfg
         self.container = container
-        self.routes = routes
-        self.global_guards = global_guards
-        self.global_pipes = global_pipes
-        self.global_interceptors = global_interceptors
-        self._shutdown_hooks = hooks
+        self.route_table = route_table
+        self.hooks = hooks
+        self._shutdown_hooks = shutdown_hooks
         self.openapi_doc = openapi_doc
         self._closed = False
 
     def module(self: Application) -> ModuleBuilder:
-        return ModuleBuilder(
-            self.routes,
-            self.container,
-            self.global_guards,
-            self.global_pipes,
-            self.global_interceptors
-        )
+        return ModuleBuilder(self.route_table, self.container, self.hooks)
 
     def import_configure(self: Application, configure: (ModuleBuilder) -> None) -> None:
         configure(self.module())
@@ -86,13 +74,14 @@ def _mount_framework_routes(app: Application) -> None:
     def openapi_handler(ctx: HttpContext) -> HttpResponse:
         return aether.response.json_ok(app.openapi_doc + "")
 
-    routes: list[RouteDef] = app.routes
+    table: RouteTable = app.route_table
+    routes: list[RouteDef] = table.routes
     routes.append(RouteDef("GET", "/health", health, "Health check", "system", False, empty, False, empty))
     if app.config.openapi_enabled:
         routes.append(
             RouteDef("GET", "/openapi.json", openapi_handler, "OpenAPI document", "system", False, empty, False, empty)
         )
-    app.routes = routes
+    table.routes = routes
 
 def boot(build: (Application) -> None) -> Application:
     cfg: Config = aether.config.load()
@@ -100,19 +89,18 @@ def boot(build: (Application) -> None) -> Application:
 
 def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
     container: Container = Container()
-    routes: list[RouteDef] = []
-    guards: list[(HttpContext) -> bool] = []
-    pipes: list[(HttpContext) -> None] = []
-    interceptors: list[InterceptorFns] = []
-    interceptors.append(request_id_interceptor())
-    hooks: list[() -> None] = []
-    app: Application = Application(cfg, container, routes, guards, pipes, interceptors, hooks, "{}")
+    table: RouteTable = RouteTable()
+    hooks: HookState = HookState()
+    xs: list[InterceptorFns] = hooks.interceptors
+    xs.append(request_id_interceptor())
+    hooks.interceptors = xs
+    shutdown_hooks: list[() -> None] = []
+    app: Application = Application(cfg, container, table, hooks, shutdown_hooks, "{}")
     build(app)
-    app.openapi_doc = aether.openapi.build_document(cfg, app.routes)
+    app.openapi_doc = aether.openapi.build_document(cfg, app.route_table.routes)
     _mount_framework_routes(app)
-    # Rebuild openapi after framework routes so /health appears.
     if cfg.openapi_enabled:
-        app.openapi_doc = aether.openapi.build_document(cfg, app.routes)
+        app.openapi_doc = aether.openapi.build_document(cfg, app.route_table.routes)
     return app
 
 def _error_response(cfg: Config, err: HttpError, kind: str) -> HttpResponse:
@@ -129,7 +117,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
     resp: HttpResponse = aether.response.json(500, "{\"error\":{\"code\":\"internal_error\",\"message\":\"unset\"}}")
     try:
         try:
-            matched: MatchResult | None = find_route(app.routes, req.method, path)
+            matched: MatchResult | None = find_route(app.route_table.routes, req.method, path)
             if matched == None:
                 raise NotFoundError("route not found: " + req.method + " " + path)
             else:
@@ -138,9 +126,9 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                 resp = execute(
                     hit.route,
                     ctx,
-                    app.global_guards,
-                    app.global_pipes,
-                    app.global_interceptors
+                    app.hooks.guards,
+                    app.hooks.pipes,
+                    app.hooks.interceptors
                 )
         except HttpError as e:
             resp = _error_response(app.config, e, "HttpError")
