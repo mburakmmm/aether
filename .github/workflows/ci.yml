@@ -75,6 +75,11 @@ jobs:
           chmod +x scripts/smoke_http.sh
           ./scripts/smoke_http.sh
 
+      - name: HTTP smoke (multicore workers=2)
+        run: |
+          chmod +x scripts/smoke_http_multicore.sh
+          ./scripts/smoke_http_multicore.sh
+
       - name: Package-install smoke
         run: |
           chmod +x scripts/smoke_package.sh

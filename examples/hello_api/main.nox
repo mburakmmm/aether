@@ -154,7 +154,7 @@ cfg: Config = aether.config.load()
 app: Application = aether.application.boot_with_config(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
-    return aether.application.dispatch_bound(req)
+    return aether.application.dispatch_ensure(req, cfg, build)
 
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
 try:

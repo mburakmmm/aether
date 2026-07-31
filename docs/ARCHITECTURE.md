@@ -33,5 +33,5 @@ See README for the full module table.
 
 - Boot-time route/guard/pipe binding
 - OpenAPI built once at boot
-- Prefer `serve_multicore` in production
-- Per-worker memory (Nox multicore does not share ARC heaps)
+- Prefer `serve_multicore` with `dispatch_ensure(req, cfg, build)` when `AETHER_WORKERS>1`
+- Default `AETHER_WORKERS=1`; in-memory state is per-worker (Nox multicore does not share ARC heaps)

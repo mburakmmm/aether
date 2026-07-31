@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-07-31
+
+Supported multicore via per-worker ensure-boot.
+
+- `ensure_bound` / `dispatch_ensure(req, cfg, build)` — each `serve_multicore` worker boots its own `AppBind`
+- Scaffolds / examples / bench use `dispatch_ensure` (safe for workers=1 and workers>1)
+- Multicore HTTP smoke (`scripts/smoke_http_multicore.sh`, `AETHER_WORKERS=2`)
+- Docs: multicore is opt-in supported (default still 1); in-memory state remains worker-local
+
 ## 0.4.4 — 2026-07-31
 
 Hardening follow-up (fingerprint, reclaim batching, release smoke).

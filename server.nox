@@ -5,11 +5,12 @@
 # Kullanım (scaffold / examples):
 #
 #   def handle(req: HttpRequest) -> HttpResponse:
-#       return aether.application.dispatch_bound(req)
+#       return aether.application.dispatch_ensure(req, cfg, build)
 #   nox.http.serve(app.config.port, handle)
 #
 # boot_with_config auto-calls bind(app). Do not close over Application in handle
-# (Nox codegen rejects that with serve*).
+# (Nox codegen rejects that with serve*). Under serve_multicore each worker has a
+# fresh AppBind — dispatch_ensure re-boots from cfg+build on first use.
 #
 # Multicore:
 #   nox.http.serve_multicore(app.config.port, handle, aether.server.effective_workers(app.config))
@@ -38,10 +39,10 @@ def require_tls_files(cfg: Config) -> None:
     if not nox.fs.exists(cfg.tls_key_path):
         raise ServerError("TLS key missing: " + cfg.tls_key_path)
 
+# AppBind / module globals are not shared across serve_multicore workers.
+# Use dispatch_ensure(req, cfg, build) so each worker can boot its own AppBind.
+# Default workers=1; set AETHER_WORKERS>1 for multicore.
 def effective_workers(cfg: Config) -> int:
-    # AppBind / module globals are not safely shared across serve_multicore
-    # workers. Default to 1 until Nox provides per-worker boot. Explicit
-    # AETHER_WORKERS>1 remains available for experiments.
     if cfg.workers > 0:
         return cfg.workers
     return 1

@@ -201,7 +201,9 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Desired Nox change:** Documented shared-memory primitives for selected framework state (or atomic ARC).
 
-**Aether workaround:** SQLite-backed job queue for cross-process work; document that in-memory gateway hubs are process-local; prefer external store for multi-worker broadcast.
+**Aether workaround:** SQLite-backed job queue for cross-worker work; document that in-memory
+gateway hubs / `RateStore` / `Metrics` are worker-local. HTTP multicore is supported via
+`dispatch_ensure(req, cfg, build)` so each worker boots its own `AppBind` (see §19).
 
 ---
 
@@ -316,7 +318,10 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Desired Nox change:** Allow serve handlers to close over complex package class instances (or document free-variable restrictions for serve intrinsics).
 
-**Aether workaround:** `boot_with_config` calls `bind(app)`; entrypoints use `dispatch_bound` / `shutdown_bound`.
+**Aether workaround:** `boot_with_config` calls `bind(app)` on the calling thread. Entrypoints use
+`dispatch_ensure(req, cfg, build)` so `serve_multicore` workers (fresh `AppBind`) re-boot from
+`cfg`+`build` without closing over `Application`. `dispatch_bound` / `shutdown_bound` remain for
+single-worker paths.
 
 ---
 

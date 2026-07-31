@@ -392,7 +392,8 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
         return _complete_request(app, req, rid, path, route_key, started, resp_opt)
 
 # Serve handlers must not close over Application directly — Nox codegen rejects
-# that combination. Prefer dispatch_bound() after boot (boot auto-bind) or bind().
+# that combination. Prefer dispatch_ensure(req, cfg, build) under serve_multicore
+# (each worker has a fresh AppBind) or dispatch_bound() after a single-worker boot.
 class AppBind:
     apps: list[Application]
 
@@ -411,8 +412,18 @@ def bound() -> Application:
         raise AppError("call aether.application.bind(app) before dispatch_bound")
     return _bind.apps[0]
 
+def ensure_bound(cfg: Config, build: (Application) -> None) -> Application:
+    # Per-worker boot for serve_multicore: each OS worker gets a fresh module-global
+    # AppBind. Pass cfg+build from the serve handle (Application must not be closed over).
+    if len(_bind.apps) == 0:
+        return boot_with_config(cfg, build)
+    return _bind.apps[0]
+
 def dispatch_bound(req: HttpRequest) -> HttpResponse:
     return dispatch(bound(), req)
+
+def dispatch_ensure(req: HttpRequest, cfg: Config, build: (Application) -> None) -> HttpResponse:
+    return dispatch(ensure_bound(cfg, build), req)
 
 def shutdown(app: Application) -> None:
     if app._closed:

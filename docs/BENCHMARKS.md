@@ -11,7 +11,7 @@ Same workload, same machine, `wrk` load generator.
 
 Implementations:
 
-- **Aether** — `benchmarks/aether/main.nox` (`dispatch_bound`; default `AETHER_WORKERS=1`)
+- **Aether** — `benchmarks/aether/main.nox` (`dispatch_ensure`; default `AETHER_WORKERS=1`)
 - **NestJS** — `@nestjs/platform-express` (`benchmarks/nestjs`)
 - **Gin** — `github.com/gin-gonic/gin` release mode (`benchmarks/gin`)
 
@@ -31,7 +31,9 @@ Raw wrk logs land in `benchmarks/results/*.txt` (gitignored).
 
 - Nest uses the default Express adapter (common Nest production path).
 - Aether runs with `AETHER_OPENAPI=0`, `AETHER_LOG_REQUESTS=0`, production CORS default off, route metrics off.
-- Default `AETHER_WORKERS=1`: multicore workers do not re-run module init (`AppBind` empty on workers). See `NOX_LIMITATIONS` §12 + §19.
+- Default `AETHER_WORKERS=1` for fair single-process comparison. Multicore (`AETHER_WORKERS>1`) is
+  supported via `dispatch_ensure` (per-worker boot); in-memory metrics/rate limits stay worker-local.
+  See `NOX_LIMITATIONS` §12 + §19 and `docs/PERF.md`.
 - Query/header validation and JWT are **not** on the ping/echo hot path.
 
 ## Results

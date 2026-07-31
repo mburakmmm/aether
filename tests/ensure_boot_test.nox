@@ -1,0 +1,40 @@
+import nox.test
+import aether.config
+import aether.application
+import aether.testing
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from nox.http import HttpRequest, HttpResponse
+
+def build(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    def ping(ctx: HttpContext) -> HttpResponse:
+        return json_ok("{\"pong\":true}")
+    m.get("/ping", ping)
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+
+# Empty AppBind path: ensure_bound boots and binds.
+app1: Application = aether.application.ensure_bound(cfg, build)
+nox.test.assert_eq_int(aether.testing.get(app1, "/ping").status, 200, "ensure boot ping")
+
+# Already bound: ensure_bound is a no-op (same bound app).
+app2: Application = aether.application.ensure_bound(cfg, build)
+r_bound: HttpResponse = aether.application.dispatch_bound(
+    HttpRequest("GET", "/ping", "", {})
+)
+nox.test.assert_eq_int(r_bound.status, 200, "dispatch_bound after ensure")
+
+r_ensure: HttpResponse = aether.application.dispatch_ensure(
+    HttpRequest("GET", "/ping", "", {}),
+    cfg,
+    build
+)
+nox.test.assert_eq_int(r_ensure.status, 200, "dispatch_ensure ping")
+
+aether.application.shutdown_bound()
+print("ensure_boot_test ok")
