@@ -5,13 +5,13 @@ import aether.application
 import aether.openapi
 from aether.config import Config
 from aether.application import Application
-from aether.module import ModuleBuilder
+from aether.module import ModuleBuilder, ModuleBase
 from aether.context import HttpContext
 from aether.response import json_ok
 from aether.dto import DtoSchema
 from nox.http import HttpResponse
 
-class DocModule:
+class DocModule(ModuleBase):
     def configure(self: DocModule, m: ModuleBuilder) -> None:
         out: DtoSchema = DtoSchema("Pong")
         out.require("pong", "bool")

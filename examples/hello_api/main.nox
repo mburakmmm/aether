@@ -8,7 +8,7 @@ import aether.server
 import aether.config
 from aether.application import Application
 from aether.config import Config
-from aether.module import ModuleBuilder
+from aether.module import ModuleBuilder, ModuleBase
 from aether.context import HttpContext
 from aether.container import Injectable
 from aether.response import json_ok, json_created, encode_str_map
@@ -38,7 +38,7 @@ class UserService(Injectable):
         self._users[id] = name
         return id
 
-class UsersModule:
+class UsersModule(ModuleBase):
     def configure(self: UsersModule, m: ModuleBuilder) -> None:
         svc: UserService = UserService()
         m.provide("UserService", svc)

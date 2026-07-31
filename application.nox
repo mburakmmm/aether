@@ -18,7 +18,7 @@ import aether.interceptor
 from aether.config import Config
 from aether.container import Container
 from aether.context import HttpContext, begin, end, path_only
-from aether.module import ModuleBuilder, RouteDef, AppModule
+from aether.module import ModuleBuilder, RouteDef, ModuleBase
 from aether.pipeline import MatchResult, find_route, execute
 from aether.errors import HttpError, NotFoundError, error_json
 from aether.guard import Guard
@@ -52,7 +52,7 @@ class Application:
         self.openapi_doc = openapi_doc
         self._closed = False
 
-    def import_module(self: Application, mod: AppModule) -> None:
+    def import_module(self: Application, mod: ModuleBase) -> None:
         builder: ModuleBuilder = ModuleBuilder(
             self.routes,
             self.container,

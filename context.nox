@@ -24,10 +24,10 @@ def _state() -> RequestState:
     else:
         return got
 
-def begin(request_id: str, method: str, path: str) -> None:
+def begin(rid: str, method: str, path: str) -> None:
     st: RequestState = _state()
     st.active = True
-    st.request_id = request_id
+    st.request_id = rid
     st.method = method
     st.path = path
     st.input_json = ""
@@ -41,7 +41,7 @@ def end() -> None:
     st.method = ""
     _tl.clear()
 
-def request_id() -> str:
+def current_request_id() -> str:
     return _state().request_id
 
 def set_input_json(raw: str) -> None:

@@ -192,6 +192,6 @@ class ModuleBuilder:
     ) -> None:
         self._add("POST", pattern, handler, summary, True, input_schema, True, output_schema)
 
-protocol AppModule:
-    def configure(self, m: ModuleBuilder) -> None:
+class ModuleBase:
+    def configure(self: ModuleBase, m: ModuleBuilder) -> None:
         pass

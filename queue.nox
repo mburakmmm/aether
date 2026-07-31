@@ -200,7 +200,8 @@ def work(db: Connection, registry: JobRegistry, limit: int) -> int:
         raw: str | None = reserve(db)
         if raw == None:
             return processed
-        job: JsonValue = nox.json.decode(raw)
+        raw_s: str = raw
+        job: JsonValue = nox.json.decode(raw_s)
         id: int = _field_int(job, "id")
         name: str = _field_str(job, "job_name")
         payload: str = _field_str(job, "payload")

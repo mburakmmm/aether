@@ -37,7 +37,7 @@ def cmd_new(name: str) -> None:
     print("created " + name)
     print("  cd " + name + " && noxc fetch && AETHER_ENV=development noxc run main.nox")
 
-def main() -> None:
+def run() -> None:
     n: int = nox.os.arg_count()
     if n < 2:
         _usage()
@@ -55,4 +55,4 @@ def main() -> None:
     _usage()
     nox.os.exit(1)
 
-main()
+run()
