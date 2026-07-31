@@ -51,25 +51,6 @@ def _dto_schema_json(schema: DtoSchema) -> str:
     body = body + "}"
     return body
 
-def _collect_schemas(routes: list[RouteDef]) -> list[DtoSchema]:
-    out: list[DtoSchema] = []
-    names: list[str] = []
-    ri: int = 0
-    while ri < len(routes):
-        r: RouteDef = routes[ri]
-        if r.has_input and len(r.input_schema.name) > 0:
-            if not _has_name(names, r.input_schema.name):
-                names.append(r.input_schema.name)
-                out.append(r.input_schema)
-                _add_nested(out, names, r.input_schema)
-        if r.has_output and len(r.output_schema.name) > 0:
-            if not _has_name(names, r.output_schema.name):
-                names.append(r.output_schema.name)
-                out.append(r.output_schema)
-                _add_nested(out, names, r.output_schema)
-        ri = ri + 1
-    return out
-
 def _has_name(names: list[str], name: str) -> bool:
     i: int = 0
     while i < len(names):
@@ -78,15 +59,38 @@ def _has_name(names: list[str], name: str) -> bool:
         i = i + 1
     return False
 
-def _add_nested(out: list[DtoSchema], names: list[str], schema: DtoSchema) -> None:
-    i: int = 0
-    while i < len(schema.nested_schemas):
-        nest: DtoSchema = schema.nested_schemas[i]
-        if len(nest.name) > 0 and not _has_name(names, nest.name):
-            names.append(nest.name)
-            out.append(nest)
-            _add_nested(out, names, nest)
-        i = i + 1
+def _collect_schemas(routes: list[RouteDef]) -> list[DtoSchema]:
+    # Iterative BFS — Nox codegen rejects some recursive helpers.
+    out: list[DtoSchema] = []
+    names: list[str] = []
+    queue: list[DtoSchema] = []
+    ri: int = 0
+    while ri < len(routes):
+        r: RouteDef = routes[ri]
+        if r.has_input and len(r.input_schema.name) > 0:
+            if not _has_name(names, r.input_schema.name):
+                names.append(r.input_schema.name)
+                out.append(r.input_schema)
+                queue.append(r.input_schema)
+        if r.has_output and len(r.output_schema.name) > 0:
+            if not _has_name(names, r.output_schema.name):
+                names.append(r.output_schema.name)
+                out.append(r.output_schema)
+                queue.append(r.output_schema)
+        ri = ri + 1
+    qi: int = 0
+    while qi < len(queue):
+        schema: DtoSchema = queue[qi]
+        ni: int = 0
+        while ni < len(schema.nested_schemas):
+            nest: DtoSchema = schema.nested_schemas[ni]
+            if len(nest.name) > 0 and not _has_name(names, nest.name):
+                names.append(nest.name)
+                out.append(nest)
+                queue.append(nest)
+            ni = ni + 1
+        qi = qi + 1
+    return out
 
 def _components_json(schemas: list[DtoSchema]) -> str:
     body: str = "{\"schemas\":{"
@@ -126,6 +130,17 @@ def _schema_ref_or_inline(schema: DtoSchema) -> str:
     if len(schema.name) > 0:
         return "{\"$ref\":\"#/components/schemas/" + schema.name + "\"}"
     return _dto_schema_json(schema)
+
+def _method_key(method: str) -> str:
+    if method == "GET":
+        return "get"
+    if method == "POST":
+        return "post"
+    if method == "PUT":
+        return "put"
+    if method == "DELETE":
+        return "delete"
+    return "get"
 
 def _operation_json(route: RouteDef) -> str:
     body: str = "{"
@@ -197,17 +212,7 @@ def build_document(cfg: Config, routes: list[RouteDef]) -> str:
                     if not first_op:
                         paths_json = paths_json + ","
                     first_op = False
-                    method_key: str = "get"
-                    mk: str = r2.method
-                    if mk == "GET":
-                        method_key = "get"
-                    if mk == "POST":
-                        method_key = "post"
-                    if mk == "PUT":
-                        method_key = "put"
-                    if mk == "DELETE":
-                        method_key = "delete"
-                    paths_json = paths_json + nox.json.encode_string(method_key) + ":" + _operation_json(r2)
+                    paths_json = paths_json + nox.json.encode_string(_method_key(r2.method)) + ":" + _operation_json(r2)
                 rj = rj + 1
             paths_json = paths_json + "}"
             emitted.append(opath)
