@@ -219,13 +219,18 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Aether workaround:** Closure DI; guards/pipes as first-class functions; `app.module()` + `UsersModule().configure(m)`; provider **name** registry only.
 
-1. Class + method decorators + bound methods (Nest DX)
-2. Constructor/param type metadata (real DI)
-3. Generic methods or safe downcast (`Container.get[T]`)
-4. Caught Exception source span
-5. `HttpRequest` peer address
-6. Richer `nox.validate` / nested schemas
-7. Non-string decorator literal args
-8. First-class serve handlers
+## 14. `name[i](...)` parsed as generic type
+
+**Status:** `workaround`
+
+**Impact:** Calling a function stored in a list via `guards[i](ctx)` fails typecheck (`bilinmeyen generic kurucu: guards`). Subscript+call on a bare name is parsed as `Type[Args]`.
+
+**Evidence:**
+- Minimal repro: `guards[i](x)` → UnknownType generic constructor
+- Works: `fn: (T) -> U = guards[i]; fn(x)`
+
+**Desired Nox change:** Disambiguate value subscript from generic type syntax (e.g. only allow generics on type names / uppercase, or require `list[i]` vs call form).
+
+**Aether workaround:** Always bind `fn = xs[i]` before `fn(...)`.
 
 When an item is fixed upstream, update its **Status** to `resolved in nox X.Y` and tighten Aether APIs accordingly.

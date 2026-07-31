@@ -1,5 +1,6 @@
 # aether.guard — request guards as (HttpContext) -> bool functions.
 # Cross-module class inheritance is unsupported in Nox; use closures.
+# Note: never write guards[i](ctx) — Nox parses that as a generic type.
 
 import aether.context
 from aether.context import HttpContext
@@ -9,7 +10,8 @@ from aether.errors import ForbiddenError, UnauthorizedError
 def run_guards(guards: list[(HttpContext) -> bool], ctx: HttpContext) -> None:
     i: int = 0
     while i < len(guards):
-        ok: bool = guards[i](ctx)
+        fn: (HttpContext) -> bool = guards[i]
+        ok: bool = fn(ctx)
         if not ok:
             raise ForbiddenError("guard rejected request")
         i = i + 1

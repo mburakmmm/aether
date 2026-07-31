@@ -50,7 +50,8 @@ class Gateway:
         i2: int = 0
         while i2 < len(self._events):
             if self._events[i2] == event:
-                self._handlers[i2](conn, event, payload)
+                handler: (WebSocketServerConn, str, str) -> None = self._handlers[i2]
+                handler(conn, event, payload)
                 return
             i2 = i2 + 1
         conn.send_text("{\"event\":\"error\",\"payload\":{\"message\":\"unknown event\"}}")

@@ -17,14 +17,16 @@ class InterceptorFns:
 def run_before(interceptors: list[InterceptorFns], ctx: HttpContext) -> None:
     i: int = 0
     while i < len(interceptors):
-        interceptors[i].before_fn(ctx)
+        item: InterceptorFns = interceptors[i]
+        item.before_fn(ctx)
         i = i + 1
 
 def run_after(interceptors: list[InterceptorFns], ctx: HttpContext, resp: HttpResponse) -> HttpResponse:
     out: HttpResponse = resp
     i: int = len(interceptors) - 1
     while i >= 0:
-        out = interceptors[i].after_fn(ctx, out)
+        item: InterceptorFns = interceptors[i]
+        out = item.after_fn(ctx, out)
         i = i - 1
     return out
 

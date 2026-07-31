@@ -1,4 +1,5 @@
 # aether.pipe — (HttpContext) -> None transforms.
+# Note: never write pipes[i](ctx) — Nox parses that as a generic type.
 
 import aether.context
 from aether.context import HttpContext
@@ -8,7 +9,8 @@ from aether.dto import DtoSchema, parse_or_raise
 def run_pipes(pipes: list[(HttpContext) -> None], ctx: HttpContext) -> None:
     i: int = 0
     while i < len(pipes):
-        pipes[i](ctx)
+        fn: (HttpContext) -> None = pipes[i]
+        fn(ctx)
         i = i + 1
 
 def validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
