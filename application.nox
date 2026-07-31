@@ -122,15 +122,16 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
             matched: MatchResult | None = find_route(app.routes, req.method, path)
             if matched == None:
                 raise NotFoundError("route not found: " + req.method + " " + path)
-            hit: MatchResult = matched
-            ctx: HttpContext = HttpContext(req, hit.params, app.container, rid, "")
-            resp = execute(
-                hit.route,
-                ctx,
-                app.global_guards,
-                app.global_pipes,
-                app.global_interceptors
-            )
+            else:
+                hit: MatchResult = matched
+                ctx: HttpContext = HttpContext(req, hit.params, app.container, rid, "")
+                resp = execute(
+                    hit.route,
+                    ctx,
+                    app.global_guards,
+                    app.global_pipes,
+                    app.global_interceptors
+                )
         except HttpError as e:
             resp = _error_response(app.config, e, "HttpError")
         except Exception as e:
