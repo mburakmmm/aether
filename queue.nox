@@ -156,49 +156,67 @@ def reserve(db: Connection) -> str | None:
         raise QueueError(e.message)
 
 def reclaim_stale(db: Connection, stale_ms: int) -> int:
+    # BEGIN IMMEDIATE serializes against reserve(); UPDATE re-checks lease_token
+    # and updated_at_ms so a concurrent new lease cannot be stolen after SELECT.
     if stale_ms <= 0:
         stale_ms = default_stale_ms()
     now: int = nox.time.now_ms()
     cutoff: int = now - stale_ms
-    sel: Statement = db.prepare(
-        "SELECT id, lease_failures FROM aether_jobs WHERE status = ? AND updated_at_ms < ?"
-    )
-    sel.bind_str(0, status_running())
-    sel.bind_int(1, cutoff)
-    rows: list[Row] = sel.query()
-    n: int = 0
-    i: int = 0
-    while i < len(rows):
-        id: int = rows[i].get_int(0)
-        failures: int = rows[i].get_int(1) + 1
-        if failures >= max_lease_failures():
-            upd: Statement = db.prepare(
-                "UPDATE aether_jobs SET status = ?, lease_failures = ?, lease_token = '', " +
-                "last_error = ?, updated_at_ms = ? WHERE id = ? AND status = ?"
-            )
-            upd.bind_str(0, status_failed())
-            upd.bind_int(1, failures)
-            upd.bind_str(2, "reclaimed: exceeded lease failures")
-            upd.bind_int(3, now)
-            upd.bind_int(4, id)
-            upd.bind_str(5, status_running())
-            upd.execute()
-        else:
-            upd2: Statement = db.prepare(
-                "UPDATE aether_jobs SET status = ?, lease_failures = ?, lease_token = '', " +
-                "last_error = ?, run_at_ms = ?, updated_at_ms = ? WHERE id = ? AND status = ?"
-            )
-            upd2.bind_str(0, status_queued())
-            upd2.bind_int(1, failures)
-            upd2.bind_str(2, "reclaimed: stale running job")
-            upd2.bind_int(3, now)
-            upd2.bind_int(4, now)
-            upd2.bind_int(5, id)
-            upd2.bind_str(6, status_running())
-            upd2.execute()
-        n = n + 1
-        i = i + 1
-    return n
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        sel: Statement = db.prepare(
+            "SELECT id, lease_failures, lease_token FROM aether_jobs " +
+            "WHERE status = ? AND updated_at_ms < ?"
+        )
+        sel.bind_str(0, status_running())
+        sel.bind_int(1, cutoff)
+        rows: list[Row] = sel.query()
+        n: int = 0
+        i: int = 0
+        while i < len(rows):
+            id: int = rows[i].get_int(0)
+            failures: int = rows[i].get_int(1) + 1
+            token: str = rows[i].get_str(2)
+            changed: int = 0
+            if failures >= max_lease_failures():
+                upd: Statement = db.prepare(
+                    "UPDATE aether_jobs SET status = ?, lease_failures = ?, lease_token = '', " +
+                    "last_error = ?, updated_at_ms = ? " +
+                    "WHERE id = ? AND status = ? AND lease_token = ? AND updated_at_ms < ?"
+                )
+                upd.bind_str(0, status_failed())
+                upd.bind_int(1, failures)
+                upd.bind_str(2, "reclaimed: exceeded lease failures")
+                upd.bind_int(3, now)
+                upd.bind_int(4, id)
+                upd.bind_str(5, status_running())
+                upd.bind_str(6, token)
+                upd.bind_int(7, cutoff)
+                changed = upd.execute()
+            else:
+                upd2: Statement = db.prepare(
+                    "UPDATE aether_jobs SET status = ?, lease_failures = ?, lease_token = '', " +
+                    "last_error = ?, run_at_ms = ?, updated_at_ms = ? " +
+                    "WHERE id = ? AND status = ? AND lease_token = ? AND updated_at_ms < ?"
+                )
+                upd2.bind_str(0, status_queued())
+                upd2.bind_int(1, failures)
+                upd2.bind_str(2, "reclaimed: stale running job")
+                upd2.bind_int(3, now)
+                upd2.bind_int(4, now)
+                upd2.bind_int(5, id)
+                upd2.bind_str(6, status_running())
+                upd2.bind_str(7, token)
+                upd2.bind_int(8, cutoff)
+                changed = upd2.execute()
+            if changed == 1:
+                n = n + 1
+            i = i + 1
+        db.execute("COMMIT")
+        return n
+    except SqliteError as e:
+        db.execute("ROLLBACK")
+        raise QueueError(e.message)
 
 def list_dead(db: Connection, limit: int) -> list[str]:
     if limit <= 0:

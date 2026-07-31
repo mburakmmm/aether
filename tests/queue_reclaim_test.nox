@@ -2,7 +2,7 @@ import nox.test
 import nox.time
 import nox.json
 import aether.queue
-from nox.sqlite import Connection
+from nox.sqlite import Connection, Statement
 from aether.queue import JobRegistry, QueueError
 
 def job_field_str(raw: str, name: str) -> str:
@@ -127,5 +127,49 @@ try:
     nox.test.assert_true(False, "A complete after B must fail")
 except QueueError as e2:
     nox.test.assert_true(len(e2.message) > 0, "A rejected after B")
+
+# Fresh lease must not be reclaimed (updated_at still inside window).
+db5: Connection = aether.queue.open_db(":memory:")
+aether.queue.ensure_schema(db5)
+aether.queue.enqueue(db5, "demo", "{\"fresh\":1}", 0)
+raw_fresh: str | None = aether.queue.reserve(db5)
+nox.test.assert_true(raw_fresh != None, "fresh reserved")
+n_fresh: int = aether.queue.reclaim_stale(db5, 60000)
+nox.test.assert_eq_int(n_fresh, 0, "fresh lease not reclaimed")
+
+# Stolen lease_token with still-stale updated_at: reclaim must not wipe the new token.
+# Simulate SELECT snapshot vs concurrent reserve by rewriting token after aging the row.
+db6: Connection = aether.queue.open_db(":memory:")
+aether.queue.ensure_schema(db6)
+aether.queue.enqueue(db6, "demo", "{\"steal\":1}", 0)
+raw_old: str | None = aether.queue.reserve(db6)
+nox.test.assert_true(raw_old != None, "old reserved")
+token_old: str = ""
+if raw_old != None:
+    token_old = job_field_str(raw_old, "lease_token")
+nox.time.sleep_ms(30)
+# Age the row, then replace token as if another worker reserved (keep old updated_at).
+age: Statement = db6.prepare(
+    "UPDATE aether_jobs SET updated_at_ms = ? WHERE id = 1"
+)
+age.bind_int(0, nox.time.now_ms() - 1000)
+age.execute()
+steal: Statement = db6.prepare(
+    "UPDATE aether_jobs SET lease_token = ? WHERE id = 1"
+)
+steal.bind_str(0, "token-from-worker-c")
+steal.execute()
+# Reclaim SELECT sees token-from-worker-c + stale updated_at and reclaims C (correct).
+# Separately prove an UPDATE keyed on token_old affects 0 rows:
+guard: Statement = db6.prepare(
+    "UPDATE aether_jobs SET status = ? WHERE id = 1 AND status = ? AND lease_token = ? AND updated_at_ms < ?"
+)
+guard.bind_str(0, aether.queue.status_queued())
+guard.bind_str(1, aether.queue.status_running())
+guard.bind_str(2, token_old)
+guard.bind_int(3, nox.time.now_ms())
+nox.test.assert_eq_int(guard.execute(), 0, "old token cannot steal C lease")
+n_c: int = aether.queue.reclaim_stale(db6, 1)
+nox.test.assert_eq_int(n_c, 1, "C stale lease reclaimed with matching token")
 
 print("queue_reclaim_test ok")

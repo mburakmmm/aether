@@ -1,0 +1,58 @@
+import nox.test
+import nox.strings
+import aether.config
+import aether.application
+from aether.config import Config
+from aether.application import Application, AppError
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from aether.dto import DtoSchema
+from nox.http import HttpResponse
+
+def empty_handler(ctx: HttpContext) -> HttpResponse:
+    return json_ok("{\"ok\":true}")
+
+# User route colliding with framework /health must fail at boot.
+def build_health_clash(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.get("/health", empty_handler)
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+try:
+    aether.application.boot_with_config(cfg, build_health_clash)
+    nox.test.assert_true(False, "health clash should raise")
+except AppError as e:
+    nox.test.assert_true(nox.strings.contains(e.message, "duplicate route"), "health msg")
+
+# Same DTO name, different shape → boot error.
+def build_schema_clash(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    a: DtoSchema = DtoSchema("User")
+    a.require("id", "string")
+    b: DtoSchema = DtoSchema("User")
+    b.require("id", "number")
+    m.post_body("/a", empty_handler, "A", a, a)
+    m.post_body("/b", empty_handler, "B", b, b)
+
+try:
+    aether.application.boot_with_config(cfg, build_schema_clash)
+    nox.test.assert_true(False, "schema clash should raise")
+except AppError as e2:
+    nox.test.assert_true(nox.strings.contains(e2.message, "duplicate DTO"), "schema msg")
+
+# Same DTO name, same shape → ok (shared contract).
+def build_schema_ok(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    a: DtoSchema = DtoSchema("Item")
+    a.require("name", "string")
+    b: DtoSchema = DtoSchema("Item")
+    b.require("name", "string")
+    m.post_body("/a", empty_handler, "A", a, a)
+    m.post_body("/b", empty_handler, "B", b, b)
+
+app_ok: Application = aether.application.boot_with_config(cfg, build_schema_ok)
+aether.application.shutdown(app_ok)
+
+print("boot_validate_test ok")

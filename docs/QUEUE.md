@@ -17,8 +17,11 @@ stale token raises `QueueError` — this prevents double-ack races.
 
 ## Reclaim and lease failures
 
-- `reclaim_stale(db, stale_ms)` finds `running` rows whose `updated_at_ms` is older than the window.
-- Each reclaim increments `lease_failures` and either:
+- `reclaim_stale(db, stale_ms)` runs under `BEGIN IMMEDIATE` (serialized with `reserve`).
+- It selects `running` rows with `updated_at_ms < cutoff`, then UPDATEs only when
+  `status = running` **and** `lease_token` still matches **and** `updated_at_ms < cutoff`.
+  Success requires `changes == 1`; otherwise the row is skipped (another worker won the race).
+- Each successful reclaim increments `lease_failures` and either:
   - returns the job to `queued` (with a reclaim error note), or
   - marks it `failed` / dead when `lease_failures >= max_lease_failures()` (default 5).
 - Prefer `work_with_reclaim` / `work_loop` so reclaim runs before each batch.

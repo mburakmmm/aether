@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.3 — 2026-07-31
+
+Production hardening (queue reclaim + boot validation + release refs).
+
+- `reclaim_stale` under `BEGIN IMMEDIATE`; UPDATE requires matching `lease_token` + `updated_at_ms < cutoff` + `changes == 1`
+- Boot mounts framework routes **before** duplicate validation (user `/health` etc. collide at boot)
+- Duplicate DTO schema names with different shapes raise at boot
+- `scripts/check_release_refs.sh` + package-install smoke; tag only after `nox.lock` matches `VERSION`
+
 ## 0.4.2 — 2026-07-31
 
 Production correctness (no new feature surface).

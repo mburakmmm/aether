@@ -19,6 +19,11 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.26.0 bash
           echo "$HOME/.nox-lang/bin" >> "$GITHUB_PATH"
 
+      - name: Check release refs (VERSION / nox.json / nox.lock)
+        run: |
+          chmod +x scripts/check_release_refs.sh
+          ./scripts/check_release_refs.sh
+
       - name: Point package at checkout
         run: |
           python3 - <<'PY'
@@ -69,3 +74,8 @@ jobs:
         run: |
           chmod +x scripts/smoke_http.sh
           ./scripts/smoke_http.sh
+
+      - name: Package-install smoke
+        run: |
+          chmod +x scripts/smoke_package.sh
+          ./scripts/smoke_package.sh
