@@ -167,6 +167,8 @@ class HttpContext:
     path: str
     method: str
     trust_xff: bool
+    _has_body: bool
+    _body: ValidatedBody
 
     def __init__(
         self: HttpContext,
@@ -188,6 +190,8 @@ class HttpContext:
         self.path = normalize_path(path_only(request.target))
         self.method = request.method
         self.trust_xff = trust_xff
+        self._has_body = False
+        self._body = aether.body.from_raw("")
 
     def ensure_query(self: HttpContext) -> None:
         if self._query_parsed:
@@ -229,6 +233,7 @@ class HttpContext:
     def set_input(self: HttpContext, raw: str) -> None:
         self.input_body = raw
         set_input_json(raw)
+        self._has_body = False
 
     def input(self: HttpContext) -> str:
         if len(self.input_body) > 0:
@@ -242,7 +247,12 @@ class HttpContext:
         return get_request_value(key)
 
     def validated_body(self: HttpContext) -> ValidatedBody:
-        return aether.body.from_raw(self.input())
+        if self._has_body:
+            return self._body
+        body: ValidatedBody = aether.body.from_raw(self.input())
+        self._body = body
+        self._has_body = True
+        return body
 
     def input_str(self: HttpContext, name: str) -> str:
         return self.validated_body().get_str(name)

@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.4.1 · **License:** MIT · **Requires Nox ≥ 1.26.0**  
+**Version:** 0.4.2 · **License:** MIT · **Requires Nox ≥ 1.26.0**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.4.1"
+      "ref": "v0.4.2"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.4.1
+noxc install github.com/mburakmmm/aether@v0.4.2
 aether new myapi
 cd myapi && noxc fetch && AETHER_ENV=development noxc run main.nox
 ```
@@ -97,6 +97,12 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.4.2
+
+Production correctness: workers default 1, queue lease affected-row checks, pattern
+metrics keys, instance RateStore, body parse cache, string-only query/header schemas,
+constant-time auth helpers, HTTP smoke CI.
 
 ## What’s new in 0.4.1
 
@@ -164,6 +170,7 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 |-----|---------------|--------|
 | `AETHER_ENV` | `development` | `development` \| `test` \| `production` |
 | `AETHER_HOST` / `AETHER_PORT` | `0.0.0.0` / `3000` | Bind |
+| `AETHER_WORKERS` | `1` | Explicit `>1` enables multicore (experimental w.r.t. AppBind) |
 | `AETHER_OPENAPI` | on (off in prod) | `/openapi.json`, `/docs` |
 | `AETHER_RATE_LIMIT` | off | Opt-in; requires identifiable client IP (`AETHER_TRUST_X_FORWARDED_FOR` today) |
 | `AETHER_CORS_ORIGINS` | `*` (dev/test); **empty in production** | Opt-in CORS: `*` or comma-separated allowlist |

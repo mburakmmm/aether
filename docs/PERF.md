@@ -3,7 +3,7 @@
 ## Defaults
 
 - Development / test: `AETHER_WORKERS=1` (single `nox.http.serve`)
-- Production: set `AETHER_WORKERS=0` (auto → 2) or an explicit count and use `nox.http.serve_multicore`
+- Production: `AETHER_WORKERS` defaults to **1** (`effective_workers`). Multicore requires an explicit `AETHER_WORKERS>1` and is experimental until per-worker boot exists for `AppBind`.
 - Prefer bare `handle` + `dispatch_bound` (do not close over `Application`)
 - Production CORS is **off** unless `AETHER_CORS_ORIGINS` is set (largest hot-path win)
 - Production route metrics off unless `AETHER_METRICS_ROUTES=1`

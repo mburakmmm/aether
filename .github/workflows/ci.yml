@@ -64,3 +64,8 @@ jobs:
             fi
           done
           exit "$fail"
+
+      - name: HTTP smoke (single worker)
+        run: |
+          chmod +x scripts/smoke_http.sh
+          ./scripts/smoke_http.sh

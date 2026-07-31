@@ -1,8 +1,30 @@
 import nox.test
 import nox.time
+import nox.json
 import aether.queue
 from nox.sqlite import Connection
 from aether.queue import JobRegistry, QueueError
+
+def job_field_str(raw: str, name: str) -> str:
+    v: JsonValue = nox.json.decode(raw)
+    i: int = 0
+    n: int = nox.json.object_len(v)
+    while i < n:
+        if nox.json.object_key(v, i) == name:
+            val: JsonValue = nox.json.object_value(v, i)
+            if nox.json.is_string(val):
+                return nox.json.as_string(val)
+            if nox.json.is_number(val):
+                return str(int(nox.json.as_number(val)))
+            return ""
+        i = i + 1
+    return ""
+
+def job_id_of(raw: str) -> int:
+    s: str = job_field_str(raw, "id")
+    if len(s) == 0:
+        return 0
+    return int(s)
 
 db: Connection = aether.queue.open_db(":memory:")
 aether.queue.ensure_schema(db)
@@ -78,5 +100,32 @@ try:
     nox.test.assert_true(False, "complete should reject")
 except QueueError as e:
     nox.test.assert_true(len(e.message) > 0, "stale lease rejected")
+
+# After B completes, A's old lease must not report success (affected-row check).
+db4: Connection = aether.queue.open_db(":memory:")
+aether.queue.ensure_schema(db4)
+aether.queue.enqueue(db4, "demo", "{\"race\":1}", 0)
+raw_a: str | None = aether.queue.reserve(db4)
+nox.test.assert_true(raw_a != None, "A reserved")
+token_a: str = ""
+if raw_a != None:
+    token_a = job_field_str(raw_a, "lease_token")
+nox.test.assert_true(len(token_a) > 0, "token A")
+nox.time.sleep_ms(20)
+aether.queue.reclaim_stale(db4, 1)
+raw_b: str | None = aether.queue.reserve(db4)
+nox.test.assert_true(raw_b != None, "B reserved")
+token_b: str = ""
+job_id: int = 0
+if raw_b != None:
+    token_b = job_field_str(raw_b, "lease_token")
+    job_id = job_id_of(raw_b)
+nox.test.assert_true(job_id > 0, "job id")
+aether.queue.complete(db4, job_id, token_b)
+try:
+    aether.queue.complete(db4, job_id, token_a)
+    nox.test.assert_true(False, "A complete after B must fail")
+except QueueError as e2:
+    nox.test.assert_true(len(e2.message) > 0, "A rejected after B")
 
 print("queue_reclaim_test ok")

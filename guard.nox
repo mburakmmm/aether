@@ -3,6 +3,7 @@
 # Note: never write guards[i](ctx) - Nox parses that as a generic type.
 
 import nox.strings
+import nox.crypto
 import aether.context
 from aether.context import HttpContext
 import aether.errors
@@ -23,16 +24,16 @@ def bearer_token(token: str) -> (HttpContext) -> bool:
     def check(ctx: HttpContext) -> bool:
         auth: str = ctx.header("Authorization")
         expected: str = "Bearer " + token
-        if auth != expected:
-            raise UnauthorizedError("missing or invalid bearer token")
+        if not nox.crypto.constant_time_eq(auth, expected):
+            raise UnauthorizedError("missing or invalid credentials")
         return True
     return check
 
 def api_key_header(header_name: str, expected: str) -> (HttpContext) -> bool:
     def check(ctx: HttpContext) -> bool:
         got: str = ctx.header(header_name)
-        if got != expected:
-            raise UnauthorizedError("missing or invalid api key")
+        if not nox.crypto.constant_time_eq(got, expected):
+            raise UnauthorizedError("missing or invalid credentials")
         return True
     return check
 
@@ -40,7 +41,7 @@ def require_header(header_name: str) -> (HttpContext) -> bool:
     def check(ctx: HttpContext) -> bool:
         got: str = ctx.header(header_name)
         if len(got) == 0:
-            raise UnauthorizedError("missing header: " + header_name)
+            raise UnauthorizedError("missing or invalid credentials")
         return True
     return check
 
@@ -59,11 +60,13 @@ def jwt_bearer(secret: str) -> (HttpContext) -> bool:
         auth: str = ctx.header("Authorization")
         token: str = _bearer_raw(auth)
         if len(token) == 0:
-            raise UnauthorizedError("missing or invalid bearer token")
+            raise UnauthorizedError("missing or invalid credentials")
         try:
             payload: str = aether.jwt.decode(secret, token)
             ctx.set_request_value("aether.jwt", payload)
         except JwtError as e:
-            raise UnauthorizedError(e.message)
+            # Generic message: do not leak exp/alg/signature detail to clients.
+            ignored: str = e.message
+            raise UnauthorizedError("missing or invalid credentials")
         return True
     return check

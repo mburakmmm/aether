@@ -279,14 +279,8 @@ def complete(db: Connection, id: int, lease_token: str) -> None:
     stmt.bind_int(2, id)
     stmt.bind_str(3, lease_token)
     stmt.bind_str(4, status_running())
-    stmt.execute()
-    check: Statement = db.prepare(
-        "SELECT id FROM aether_jobs WHERE id = ? AND status = ?"
-    )
-    check.bind_int(0, id)
-    check.bind_str(1, status_completed())
-    rows: list[Row] = check.query()
-    if len(rows) == 0:
+    changed: int = stmt.execute()
+    if changed != 1:
         raise QueueError("complete rejected: stale or invalid lease for job " + str(id))
 
 def fail(db: Connection, id: int, lease_token: str, error: str) -> None:
@@ -306,7 +300,7 @@ def fail(db: Connection, id: int, lease_token: str, error: str) -> None:
         backoff_ms: int = attempts * attempts * 1000
         stmt: Statement = db.prepare(
             "UPDATE aether_jobs SET status = ?, attempts = ?, lease_token = '', last_error = ?, " +
-            "run_at_ms = ?, updated_at_ms = ? WHERE id = ? AND lease_token = ?"
+            "run_at_ms = ?, updated_at_ms = ? WHERE id = ? AND lease_token = ? AND status = ?"
         )
         stmt.bind_str(0, status_queued())
         stmt.bind_int(1, attempts)
@@ -315,11 +309,14 @@ def fail(db: Connection, id: int, lease_token: str, error: str) -> None:
         stmt.bind_int(4, now)
         stmt.bind_int(5, id)
         stmt.bind_str(6, lease_token)
-        stmt.execute()
+        stmt.bind_str(7, status_running())
+        changed: int = stmt.execute()
+        if changed != 1:
+            raise QueueError("fail rejected: stale or invalid lease for job " + str(id))
     else:
         stmt2: Statement = db.prepare(
             "UPDATE aether_jobs SET status = ?, attempts = ?, lease_token = '', last_error = ?, " +
-            "updated_at_ms = ? WHERE id = ? AND lease_token = ?"
+            "updated_at_ms = ? WHERE id = ? AND lease_token = ? AND status = ?"
         )
         stmt2.bind_str(0, status_failed())
         stmt2.bind_int(1, attempts)
@@ -327,7 +324,10 @@ def fail(db: Connection, id: int, lease_token: str, error: str) -> None:
         stmt2.bind_int(3, now)
         stmt2.bind_int(4, id)
         stmt2.bind_str(5, lease_token)
-        stmt2.execute()
+        stmt2.bind_str(6, status_running())
+        changed2: int = stmt2.execute()
+        if changed2 != 1:
+            raise QueueError("fail rejected: stale or invalid lease for job " + str(id))
 
 class JobRegistry:
     _names: list[str]

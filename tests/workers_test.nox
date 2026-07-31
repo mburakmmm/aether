@@ -1,0 +1,14 @@
+import nox.test
+import aether.server
+import aether.config
+from aether.config import Config
+
+cfg_prod: Config = aether.config.defaults("production")
+nox.test.assert_eq_int(cfg_prod.workers, 1, "prod workers default 1")
+nox.test.assert_eq_int(aether.server.effective_workers(cfg_prod), 1, "effective 1")
+
+cfg_exp: Config = aether.config.defaults("production")
+cfg_exp.workers = 4
+nox.test.assert_eq_int(aether.server.effective_workers(cfg_exp), 4, "explicit workers")
+
+print("workers_test ok")

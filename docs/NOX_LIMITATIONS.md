@@ -283,7 +283,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Desired Nox change:** Optional typed query decode, or richer URL value types in `nox.url`.
 
-**Aether workaround:** Document string-oriented query/header schemas; validate via JSON object rebuild + DTO.
+**Aether workaround:** `query_validation_pipe` / `header_validation_pipe` call `_require_string_schema` at registration (non-string field kinds raise). Validate via JSON object rebuild + DTO; document string-only schemas.
 
 ---
 

@@ -1,5 +1,7 @@
 # aether.pipe - (HttpContext) -> None transforms.
 # Note: never write pipes[i](ctx) - Nox parses that as a generic type.
+# Query/header validation schemas must use string fields only (HTTP maps are
+# dict[str,str]; number/bool kinds would never match without coercion).
 
 import nox.json
 import aether.context
@@ -35,7 +37,21 @@ def _dict_to_json_object(data: dict[str, str]) -> str:
     body = body + "}"
     return body
 
+def _require_string_schema(schema: DtoSchema, where: str) -> None:
+    i: int = 0
+    while i < len(schema.fields):
+        kind: str = schema.fields[i].kind
+        if kind != "string":
+            details: list[str] = []
+            details.append(schema.fields[i].name + " kind=" + kind)
+            raise ValidationError(
+                where + " schemas must use string fields only (got non-string)",
+                details
+            )
+        i = i + 1
+
 def query_validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
+    _require_string_schema(schema, "query")
     def transform(ctx: HttpContext) -> None:
         ctx.ensure_query()
         raw: str = _dict_to_json_object(ctx.query)
@@ -46,6 +62,7 @@ def query_validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
     return transform
 
 def header_validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
+    _require_string_schema(schema, "header")
     def transform(ctx: HttpContext) -> None:
         # Build object from schema field names (case-insensitive header lookup).
         # Empty header value is treated as missing (required fields fail).

@@ -218,13 +218,14 @@ def _complete_request(
     req: HttpRequest,
     rid: str,
     path: str,
+    route_key: str,
     started: int,
     resp: HttpResponse
 ) -> HttpResponse:
     out: HttpResponse = _finalize_response(app, req, rid, resp)
     app.metrics.record(out.status)
-    if app.config.metrics_routes:
-        app.metrics.record_route(req.method, path)
+    if app.config.metrics_routes and len(route_key) > 0:
+        app.metrics.record_route_key(route_key)
     if app.config.log_requests:
         elapsed: int = nox.time.now_ms() - started
         nox.log.info(
@@ -238,6 +239,8 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
     begin(rid, req.method, path)
     started: int = nox.time.now_ms()
     resp_opt: HttpResponse | None = None
+    # Metrics key uses route pattern (not raw path) to bound cardinality.
+    route_key: str = ""
     try:
         try:
             if app.config.max_body_bytes > 0 and len(req.body) > app.config.max_body_bytes:
@@ -255,6 +258,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                     raise NotFoundError("route not found: " + req.method + " " + path)
                 else:
                     hit: MatchResult = matched
+                    route_key = hit.route.method + " " + hit.route.pattern
                     ctx: HttpContext = HttpContext(
                         req,
                         hit.params,
@@ -292,9 +296,9 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
             HttpError(500, "internal_error", "unset response", []),
             "HttpError"
         )
-        return _complete_request(app, req, rid, path, started, unset)
+        return _complete_request(app, req, rid, path, route_key, started, unset)
     else:
-        return _complete_request(app, req, rid, path, started, resp_opt)
+        return _complete_request(app, req, rid, path, route_key, started, resp_opt)
 
 # Serve handlers must not close over Application directly — Nox codegen rejects
 # that combination. Prefer dispatch_bound() after boot (boot auto-bind) or bind().

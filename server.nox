@@ -39,10 +39,11 @@ def require_tls_files(cfg: Config) -> None:
         raise ServerError("TLS key missing: " + cfg.tls_key_path)
 
 def effective_workers(cfg: Config) -> int:
+    # AppBind / module globals are not safely shared across serve_multicore
+    # workers. Default to 1 until Nox provides per-worker boot. Explicit
+    # AETHER_WORKERS>1 remains available for experiments.
     if cfg.workers > 0:
         return cfg.workers
-    if cfg.is_production():
-        return 2
     return 1
 
 # "plain" | "tls" | "ws" | "ws_tls"

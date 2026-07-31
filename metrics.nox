@@ -31,7 +31,9 @@ class Metrics:
             self.errors = self.errors + 1
 
     def record_route(self: Metrics, method: str, path: str) -> None:
-        key: str = method + " " + path
+        self.record_route_key(method + " " + path)
+
+    def record_route_key(self: Metrics, key: str) -> None:
         i: int = 0
         while i < len(self.route_keys):
             if self.route_keys[i] == key:

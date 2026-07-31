@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.2 — 2026-07-31
+
+Production correctness (no new feature surface).
+
+- `effective_workers` / production default **1** (AppBind unsafe under multicore until per-worker boot)
+- Queue `complete`/`fail` require UPDATE changes == 1 (no false success after another worker completes)
+- Route metrics keys use `METHOD + pattern` (not raw path) to bound cardinality
+- `RateStore` is per-interceptor instance (not process-global)
+- `ValidatedBody` parses once; `HttpContext.validated_body()` caches per request
+- Query/header pipes reject non-string schema fields at registration
+- Bearer / API key / JWT guards use constant-time compare + generic 401 messages
+- CI HTTP smoke (`scripts/smoke_http.sh`)
+
 ## 0.4.1 — 2026-07-31
 
 Hot-path performance (production-safe).

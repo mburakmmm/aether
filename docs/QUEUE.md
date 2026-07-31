@@ -7,7 +7,9 @@
 
 1. `reserve()` moves a job to `running` and returns JSON including `lease_token`.
 2. `complete(db, id, lease_token)` and `fail(db, id, lease_token, err)` succeed only when the
-   token matches the current lease **and** status is still `running`.
+   token matches the current lease **and** status is still `running`. Success requires the
+   SQLite `UPDATE` to change exactly one row (`Statement.execute()` → changes == 1).
+   A job already completed by another worker does **not** count as success for a stale token.
 3. After a successful complete/fail, the lease token is cleared.
 
 If another worker reclaims the job, the old token is invalidated. Calling `complete` with a
