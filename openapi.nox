@@ -101,6 +101,10 @@ def _components_json(schemas: list[DtoSchema]) -> str:
         s: DtoSchema = schemas[i]
         body = body + nox.json.encode_string(s.name) + ":" + _dto_schema_json(s)
         i = i + 1
+    body = body + "}"
+    body = body + ",\"securitySchemes\":{"
+    body = body + "\"bearerAuth\":{\"type\":\"http\",\"scheme\":\"bearer\",\"bearerFormat\":\"JWT\"}"
+    body = body + ",\"apiKeyAuth\":{\"type\":\"apiKey\",\"in\":\"header\",\"name\":\"X-API-Key\"}"
     body = body + "}}"
     return body
 
@@ -155,10 +159,18 @@ def _operation_json(route: RouteDef) -> str:
         body = body + "\"requestBody\":{\"required\":true,\"content\":{\"application/json\":{\"schema\":"
         body = body + _schema_ref_or_inline(route.input_schema) + "}}},"
     status_key: str = str(route.success_status)
-    body = body + "\"responses\":{" + nox.json.encode_string(status_key) + ":{\"description\":\"OK\""
+    body = body + "\"responses\":{"
+    body = body + nox.json.encode_string(status_key) + ":{\"description\":\"OK\""
     if route.has_output:
         body = body + ",\"content\":{\"application/json\":{\"schema\":" + _schema_ref_or_inline(route.output_schema) + "}}"
-    body = body + "}}"
+    body = body + "}"
+    body = body + ",\"400\":{\"description\":\"Bad Request\"}"
+    body = body + ",\"401\":{\"description\":\"Unauthorized\"}"
+    body = body + ",\"403\":{\"description\":\"Forbidden\"}"
+    body = body + ",\"404\":{\"description\":\"Not Found\"}"
+    body = body + ",\"422\":{\"description\":\"Validation Error\"}"
+    body = body + ",\"500\":{\"description\":\"Internal Error\"}"
+    body = body + "}"
     body = body + "}"
     return body
 

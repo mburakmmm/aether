@@ -1,7 +1,6 @@
-# hello_api — Aether dogfood example (CRUD + validation)
+# hello_api - Aether dogfood example (CRUD + validation)
 
 import nox.http
-import nox.json
 from nox.http import HttpRequest, HttpResponse
 import aether.application
 import aether.server
@@ -121,20 +120,8 @@ class UsersModule:
 
     def _create(self: UsersModule, svc: UserService) -> (HttpContext) -> HttpResponse:
         def create(ctx: HttpContext) -> HttpResponse:
-            raw: str = ctx.input()
-            v: JsonValue = nox.json.decode(raw)
-            name: str = ""
-            email: str = ""
-            i: int = 0
-            n: int = nox.json.object_len(v)
-            while i < n:
-                key: str = nox.json.object_key(v, i)
-                val: JsonValue = nox.json.object_value(v, i)
-                if key == "name" and nox.json.is_string(val):
-                    name = nox.json.as_string(val)
-                if key == "email" and nox.json.is_string(val):
-                    email = nox.json.as_string(val)
-                i = i + 1
+            name: str = ctx.input_str("name")
+            email: str = ctx.input_str("email")
             id: str = svc.create(name, email)
             return json_created(self._user_json(id, name, email))
         return create
@@ -142,20 +129,8 @@ class UsersModule:
     def _update(self: UsersModule, svc: UserService) -> (HttpContext) -> HttpResponse:
         def update(ctx: HttpContext) -> HttpResponse:
             id: str = ctx.param("id")
-            raw: str = ctx.input()
-            v: JsonValue = nox.json.decode(raw)
-            name: str = ""
-            email: str = ""
-            i: int = 0
-            n: int = nox.json.object_len(v)
-            while i < n:
-                key: str = nox.json.object_key(v, i)
-                val: JsonValue = nox.json.object_value(v, i)
-                if key == "name" and nox.json.is_string(val):
-                    name = nox.json.as_string(val)
-                if key == "email" and nox.json.is_string(val):
-                    email = nox.json.as_string(val)
-                i = i + 1
+            name: str = ctx.input_str("name")
+            email: str = ctx.input_str("email")
             if not svc.update(id, name, email):
                 raise NotFoundError("user not found")
             return json_ok(self._user_json(id, name, email))

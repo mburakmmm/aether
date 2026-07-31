@@ -132,15 +132,28 @@ class Gateway:
     _handlers: list[(WebSocketServerConn, str, str) -> None]
     rooms: RoomHub
     _auth: (WebSocketServerConn, str) -> bool
+    rooms_enabled: bool
+    max_message_bytes: int
+    _room_auth: (str, str, str) -> bool
 
     def __init__(self: Gateway) -> None:
         self._events = []
         self._handlers = []
         self.rooms = RoomHub()
         self._auth = _default_auth
+        self.rooms_enabled = False
+        self.max_message_bytes = 65536
+        self._room_auth = _default_room_auth
+
+    def enable_rooms(self: Gateway) -> None:
+        self.rooms_enabled = True
 
     def set_auth(self: Gateway, auth: (WebSocketServerConn, str) -> bool) -> None:
         self._auth = auth
+
+    def set_room_auth(self: Gateway, auth: (str, str, str) -> bool) -> None:
+        # (conn_id, room, event) -> allowed
+        self._room_auth = auth
 
     def on(self: Gateway, event: str, handler: (WebSocketServerConn, str, str) -> None) -> None:
         if len(event) == 0:
@@ -153,6 +166,9 @@ class Gateway:
         self._handlers = handlers
 
     def dispatch_message(self: Gateway, conn: WebSocketServerConn, conn_id: str, raw: str) -> None:
+        if self.max_message_bytes > 0 and len(raw) > self.max_message_bytes:
+            conn.send_text("{\"event\":\"error\",\"payload\":{\"message\":\"message too large\"}}")
+            return
         event: str = ""
         payload: str = raw + ""
         try:
@@ -174,20 +190,24 @@ class Gateway:
             payload = raw + ""
         if len(event) == 0:
             event = "message"
-        if event == "join":
+        if event == "join" or event == "leave" or event == "broadcast":
+            if not self.rooms_enabled:
+                conn.send_text("{\"event\":\"error\",\"payload\":{\"message\":\"rooms disabled\"}}")
+                return
             room: str = _payload_room(payload)
-            self.rooms.join(room, conn_id)
-            conn.send_text("{\"event\":\"joined\",\"payload\":{\"room\":" + nox.json.encode_string(room) + "}}")
-            return
-        if event == "leave":
-            room2: str = _payload_room(payload)
-            self.rooms.leave(room2, conn_id)
-            conn.send_text("{\"event\":\"left\",\"payload\":{\"room\":" + nox.json.encode_string(room2) + "}}")
-            return
-        if event == "broadcast":
-            room3: str = _payload_room(payload)
+            if not self._room_auth(conn_id, room, event):
+                conn.send_text("{\"event\":\"error\",\"payload\":{\"message\":\"room unauthorized\"}}")
+                return
+            if event == "join":
+                self.rooms.join(room, conn_id)
+                conn.send_text("{\"event\":\"joined\",\"payload\":{\"room\":" + nox.json.encode_string(room) + "}}")
+                return
+            if event == "leave":
+                self.rooms.leave(room, conn_id)
+                conn.send_text("{\"event\":\"left\",\"payload\":{\"room\":" + nox.json.encode_string(room) + "}}")
+                return
             msg: str = _payload_message(payload)
-            n_sent: int = self.rooms.broadcast(room3, msg)
+            n_sent: int = self.rooms.broadcast(room, msg)
             conn.send_text("{\"event\":\"broadcast_ok\",\"payload\":{\"sent\":" + str(n_sent) + "}}")
             return
         i2: int = 0
@@ -201,6 +221,14 @@ class Gateway:
 
 def _default_auth(conn: WebSocketServerConn, token: str) -> bool:
     return True
+
+def _default_room_auth(conn_id: str, room: str, event: str) -> bool:
+    return False
+
+def allow_all_rooms() -> (str, str, str) -> bool:
+    def auth(conn_id: str, room: str, event: str) -> bool:
+        return True
+    return auth
 
 def require_token_auth(expected: str) -> (WebSocketServerConn, str) -> bool:
     def auth(conn: WebSocketServerConn, token: str) -> bool:

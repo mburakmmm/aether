@@ -1,4 +1,4 @@
-# aether.queue — SQLite job queue with lease tokens, reclaim, DLQ.
+# aether.queue - SQLite job queue with lease tokens, reclaim, DLQ.
 #
 # Delivery is at-least-once. Handlers must be idempotent.
 # complete/fail require the lease_token from reserve().

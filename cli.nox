@@ -1,4 +1,4 @@
-# aether CLI — scaffold new apps from templates/app
+# aether CLI - scaffold new apps from templates/app
 
 import nox.os
 import nox.fs

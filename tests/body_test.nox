@@ -1,0 +1,18 @@
+import nox.test
+import aether.body
+from aether.body import ValidatedBody
+from aether.errors import ValidationError
+
+body: ValidatedBody = aether.body.from_raw("{\"name\":\"ada\",\"age\":36,\"ok\":true}")
+nox.test.assert_true(body.get_str("name") == "ada", "name")
+nox.test.assert_eq_int(body.get_int("age"), 36, "age")
+nox.test.assert_true(body.get_bool("ok"), "ok")
+nox.test.assert_true(body.get_str_or("missing", "x") == "x", "default")
+
+try:
+    body.get_str("missing")
+    nox.test.assert_true(False, "should raise")
+except ValidationError as e:
+    nox.test.assert_eq_int(e.status, 422, "status")
+
+print("body_test ok")

@@ -1,4 +1,4 @@
-# aether.container — provider name registry only (no request bag).
+# aether.container - provider name registry only (no request bag).
 # Request-scoped values live in TaskLocal RequestState (aether.context).
 
 class ContainerError(Exception):

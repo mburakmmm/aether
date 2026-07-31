@@ -1,4 +1,6 @@
-# aether.metrics - per-Application counters (not process-global).
+# aether.metrics - per-Application counters + optional route hits.
+
+import nox.json
 
 class Metrics:
     requests: int
@@ -6,6 +8,8 @@ class Metrics:
     status_2xx: int
     status_4xx: int
     status_5xx: int
+    route_keys: list[str]
+    route_hits: list[int]
 
     def __init__(self: Metrics) -> None:
         self.requests = 0
@@ -13,6 +17,8 @@ class Metrics:
         self.status_2xx = 0
         self.status_4xx = 0
         self.status_5xx = 0
+        self.route_keys = []
+        self.route_hits = []
 
     def record(self: Metrics, status: int) -> None:
         self.requests = self.requests + 1
@@ -24,11 +30,35 @@ class Metrics:
             self.status_5xx = self.status_5xx + 1
             self.errors = self.errors + 1
 
+    def record_route(self: Metrics, method: str, path: str) -> None:
+        key: str = method + " " + path
+        i: int = 0
+        while i < len(self.route_keys):
+            if self.route_keys[i] == key:
+                self.route_hits[i] = self.route_hits[i] + 1
+                return
+            i = i + 1
+        keys: list[str] = self.route_keys
+        hits: list[int] = self.route_hits
+        keys.append(key)
+        hits.append(1)
+        self.route_keys = keys
+        self.route_hits = hits
+
     def to_json(self: Metrics) -> str:
+        routes: str = "{"
+        i: int = 0
+        while i < len(self.route_keys):
+            if i > 0:
+                routes = routes + ","
+            routes = routes + nox.json.encode_string(self.route_keys[i]) + ":" + str(self.route_hits[i])
+            i = i + 1
+        routes = routes + "}"
         return (
             "{\"requests\":" + str(self.requests) +
             ",\"errors\":" + str(self.errors) +
             ",\"status_2xx\":" + str(self.status_2xx) +
             ",\"status_4xx\":" + str(self.status_4xx) +
-            ",\"status_5xx\":" + str(self.status_5xx) + "}"
+            ",\"status_5xx\":" + str(self.status_5xx) +
+            ",\"routes\":" + routes + "}"
         )

@@ -5,7 +5,9 @@
 
 from nox.http import HttpRequest
 import aether.container
+import aether.body
 from aether.container import Container
+from aether.body import ValidatedBody
 import nox.strings
 import nox.url
 from nox.url import UrlError
@@ -228,3 +230,15 @@ class HttpContext:
 
     def get_request_value(self: HttpContext, key: str) -> str:
         return get_request_value(key)
+
+    def validated_body(self: HttpContext) -> ValidatedBody:
+        return aether.body.from_raw(self.input())
+
+    def input_str(self: HttpContext, name: str) -> str:
+        return self.validated_body().get_str(name)
+
+    def input_int(self: HttpContext, name: str) -> int:
+        return self.validated_body().get_int(name)
+
+    def input_bool(self: HttpContext, name: str) -> bool:
+        return self.validated_body().get_bool(name)

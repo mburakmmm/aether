@@ -1,4 +1,4 @@
-# {{APP_NAME}} — Aether application
+# {{APP_NAME}} - Aether application
 
 import nox.http
 from nox.http import HttpRequest, HttpResponse

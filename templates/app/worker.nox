@@ -1,4 +1,4 @@
-# {{APP_NAME}} worker — background job consumer
+# {{APP_NAME}} worker - background job consumer
 
 import aether.queue
 import aether.config

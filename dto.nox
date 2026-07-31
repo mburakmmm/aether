@@ -1,4 +1,4 @@
-# aether.dto — schema builder + nested + format validation.
+# aether.dto - schema builder + nested + format validation.
 
 import nox.json
 import nox.validate

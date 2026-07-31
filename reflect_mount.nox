@@ -1,4 +1,4 @@
-# aether.reflect_mount — mount top-level @get/@post/@put/@delete into Application.
+# aether.reflect_mount - mount top-level @get/@post/@put/@delete into Application.
 #
 # Decorated handlers still go through Application.dispatch (guards/pipes/filters).
 

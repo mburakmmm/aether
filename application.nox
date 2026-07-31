@@ -1,4 +1,4 @@
-# aether.application — boot, dispatch, lifecycle, filters, hardening.
+# aether.application - boot, dispatch, lifecycle, filters, hardening.
 
 import nox.uuid
 import nox.log
@@ -112,7 +112,7 @@ def _route_key(method: str, pattern: str) -> str:
     return method + " " + pattern
 
 def _collect_schema_names(routes: list[RouteDef]) -> None:
-    # Iterative — avoid recursive helpers (Nox codegen limits).
+    # Iterative - avoid recursive helpers (Nox codegen limits).
     seen: list[str] = []
     queue: list[DtoSchema] = []
     i: int = 0
@@ -257,6 +257,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
     finally:
         resp = _finalize_response(app, req, rid, resp)
         app.metrics.record(resp.status)
+        app.metrics.record_route(req.method, path)
         if app.config.log_requests:
             elapsed: int = nox.time.now_ms() - started
             nox.log.info(

@@ -59,6 +59,29 @@ class RouteDef:
         self.pipes = []
         self.interceptors = []
 
+class RouteOptions:
+    summary: str
+    has_input: bool
+    input_schema: DtoSchema
+    has_output: bool
+    output_schema: DtoSchema
+    success_status: int
+    guards: list[(HttpContext) -> bool]
+    pipes: list[(HttpContext) -> None]
+    interceptors: list[InterceptorFns]
+
+    def __init__(self: RouteOptions) -> None:
+        empty: DtoSchema = DtoSchema("")
+        self.summary = ""
+        self.has_input = False
+        self.input_schema = empty
+        self.has_output = False
+        self.output_schema = empty
+        self.success_status = 200
+        self.guards = []
+        self.pipes = []
+        self.interceptors = []
+
 class RouteTable:
     routes: list[RouteDef]
 
@@ -274,6 +297,37 @@ class ModuleBuilder:
     ) -> None:
         empty: DtoSchema = DtoSchema("")
         self._add("DELETE", pattern, handler, summary, False, empty, False, empty, 204)
+
+    def route(
+        self: ModuleBuilder,
+        method: str,
+        pattern: str,
+        handler: (HttpContext) -> HttpResponse,
+        opts: RouteOptions
+    ) -> None:
+        i: int = 0
+        while i < len(opts.guards):
+            self.route_guard(opts.guards[i])
+            i = i + 1
+        i = 0
+        while i < len(opts.pipes):
+            self.route_pipe(opts.pipes[i])
+            i = i + 1
+        i = 0
+        while i < len(opts.interceptors):
+            self.route_interceptor(opts.interceptors[i])
+            i = i + 1
+        self._add(
+            method,
+            pattern,
+            handler,
+            opts.summary + "",
+            opts.has_input,
+            opts.input_schema,
+            opts.has_output,
+            opts.output_schema,
+            opts.success_status
+        )
 
 def _drop1(s: str) -> str:
     out: str = ""

@@ -1,0 +1,84 @@
+# aether.body - typed accessors over validated JSON request bodies.
+
+import nox.json
+from nox.json import JsonError
+import aether.errors
+from aether.errors import ValidationError, BadRequestError
+
+class ValidatedBody:
+    _raw: str
+
+    def __init__(self: ValidatedBody, raw: str) -> None:
+        self._raw = raw + ""
+
+    def raw(self: ValidatedBody) -> str:
+        return self._raw + ""
+
+    def _root(self: ValidatedBody) -> JsonValue:
+        try:
+            return nox.json.decode(self._raw)
+        except JsonError as e:
+            raise BadRequestError("invalid json body: " + e.message)
+
+    def _field(self: ValidatedBody, name: str) -> JsonValue | None:
+        v: JsonValue = self._root()
+        if not nox.json.is_object(v):
+            raise ValidationError("body must be a json object", [])
+        i: int = 0
+        n: int = nox.json.object_len(v)
+        while i < n:
+            if nox.json.object_key(v, i) == name:
+                return nox.json.object_value(v, i)
+            i = i + 1
+        return None
+
+    def has(self: ValidatedBody, name: str) -> bool:
+        return self._field(name) != None
+
+    def get_str(self: ValidatedBody, name: str) -> str:
+        got: JsonValue | None = self._field(name)
+        if got == None:
+            raise ValidationError("missing field: " + name, [])
+        val: JsonValue = got
+        if not nox.json.is_string(val):
+            raise ValidationError("field '" + name + "' must be string", [])
+        return nox.json.as_string(val)
+
+    def get_str_or(self: ValidatedBody, name: str, default: str) -> str:
+        got: JsonValue | None = self._field(name)
+        if got == None:
+            return default
+        val: JsonValue = got
+        if not nox.json.is_string(val):
+            raise ValidationError("field '" + name + "' must be string", [])
+        return nox.json.as_string(val)
+
+    def get_int(self: ValidatedBody, name: str) -> int:
+        got: JsonValue | None = self._field(name)
+        if got == None:
+            raise ValidationError("missing field: " + name, [])
+        val: JsonValue = got
+        if not nox.json.is_number(val):
+            raise ValidationError("field '" + name + "' must be number", [])
+        return int(nox.json.as_number(val))
+
+    def get_int_or(self: ValidatedBody, name: str, default: int) -> int:
+        got: JsonValue | None = self._field(name)
+        if got == None:
+            return default
+        val: JsonValue = got
+        if not nox.json.is_number(val):
+            raise ValidationError("field '" + name + "' must be number", [])
+        return int(nox.json.as_number(val))
+
+    def get_bool(self: ValidatedBody, name: str) -> bool:
+        got: JsonValue | None = self._field(name)
+        if got == None:
+            raise ValidationError("missing field: " + name, [])
+        val: JsonValue = got
+        if not nox.json.is_bool(val):
+            raise ValidationError("field '" + name + "' must be bool", [])
+        return nox.json.as_bool(val)
+
+def from_raw(raw: str) -> ValidatedBody:
+    return ValidatedBody(raw)

@@ -1,4 +1,4 @@
-# aether.config — AETHER_* environment configuration.
+# aether.config - AETHER_* environment configuration.
 
 import nox.os
 from nox.os import OsError

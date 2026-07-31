@@ -1,4 +1,4 @@
-# aether.testing — in-process request helpers.
+# aether.testing - in-process request helpers.
 
 from nox.http import HttpRequest, HttpResponse
 import aether.application

@@ -1,4 +1,4 @@
-# aether.server — TLS / worker helpers.
+# aether.server - TLS / worker helpers.
 #
 # Nox `serve*` intrinsikleri DERLEME ZAMANI bare fonksiyon adı ister.
 # Bu yüzden Aether, `nox.http.serve(port, handle)` çağrısını SARMALAMAZ.

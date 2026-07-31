@@ -1,4 +1,4 @@
-# aether.errors — structured HTTP errors.
+# aether.errors - structured HTTP errors.
 
 import nox.json
 

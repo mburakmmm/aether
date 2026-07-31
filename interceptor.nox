@@ -1,4 +1,4 @@
-# aether.interceptor — before may short-circuit; after unwinds only entered frames.
+# aether.interceptor - before may short-circuit; after unwinds only entered frames.
 
 from nox.http import HttpResponse
 import aether.context

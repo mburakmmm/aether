@@ -1,6 +1,6 @@
-# aether.guard — request guards as (HttpContext) -> bool functions.
+# aether.guard - request guards as (HttpContext) -> bool functions.
 # Cross-module class inheritance is unsupported in Nox; use closures.
-# Note: never write guards[i](ctx) — Nox parses that as a generic type.
+# Note: never write guards[i](ctx) - Nox parses that as a generic type.
 
 import aether.context
 from aether.context import HttpContext
@@ -22,5 +22,21 @@ def bearer_token(token: str) -> (HttpContext) -> bool:
         expected: str = "Bearer " + token
         if auth != expected:
             raise UnauthorizedError("missing or invalid bearer token")
+        return True
+    return check
+
+def api_key_header(header_name: str, expected: str) -> (HttpContext) -> bool:
+    def check(ctx: HttpContext) -> bool:
+        got: str = ctx.header(header_name)
+        if got != expected:
+            raise UnauthorizedError("missing or invalid api key")
+        return True
+    return check
+
+def require_header(header_name: str) -> (HttpContext) -> bool:
+    def check(ctx: HttpContext) -> bool:
+        got: str = ctx.header(header_name)
+        if len(got) == 0:
+            raise UnauthorizedError("missing header: " + header_name)
         return True
     return check
