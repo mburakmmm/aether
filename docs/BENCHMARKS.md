@@ -11,7 +11,7 @@ Same workload, same machine, `wrk` load generator.
 
 Implementations:
 
-- **Aether** — `benchmarks/aether/main.nox` (`AETHER_WORKERS` multicore)
+- **Aether** — `benchmarks/aether/main.nox` (`dispatch_bound`; default `AETHER_WORKERS=1`)
 - **NestJS** — `@nestjs/platform-express` (`benchmarks/nestjs`)
 - **Gin** — `github.com/gin-gonic/gin` release mode (`benchmarks/gin`)
 
@@ -19,33 +19,33 @@ Implementations:
 
 ```sh
 chmod +x benchmarks/run.sh
-# optional: DURATION=30s CONNECTIONS=100 AETHER_WORKERS=4
+# optional: DURATION=30s CONNECTIONS=100
 ./benchmarks/run.sh
 ```
 
 Requires: `wrk`, `curl`, `noxc`, Go, Node/npm.
 
-Raw wrk logs land in `benchmarks/results/*.txt`.
+Raw wrk logs land in `benchmarks/results/*.txt` (gitignored).
 
 ## Fairness notes
 
-- Nest uses the default Express adapter (common Nest production path). Fastify would be faster; this harness prioritizes Nest’s default stack.
-- Aether production defaults enable OpenAPI in some envs — the bench app sets `log_requests=false` and disables CORS; OpenAPI still registers unless `AETHER_OPENAPI=0`.
-- Nox `serve*` needs a bare top-level `handle` (see limitation §4); multicore workers do not share in-memory state (§12).
-- Query/header validation and JWT are **not** on the ping/echo hot path (measured separately in unit tests).
+- Nest uses the default Express adapter (common Nest production path).
+- Aether runs with `AETHER_OPENAPI=0` and `AETHER_LOG_REQUESTS=0`.
+- Default `AETHER_WORKERS=1`: multicore workers do not re-run module init, so `AppBind` is empty on worker threads (see `NOX_LIMITATIONS` §12 + §19). Scale-out needs per-worker boot support from Nox.
+- Query/header validation and JWT are **not** on the ping/echo hot path.
 
-## Results (fill after local run)
+## Results (local run)
 
-Machine / date: _(runner fills)_
+Machine: darwin arm64 · Date: 2026-07-31 · `wrk -t4 -c40 -d8s`
 
 | Target | GET /ping req/s | POST /echo req/s | Notes |
 |--------|-----------------|------------------|-------|
-| Aether (`AETHER_WORKERS=4`) | | | |
-| NestJS Express | | | |
-| Gin | | | |
+| Aether (`AETHER_WORKERS=1`) | **90 383** | **48 350** | Some socket read errors under load |
+| NestJS Express | **66 773** | **51 696** | |
+| Gin | **190 588** | **181 159** | |
 
-Interpret relative ranking, not absolute numbers across machines.
+Relative ranking on this machine: **Gin ≫ Aether ≳ Nest on ping**; **Gin ≫ Nest ≳ Aether on echo** (DTO validation path on Aether/Nest-ish JSON body).
 
 ## What the bench exposes about Nox
 
-See `docs/NOX_LIMITATIONS.md` §§16–18: no stdlib base64/JWT, string-only query maps, hot-path string JSON building, bare `serve` handlers, multicore isolation.
+See `docs/NOX_LIMITATIONS.md` §§16–19: no stdlib base64/JWT, string-only query maps, hot-path string JSON building, bare `serve` handlers, **serve cannot close over `Application`**, multicore isolation vs `AppBind`.

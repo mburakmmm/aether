@@ -14,7 +14,7 @@ THREADS="${THREADS:-4}"
 AETHER_PORT="${AETHER_PORT:-3001}"
 NEST_PORT="${NEST_PORT:-3002}"
 GIN_PORT="${GIN_PORT:-3003}"
-AETHER_WORKERS="${AETHER_WORKERS:-4}"
+AETHER_WORKERS="${AETHER_WORKERS:-1}"
 
 PIDS=()
 cleanup() {
@@ -55,23 +55,21 @@ echo "Building NestJS..."
   npm run build --silent
 )
 
-echo "Fetching Gin modules..."
+echo "Building Gin..."
 (
   cd "$BENCH/gin"
   go mod tidy
+  go build -o "$OUT/gin-bench" .
 )
 
 echo "Starting Gin on :$GIN_PORT"
-(
-  cd "$BENCH/gin"
-  PORT="$GIN_PORT" go run . >/dev/null 2>&1
-) &
+PORT="$GIN_PORT" "$OUT/gin-bench" >/tmp/gin-bench-server.log 2>&1 &
 PIDS+=($!)
 
 echo "Starting NestJS on :$NEST_PORT"
 (
   cd "$BENCH/nestjs"
-  PORT="$NEST_PORT" node dist/main.js >/dev/null 2>&1
+  PORT="$NEST_PORT" node dist/main.js >/tmp/nestjs-bench-server.log 2>&1
 ) &
 PIDS+=($!)
 
@@ -82,7 +80,8 @@ echo "Starting Aether on :$AETHER_PORT workers=$AETHER_WORKERS"
   AETHER_PORT="$AETHER_PORT" \
   AETHER_WORKERS="$AETHER_WORKERS" \
   AETHER_LOG_REQUESTS=0 \
-  noxc run benchmarks/aether/main.nox >/dev/null 2>&1
+  AETHER_OPENAPI=0 \
+  noxc run benchmarks/aether/main.nox >/tmp/aether-bench-server.log 2>&1
 ) &
 PIDS+=($!)
 
