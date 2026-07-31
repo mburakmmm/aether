@@ -225,6 +225,7 @@ def set_run_at(db: Connection, id: int, run_at_ms: int) -> None:
     stmt.bind_int(2, id)
     stmt.execute()
 
+def complete(db: Connection, id: int) -> None:
     now: int = nox.time.now_ms()
     stmt: Statement = db.prepare(
         "UPDATE aether_jobs SET status = ?, updated_at_ms = ? WHERE id = ?"
