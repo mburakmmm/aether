@@ -12,8 +12,10 @@ class Injectable:
 
 class Container:
     def __init__(self: Container) -> None:
-        self._services: dict[str, Injectable] = {}
-        self._request: dict[str, str] = {}
+        services: dict[str, Injectable] = {}
+        request: dict[str, str] = {}
+        self._services = services
+        self._request = request
 
     def provide(self: Container, name: str, service: Injectable) -> None:
         if len(name) == 0:
@@ -47,4 +49,5 @@ class Container:
         return ""
 
     def clear_request(self: Container) -> None:
-        self._request = {}
+        empty: dict[str, str] = {}
+        self._request = empty

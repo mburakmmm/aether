@@ -1,4 +1,4 @@
-# aether.gateway — WebSocket message routing (process-local hub).
+# aether.gateway - WebSocket message routing (process-local hub).
 
 import nox.json
 from nox.json import JsonError
@@ -14,14 +14,20 @@ class GatewayHandler:
 
 class Gateway:
     def __init__(self: Gateway) -> None:
-        self._events: list[str] = []
-        self._handlers: list[GatewayHandler] = []
+        events: list[str] = []
+        handlers: list[GatewayHandler] = []
+        self._events = events
+        self._handlers = handlers
 
     def on(self: Gateway, event: str, handler: GatewayHandler) -> None:
         if len(event) == 0:
             raise GatewayError("event name empty")
-        self._events.append(event)
-        self._handlers.append(handler)
+        events: list[str] = self._events
+        handlers: list[GatewayHandler] = self._handlers
+        events.append(event)
+        handlers.append(handler)
+        self._events = events
+        self._handlers = handlers
 
     def dispatch_message(self: Gateway, conn: WebSocketServerConn, raw: str) -> None:
         event: str = ""

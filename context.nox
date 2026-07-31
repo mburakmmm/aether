@@ -1,4 +1,4 @@
-# aether.context — request-scoped HttpContext + TaskLocal bag.
+# aether.context - request-scoped HttpContext + TaskLocal bag.
 
 from nox.http import HttpRequest
 import aether.container

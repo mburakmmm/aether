@@ -1,4 +1,4 @@
-# aether.response — JSON / text HTTP helpers.
+# aether.response - JSON / text HTTP helpers.
 
 from nox.http import HttpResponse
 import nox.json

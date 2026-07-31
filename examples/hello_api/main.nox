@@ -18,8 +18,9 @@ from aether.dto import DtoSchema
 class UserService(Injectable):
     def __init__(self: UserService) -> None:
         super().__init__()
-        self._users: dict[str, str] = {}
-        self._users["1"] = "ada"
+        users: dict[str, str] = {}
+        users["1"] = "ada"
+        self._users = users
         self._next = 2
 
     def find(self: UserService, id: str) -> str | None:

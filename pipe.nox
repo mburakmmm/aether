@@ -1,4 +1,4 @@
-# aether.pipe — transform / validate request input.
+# aether.pipe - transform / validate request input.
 
 import aether.context
 from aether.context import HttpContext

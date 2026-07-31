@@ -1,4 +1,4 @@
-# aether.module — ModuleBuilder, RouteDef, AppModule protocol.
+# aether.module - ModuleBuilder, RouteDef, AppModule protocol.
 
 from nox.http import HttpResponse
 import aether.container
@@ -36,9 +36,12 @@ class RouteDef:
         self.input_schema = input_schema
         self.has_output = has_output
         self.output_schema = output_schema
-        self.guards: list[Guard] = []
-        self.pipes: list[Pipe] = []
-        self.interceptors: list[Interceptor] = []
+        guards: list[Guard] = []
+        pipes: list[Pipe] = []
+        interceptors: list[Interceptor] = []
+        self.guards = guards
+        self.pipes = pipes
+        self.interceptors = interceptors
 
 class ModuleBuilder:
     def __init__(
@@ -54,9 +57,12 @@ class ModuleBuilder:
         self._global_guards = global_guards
         self._global_pipes = global_pipes
         self._global_interceptors = global_interceptors
-        self._route_guards: list[Guard] = []
-        self._route_pipes: list[Pipe] = []
-        self._route_interceptors: list[Interceptor] = []
+        route_guards: list[Guard] = []
+        route_pipes: list[Pipe] = []
+        route_interceptors: list[Interceptor] = []
+        self._route_guards = route_guards
+        self._route_pipes = route_pipes
+        self._route_interceptors = route_interceptors
         self._default_tag = ""
 
     def tag(self: ModuleBuilder, name: str) -> None:
@@ -66,27 +72,42 @@ class ModuleBuilder:
         self._container.provide(name, service)
 
     def use_guard(self: ModuleBuilder, guard: Guard) -> None:
-        self._global_guards.append(guard)
+        gs: list[Guard] = self._global_guards
+        gs.append(guard)
+        self._global_guards = gs
 
     def use_pipe(self: ModuleBuilder, pipe: Pipe) -> None:
-        self._global_pipes.append(pipe)
+        ps: list[Pipe] = self._global_pipes
+        ps.append(pipe)
+        self._global_pipes = ps
 
     def use_interceptor(self: ModuleBuilder, interceptor: Interceptor) -> None:
-        self._global_interceptors.append(interceptor)
+        xs: list[Interceptor] = self._global_interceptors
+        xs.append(interceptor)
+        self._global_interceptors = xs
 
     def route_guard(self: ModuleBuilder, guard: Guard) -> None:
-        self._route_guards.append(guard)
+        gs: list[Guard] = self._route_guards
+        gs.append(guard)
+        self._route_guards = gs
 
     def route_pipe(self: ModuleBuilder, pipe: Pipe) -> None:
-        self._route_pipes.append(pipe)
+        ps: list[Pipe] = self._route_pipes
+        ps.append(pipe)
+        self._route_pipes = ps
 
     def route_interceptor(self: ModuleBuilder, interceptor: Interceptor) -> None:
-        self._route_interceptors.append(interceptor)
+        xs: list[Interceptor] = self._route_interceptors
+        xs.append(interceptor)
+        self._route_interceptors = xs
 
     def clear_route_meta(self: ModuleBuilder) -> None:
-        self._route_guards = []
-        self._route_pipes = []
-        self._route_interceptors = []
+        empty_g: list[Guard] = []
+        empty_p: list[Pipe] = []
+        empty_i: list[Interceptor] = []
+        self._route_guards = empty_g
+        self._route_pipes = empty_p
+        self._route_interceptors = empty_i
 
     def _add(
         self: ModuleBuilder,
@@ -110,21 +131,29 @@ class ModuleBuilder:
             has_output,
             output_schema
         )
+        rg: list[Guard] = route.guards
         i: int = 0
         while i < len(self._route_guards):
-            route.guards.append(self._route_guards[i])
+            rg.append(self._route_guards[i])
             i = i + 1
+        route.guards = rg
+        rp: list[Pipe] = route.pipes
         i = 0
         while i < len(self._route_pipes):
-            route.pipes.append(self._route_pipes[i])
-            i = i + 1
-        i = 0
-        while i < len(self._route_interceptors):
-            route.interceptors.append(self._route_interceptors[i])
+            rp.append(self._route_pipes[i])
             i = i + 1
         if has_input:
-            route.pipes.append(ValidationPipe(input_schema))
-        self._routes.append(route)
+            rp.append(ValidationPipe(input_schema))
+        route.pipes = rp
+        ri: list[Interceptor] = route.interceptors
+        i = 0
+        while i < len(self._route_interceptors):
+            ri.append(self._route_interceptors[i])
+            i = i + 1
+        route.interceptors = ri
+        routes: list[RouteDef] = self._routes
+        routes.append(route)
+        self._routes = routes
         self.clear_route_meta()
 
     def get(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:

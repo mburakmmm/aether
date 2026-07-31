@@ -1,4 +1,4 @@
-# aether.openapi — OpenAPI 3 document from RouteDef + DtoSchema metadata.
+# aether.openapi - OpenAPI 3 document from RouteDef + DtoSchema metadata.
 
 import nox.json
 import nox.strings

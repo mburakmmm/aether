@@ -150,12 +150,18 @@ def fail(db: Connection, id: int, error: str) -> None:
 
 class JobRegistry:
     def __init__(self: JobRegistry) -> None:
-        self._names: list[str] = []
-        self._handlers: list[(str) -> None] = []
+        names: list[str] = []
+        handlers: list[(str) -> None] = []
+        self._names = names
+        self._handlers = handlers
 
     def register(self: JobRegistry, name: str, handler: (str) -> None) -> None:
-        self._names.append(name)
-        self._handlers.append(handler)
+        names: list[str] = self._names
+        handlers: list[(str) -> None] = self._handlers
+        names.append(name)
+        handlers.append(handler)
+        self._names = names
+        self._handlers = handlers
 
     def get(self: JobRegistry, name: str) -> (str) -> None:
         i: int = 0
