@@ -2,10 +2,13 @@
 # Cross-module class inheritance is unsupported in Nox; use closures.
 # Note: never write guards[i](ctx) - Nox parses that as a generic type.
 
+import nox.strings
 import aether.context
 from aether.context import HttpContext
 import aether.errors
 from aether.errors import ForbiddenError, UnauthorizedError
+import aether.jwt
+from aether.jwt import JwtError
 
 def run_guards(guards: list[(HttpContext) -> bool], ctx: HttpContext) -> None:
     i: int = 0
@@ -38,5 +41,29 @@ def require_header(header_name: str) -> (HttpContext) -> bool:
         got: str = ctx.header(header_name)
         if len(got) == 0:
             raise UnauthorizedError("missing header: " + header_name)
+        return True
+    return check
+
+def _bearer_raw(auth: str) -> str:
+    if not nox.strings.starts_with(auth, "Bearer "):
+        return ""
+    out: str = ""
+    i: int = 7
+    while i < len(auth):
+        out = out + auth[i]
+        i = i + 1
+    return out
+
+def jwt_bearer(secret: str) -> (HttpContext) -> bool:
+    def check(ctx: HttpContext) -> bool:
+        auth: str = ctx.header("Authorization")
+        token: str = _bearer_raw(auth)
+        if len(token) == 0:
+            raise UnauthorizedError("missing or invalid bearer token")
+        try:
+            payload: str = aether.jwt.decode(secret, token)
+            ctx.set_request_value("aether.jwt", payload)
+        except JwtError as e:
+            raise UnauthorizedError(e.message)
         return True
     return check

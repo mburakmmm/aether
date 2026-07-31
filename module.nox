@@ -12,7 +12,7 @@ import aether.interceptor
 from aether.container import Container
 from aether.context import HttpContext
 from aether.dto import DtoSchema
-from aether.pipe import validation_pipe
+from aether.pipe import validation_pipe, query_validation_pipe, header_validation_pipe
 from aether.interceptor import InterceptorFns
 import aether.errors
 from aether.errors import HttpError
@@ -28,6 +28,10 @@ class RouteDef:
     has_output: bool
     output_schema: DtoSchema
     success_status: int
+    has_query: bool
+    query_schema: DtoSchema
+    has_headers: bool
+    header_schema: DtoSchema
     guards: list[(HttpContext) -> bool]
     pipes: list[(HttpContext) -> None]
     interceptors: list[InterceptorFns]
@@ -45,6 +49,7 @@ class RouteDef:
         output_schema: DtoSchema,
         success_status: int
     ) -> None:
+        empty: DtoSchema = DtoSchema("")
         self.method = method
         self.pattern = pattern
         self.handler = handler
@@ -55,6 +60,10 @@ class RouteDef:
         self.has_output = has_output
         self.output_schema = output_schema
         self.success_status = success_status
+        self.has_query = False
+        self.query_schema = empty
+        self.has_headers = False
+        self.header_schema = empty
         self.guards = []
         self.pipes = []
         self.interceptors = []
@@ -66,6 +75,10 @@ class RouteOptions:
     has_output: bool
     output_schema: DtoSchema
     success_status: int
+    has_query: bool
+    query_schema: DtoSchema
+    has_headers: bool
+    header_schema: DtoSchema
     guards: list[(HttpContext) -> bool]
     pipes: list[(HttpContext) -> None]
     interceptors: list[InterceptorFns]
@@ -78,6 +91,10 @@ class RouteOptions:
         self.has_output = False
         self.output_schema = empty
         self.success_status = 200
+        self.has_query = False
+        self.query_schema = empty
+        self.has_headers = False
+        self.header_schema = empty
         self.guards = []
         self.pipes = []
         self.interceptors = []
@@ -203,7 +220,11 @@ class ModuleBuilder:
         input_schema: DtoSchema,
         has_output: bool,
         output_schema: DtoSchema,
-        success_status: int
+        success_status: int,
+        has_query: bool,
+        query_schema: DtoSchema,
+        has_headers: bool,
+        header_schema: DtoSchema
     ) -> None:
         route: RouteDef = RouteDef(
             method,
@@ -217,6 +238,10 @@ class ModuleBuilder:
             output_schema,
             success_status
         )
+        route.has_query = has_query
+        route.query_schema = query_schema
+        route.has_headers = has_headers
+        route.header_schema = header_schema
         rg: list[(HttpContext) -> bool] = route.guards
         i: int = 0
         while i < len(self._route_guards):
@@ -228,6 +253,10 @@ class ModuleBuilder:
         while i < len(self._route_pipes):
             rp.append(self._route_pipes[i])
             i = i + 1
+        if has_query:
+            rp.append(query_validation_pipe(query_schema))
+        if has_headers:
+            rp.append(header_validation_pipe(header_schema))
         if has_input:
             rp.append(validation_pipe(input_schema))
         route.pipes = rp
@@ -245,19 +274,19 @@ class ModuleBuilder:
 
     def get(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("GET", pattern, handler, "", False, empty, False, empty, 200)
+        self._add("GET", pattern, handler, "", False, empty, False, empty, 200, False, empty, False, empty)
 
     def post(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("POST", pattern, handler, "", False, empty, False, empty, 201)
+        self._add("POST", pattern, handler, "", False, empty, False, empty, 201, False, empty, False, empty)
 
     def put(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("PUT", pattern, handler, "", False, empty, False, empty, 200)
+        self._add("PUT", pattern, handler, "", False, empty, False, empty, 200, False, empty, False, empty)
 
     def delete(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("DELETE", pattern, handler, "", False, empty, False, empty, 204)
+        self._add("DELETE", pattern, handler, "", False, empty, False, empty, 204, False, empty, False, empty)
 
     def get_documented(
         self: ModuleBuilder,
@@ -267,7 +296,7 @@ class ModuleBuilder:
         output_schema: DtoSchema
     ) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("GET", pattern, handler, summary, False, empty, True, output_schema, 200)
+        self._add("GET", pattern, handler, summary, False, empty, True, output_schema, 200, False, empty, False, empty)
 
     def post_body(
         self: ModuleBuilder,
@@ -277,7 +306,8 @@ class ModuleBuilder:
         input_schema: DtoSchema,
         output_schema: DtoSchema
     ) -> None:
-        self._add("POST", pattern, handler, summary, True, input_schema, True, output_schema, 201)
+        empty: DtoSchema = DtoSchema("")
+        self._add("POST", pattern, handler, summary, True, input_schema, True, output_schema, 201, False, empty, False, empty)
 
     def put_body(
         self: ModuleBuilder,
@@ -287,7 +317,8 @@ class ModuleBuilder:
         input_schema: DtoSchema,
         output_schema: DtoSchema
     ) -> None:
-        self._add("PUT", pattern, handler, summary, True, input_schema, True, output_schema, 200)
+        empty: DtoSchema = DtoSchema("")
+        self._add("PUT", pattern, handler, summary, True, input_schema, True, output_schema, 200, False, empty, False, empty)
 
     def delete_documented(
         self: ModuleBuilder,
@@ -296,7 +327,7 @@ class ModuleBuilder:
         summary: str
     ) -> None:
         empty: DtoSchema = DtoSchema("")
-        self._add("DELETE", pattern, handler, summary, False, empty, False, empty, 204)
+        self._add("DELETE", pattern, handler, summary, False, empty, False, empty, 204, False, empty, False, empty)
 
     def route(
         self: ModuleBuilder,
@@ -326,7 +357,11 @@ class ModuleBuilder:
             opts.input_schema,
             opts.has_output,
             opts.output_schema,
-            opts.success_status
+            opts.success_status,
+            opts.has_query,
+            opts.query_schema,
+            opts.has_headers,
+            opts.header_schema
         )
 
 def _drop1(s: str) -> str:

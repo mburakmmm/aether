@@ -108,13 +108,13 @@ def _components_json(schemas: list[DtoSchema]) -> str:
     body = body + "}}"
     return body
 
-def _path_params_json(pattern: str) -> str:
-    parts: list[str] = nox.strings.split(pattern, "/")
+def _parameters_json(route: RouteDef) -> str:
     out: str = "["
     first: bool = True
-    i: int = 0
-    while i < len(parts):
-        p: str = parts[i]
+    parts: list[str] = nox.strings.split(route.pattern, "/")
+    pi: int = 0
+    while pi < len(parts):
+        p: str = parts[pi]
         if nox.strings.starts_with(p, ":"):
             name: str = ""
             k: int = 1
@@ -126,7 +126,37 @@ def _path_params_json(pattern: str) -> str:
             first = False
             out = out + "{\"name\":" + nox.json.encode_string(name)
             out = out + ",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}"
-        i = i + 1
+        pi = pi + 1
+    if route.has_query:
+        qi: int = 0
+        while qi < len(route.query_schema.fields):
+            field: Field = route.query_schema.fields[qi]
+            if not first:
+                out = out + ","
+            first = False
+            out = out + "{\"name\":" + nox.json.encode_string(field.name)
+            out = out + ",\"in\":\"query\""
+            if field.required:
+                out = out + ",\"required\":true"
+            else:
+                out = out + ",\"required\":false"
+            out = out + ",\"schema\":" + _field_schema_json(field, False) + "}"
+            qi = qi + 1
+    if route.has_headers:
+        hi: int = 0
+        while hi < len(route.header_schema.fields):
+            hfield: Field = route.header_schema.fields[hi]
+            if not first:
+                out = out + ","
+            first = False
+            out = out + "{\"name\":" + nox.json.encode_string(hfield.name)
+            out = out + ",\"in\":\"header\""
+            if hfield.required:
+                out = out + ",\"required\":true"
+            else:
+                out = out + ",\"required\":false"
+            out = out + ",\"schema\":" + _field_schema_json(hfield, False) + "}"
+            hi = hi + 1
     out = out + "]"
     return out
 
@@ -152,7 +182,7 @@ def _operation_json(route: RouteDef) -> str:
         body = body + "\"summary\":" + nox.json.encode_string(route.summary) + ","
     if len(route.tag) > 0:
         body = body + "\"tags\":[" + nox.json.encode_string(route.tag) + "],"
-    params: str = _path_params_json(route.pattern)
+    params: str = _parameters_json(route)
     if params != "[]":
         body = body + "\"parameters\":" + params + ","
     if route.has_input:

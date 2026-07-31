@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — 2026-07-31
+
+Query/header validation, JWT HS256 primitives, queue docs, cross-stack benchmarks.
+
+- Query + header DTO pipes via `RouteOptions` (`has_query` / `has_headers`) + OpenAPI `parameters`
+- `aether.base64` + `aether.jwt` (HS256); `jwt_bearer(secret)` guard; `ctx.jwt_claims()`
+- `ctx.query_json` / `ctx.header_json` after validation pipes
+- Queue at-least-once / lease semantics: [docs/QUEUE.md](docs/QUEUE.md)
+- Benchmarks: Aether vs NestJS vs Gin — [docs/BENCHMARKS.md](docs/BENCHMARKS.md), `benchmarks/`
+- Nox limitations §§16–18 (base64/JWT, string query maps, hot-path JSON)
+
 ## 0.3.0 — 2026-07-31
 
 API ergonomics and safer gateway defaults.

@@ -242,3 +242,12 @@ class HttpContext:
 
     def input_bool(self: HttpContext, name: str) -> bool:
         return self.validated_body().get_bool(name)
+
+    def query_json(self: HttpContext) -> str:
+        return get_request_value("aether.query_json")
+
+    def header_json(self: HttpContext) -> str:
+        return get_request_value("aether.header_json")
+
+    def jwt_claims(self: HttpContext) -> str:
+        return get_request_value("aether.jwt")

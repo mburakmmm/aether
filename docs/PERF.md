@@ -19,7 +19,9 @@ Each `serve_multicore` worker gets a **fresh** module-global copy (non-atomic AR
 
 ## Bench
 
+See [BENCHMARKS.md](BENCHMARKS.md) for Aether vs NestJS vs Gin (`benchmarks/run.sh`).
+
 ```sh
-AETHER_ENV=production AETHER_WORKERS=4 AETHER_PORT=3000 noxc run examples/hello_api/main.nox
-# then point nox-bench / wrk at GET /health and GET /users/1
+AETHER_ENV=production AETHER_WORKERS=4 AETHER_PORT=3000 AETHER_OPENAPI=0 noxc run benchmarks/aether/main.nox
+# then wrk / benchmarks/run.sh
 ```

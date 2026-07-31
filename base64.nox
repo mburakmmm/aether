@@ -1,0 +1,204 @@
+# aether.base64 - saf Nox base64 / base64url (RFC 4648).
+#
+# Kodlama: girdinin UTF-8 baytlari ('nox.strings.byte_at' + C-string uzunlugu).
+# Cozme: cikti baytlari YALNIZCA ASCII (0..127) - JWT JSON govdeleri icin yeterli.
+#
+# Tuketici alias'i onerilir 'nyx' (Nox >= 1.12.1 zorunlu degil): import aether.base64
+
+import nox.strings
+
+class Base64Error(Exception):
+    def __init__(self: Base64Error, message: str) -> None:
+        self.message = message
+
+def _alphabet() -> str:
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+def _alphabet_url() -> str:
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+def _printable() -> str:
+    return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'abcdefghijklmnopqrstuvwxyz{|}~"
+
+def _byte_len(s: str) -> int:
+    i: int = 0
+    while nox.strings.byte_at(s, i) != 0:
+        i = i + 1
+    return i
+
+def _alphabet_char(alphabet: str, idx: int) -> str:
+    if idx < 0 or idx > 63:
+        raise Base64Error("gecersiz base64 indeksi")
+    return alphabet[idx]
+
+def _value_of(alphabet: str, c: str) -> int:
+    i: int = 0
+    while i < 64:
+        if alphabet[i] == c:
+            return i
+        i = i + 1
+    raise Base64Error("gecersiz base64 karakteri")
+
+def _byte_to_ascii(b: int) -> str:
+    if b < 0 or b > 127:
+        raise Base64Error("decode yalnizca ASCII (0..127) destekler")
+    if b < 32:
+        if b == 9:
+            return "\t"
+        if b == 10:
+            return "\n"
+        raise Base64Error("decode kontrol karakteri desteklenmiyor: " + str(b))
+    if b == 127:
+        raise Base64Error("decode DEL desteklenmiyor")
+    table: str = _printable()
+    return table[b - 32]
+
+def _drop_last(s: str) -> str:
+    n: int = len(s)
+    if n == 0:
+        return ""
+    out: str = ""
+    i: int = 0
+    while i < n - 1:
+        out = out + s[i]
+        i = i + 1
+    return out
+
+def _encode_bytes(s: str, n: int, alphabet: str, pad: bool) -> str:
+    out: str = ""
+    i: int = 0
+    while i + 2 < n:
+        a: int = nox.strings.byte_at(s, i)
+        b: int = nox.strings.byte_at(s, i + 1)
+        c: int = nox.strings.byte_at(s, i + 2)
+        triple: int = a * 65536 + b * 256 + c
+        out = out + _alphabet_char(alphabet, triple // 262144)
+        out = out + _alphabet_char(alphabet, (triple // 4096) % 64)
+        out = out + _alphabet_char(alphabet, (triple // 64) % 64)
+        out = out + _alphabet_char(alphabet, triple % 64)
+        i = i + 3
+    rem: int = n - i
+    if rem == 1:
+        a2: int = nox.strings.byte_at(s, i)
+        triple1: int = a2 * 65536
+        out = out + _alphabet_char(alphabet, triple1 // 262144)
+        out = out + _alphabet_char(alphabet, (triple1 // 4096) % 64)
+        if pad:
+            out = out + "=="
+    elif rem == 2:
+        a3: int = nox.strings.byte_at(s, i)
+        b3: int = nox.strings.byte_at(s, i + 1)
+        triple2: int = a3 * 65536 + b3 * 256
+        out = out + _alphabet_char(alphabet, triple2 // 262144)
+        out = out + _alphabet_char(alphabet, (triple2 // 4096) % 64)
+        out = out + _alphabet_char(alphabet, (triple2 // 64) % 64)
+        if pad:
+            out = out + "="
+    return out
+
+def encode(data: str) -> str:
+    return _encode_bytes(data, _byte_len(data), _alphabet(), True)
+
+def encode_url(data: str) -> str:
+    return _encode_bytes(data, _byte_len(data), _alphabet_url(), False)
+
+def _hex_nibble(b: int) -> int:
+    if b >= 48 and b <= 57:
+        return b - 48
+    if b >= 97 and b <= 102:
+        return b - 87
+    if b >= 65 and b <= 70:
+        return b - 55
+    raise Base64Error("gecersiz hex karakteri")
+
+# 'nox.crypto.hmac_sha256' hex ciktisini base64url'e cevirir.
+def encode_hex_url(hex_data: str) -> str:
+    alphabet: str = _alphabet_url()
+    n: int = _byte_len(hex_data)
+    if n % 2 != 0:
+        raise Base64Error("hex uzunlugu cift olmali")
+    out: str = ""
+    i: int = 0
+    while i + 5 < n:
+        b0: int = _hex_nibble(nox.strings.byte_at(hex_data, i)) * 16 + _hex_nibble(nox.strings.byte_at(hex_data, i + 1))
+        b1: int = _hex_nibble(nox.strings.byte_at(hex_data, i + 2)) * 16 + _hex_nibble(nox.strings.byte_at(hex_data, i + 3))
+        b2: int = _hex_nibble(nox.strings.byte_at(hex_data, i + 4)) * 16 + _hex_nibble(nox.strings.byte_at(hex_data, i + 5))
+        triple: int = b0 * 65536 + b1 * 256 + b2
+        out = out + _alphabet_char(alphabet, triple // 262144)
+        out = out + _alphabet_char(alphabet, (triple // 4096) % 64)
+        out = out + _alphabet_char(alphabet, (triple // 64) % 64)
+        out = out + _alphabet_char(alphabet, triple % 64)
+        i = i + 6
+    rem_hex: int = n - i
+    if rem_hex == 2:
+        b0r: int = _hex_nibble(nox.strings.byte_at(hex_data, i)) * 16 + _hex_nibble(nox.strings.byte_at(hex_data, i + 1))
+        triple_r: int = b0r * 65536
+        out = out + _alphabet_char(alphabet, triple_r // 262144)
+        out = out + _alphabet_char(alphabet, (triple_r // 4096) % 64)
+    elif rem_hex == 4:
+        b0s: int = _hex_nibble(nox.strings.byte_at(hex_data, i)) * 16 + _hex_nibble(nox.strings.byte_at(hex_data, i + 1))
+        b1s: int = _hex_nibble(nox.strings.byte_at(hex_data, i + 2)) * 16 + _hex_nibble(nox.strings.byte_at(hex_data, i + 3))
+        triple_s: int = b0s * 65536 + b1s * 256
+        out = out + _alphabet_char(alphabet, triple_s // 262144)
+        out = out + _alphabet_char(alphabet, (triple_s // 4096) % 64)
+        out = out + _alphabet_char(alphabet, (triple_s // 64) % 64)
+    elif rem_hex != 0:
+        raise Base64Error("gecersiz hex kalani")
+    return out
+
+def _decode_to_ascii_impl(data: str, alphabet: str, pad: bool) -> str:
+    raw: str = data
+    pad_bytes: int = 0
+    if pad:
+        while nox.strings.ends_with(raw, "="):
+            raw = _drop_last(raw)
+            pad_bytes = pad_bytes + 1
+    n_orig: int = _byte_len(raw)
+    rem: int = n_orig % 4
+    if rem == 1:
+        raise Base64Error("gecersiz base64 uzunlugu")
+    if rem == 2:
+        # 1 cikti bayti -> 2 karakter; 2 pad bayti
+        if pad_bytes == 0:
+            pad_bytes = 2
+        raw = raw + "AA"
+    elif rem == 3:
+        # 2 cikti bayti -> 3 karakter; 1 pad bayti
+        if pad_bytes == 0:
+            pad_bytes = 1
+        raw = raw + "A"
+    n: int = _byte_len(raw)
+    if n % 4 != 0:
+        raise Base64Error("gecersiz base64 uzunlugu")
+    total_out: int = (n // 4) * 3 - pad_bytes
+    if total_out < 0:
+        raise Base64Error("gecersiz base64 padding")
+    out: str = ""
+    produced: int = 0
+    i: int = 0
+    while i < n:
+        v0: int = _value_of(alphabet, raw[i])
+        v1: int = _value_of(alphabet, raw[i + 1])
+        v2: int = _value_of(alphabet, raw[i + 2])
+        v3: int = _value_of(alphabet, raw[i + 3])
+        triple: int = v0 * 262144 + v1 * 4096 + v2 * 64 + v3
+        b0: int = triple // 65536
+        b1: int = (triple // 256) % 256
+        b2: int = triple % 256
+        if produced < total_out:
+            out = out + _byte_to_ascii(b0)
+            produced = produced + 1
+        if produced < total_out:
+            out = out + _byte_to_ascii(b1)
+            produced = produced + 1
+        if produced < total_out:
+            out = out + _byte_to_ascii(b2)
+            produced = produced + 1
+        i = i + 4
+    return out
+
+def decode(data: str) -> str:
+    return _decode_to_ascii_impl(data, _alphabet(), True)
+
+def decode_url(data: str) -> str:
+    return _decode_to_ascii_impl(data, _alphabet_url(), False)

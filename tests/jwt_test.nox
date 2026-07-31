@@ -1,0 +1,27 @@
+import nox.test
+import nox.time
+import nox.strings
+import aether.jwt
+from aether.jwt import JwtError
+
+secret: str = "bench-secret-key-32bytes-minimum!!"
+exp: int = nox.time.now_ms() // 1000 + 3600
+token: str = aether.jwt.encode(secret, "{\"sub\":\"u1\",\"role\":\"admin\"}", exp)
+nox.test.assert_true(len(token) > 10, "token length")
+parts: list[str] = nox.strings.split(token, ".")
+nox.test.assert_eq_int(len(parts), 3, "three parts")
+
+payload: str = aether.jwt.decode(secret, token)
+nox.test.assert_true(nox.strings.contains(payload, "u1"), "sub claim")
+nox.test.assert_true(nox.strings.contains(payload, "exp"), "exp claim")
+
+bad: bool = False
+try:
+    ignore: str = aether.jwt.decode("wrong-secret-xxxxxxxxxxxx", token)
+    bad = len(ignore) == 0
+except JwtError as e:
+    bad = True
+    nox.test.assert_true(len(e.message) > 0, "sig error message")
+nox.test.assert_true(bad, "bad secret rejected")
+
+print("jwt_test ok")

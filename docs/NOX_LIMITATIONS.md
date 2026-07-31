@@ -254,6 +254,54 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ---
 
+## 16. No stdlib base64 / JWT
+
+**Status:** `workaround`
+
+**Impact:** Frameworks cannot verify Bearer JWTs or emit OpenAPI security without shipping codecs. Nest/Go ecosystems rely on mature std/third-party JWT stacks.
+
+**Evidence:**
+- Nox stdlib exposes `nox.crypto.hmac_sha256` + `constant_time_eq` but no `nox.base64` / `nox.jwt`
+- Aether `benchmarks/` and `aether.jwt` require `aether.base64` (hex→base64url bridge for HMAC)
+
+**Desired Nox change:** Stdlib `nox.base64` (std + url) and preferably `nox.jwt` HS256 helpers.
+
+**Aether workaround:** Ship `aether.base64` + `aether.jwt` (HS256 only); `jwt_bearer(secret)` guard stores claims in TaskLocal.
+
+---
+
+## 17. Query / header maps are string-only
+
+**Status:** `workaround`
+
+**Impact:** Typed query/header validation cannot coerce `?page=2` to number without framework encoding round-trips. Nest pipes / Gin binders coerce natively.
+
+**Evidence:**
+- `HttpContext.query: dict[str, str]` / headers as strings (`aether.context`)
+- Bench + `query_validation_pipe` encode maps to JSON strings then run `aether.dto`
+
+**Desired Nox change:** Optional typed query decode, or richer URL value types in `nox.url`.
+
+**Aether workaround:** Document string-oriented query/header schemas; validate via JSON object rebuild + DTO.
+
+---
+
+## 18. Hot-path string building (JSON responses)
+
+**Status:** `workaround` (perf)
+
+**Impact:** Handlers and OpenAPI builders concatenate JSON with `+` / `encode_string`. Under wrk this shows as CPU in string alloc vs Gin’s `encoding/json` / Nest buffers — see `docs/BENCHMARKS.md`.
+
+**Evidence:**
+- Cross-stack microbench harness in `benchmarks/` (Aether vs NestJS Express vs Gin)
+- No binary JSON writer / response builder in Nox stdlib
+
+**Desired Nox change:** Efficient JSON object builder / response buffer API for hot paths.
+
+**Aether workaround:** Keep validation/OpenAPI correctness first; document multicore (`AETHER_WORKERS`) and compare apples-to-apples in BENCHMARKS.
+
+---
+
 ## Priority asks for Nox (Aether ranking)
 
 0. Cross-module class inheritance
@@ -267,5 +315,8 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 7. Non-string decorator literal args
 8. First-class serve handlers
 9. Disambiguate `name[i](...)` from generics
+10. Stdlib base64 (+ JWT HS256)
+11. Typed / coercing query values
+12. Hot-path JSON / response buffers
 
 When an item is fixed upstream, update its **Status** to `resolved in nox X.Y` and tighten Aether APIs accordingly.

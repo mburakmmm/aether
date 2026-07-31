@@ -1,0 +1,77 @@
+import nox.test
+import nox.strings
+import nox.time
+import nox.json
+import aether.config
+import aether.application
+import aether.testing
+import aether.jwt
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder, RouteOptions
+from aether.context import HttpContext
+from aether.response import json_ok
+from aether.dto import DtoSchema
+from aether.guard import jwt_bearer
+from nox.http import HttpResponse
+
+class QhModule:
+    def configure(self: QhModule, m: ModuleBuilder) -> None:
+        q: DtoSchema = DtoSchema("SearchQuery")
+        q.require("q", "string")
+        q.optional("page", "string")
+
+        h: DtoSchema = DtoSchema("ClientHeaders")
+        h.require("X-Client-Id", "string")
+
+        opts: RouteOptions = RouteOptions()
+        opts.summary = "Search"
+        opts.has_query = True
+        opts.query_schema = q
+        opts.has_headers = True
+        opts.header_schema = h
+        opts.guards.append(jwt_bearer("qh-secret-key-32bytes-aaaaaaaa"))
+        m.route("GET", "/search", self._search(), opts)
+
+    def _search(self: QhModule) -> (HttpContext) -> HttpResponse:
+        def search(ctx: HttpContext) -> HttpResponse:
+            body: str = "{\"q\":" + nox.json.encode_string(ctx.query_param("q"))
+            body = body + ",\"client\":" + nox.json.encode_string(ctx.header("X-Client-Id"))
+            body = body + ",\"claims\":" + ctx.jwt_claims() + "}"
+            return json_ok(body)
+        return search
+
+def build(app: Application) -> None:
+    QhModule().configure(app.module())
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+app: Application = aether.application.boot_with_config(cfg, build)
+
+doc: str = app.openapi_doc
+nox.test.assert_true(nox.strings.contains(doc, "\"in\":\"query\""), "openapi query param")
+nox.test.assert_true(nox.strings.contains(doc, "\"in\":\"header\""), "openapi header param")
+nox.test.assert_true(nox.strings.contains(doc, "X-Client-Id"), "openapi header name")
+
+exp: int = nox.time.now_ms() // 1000 + 3600
+token: str = aether.jwt.encode("qh-secret-key-32bytes-aaaaaaaa", "{\"sub\":\"s1\"}", exp)
+headers: dict[str, str] = {}
+headers["Authorization"] = "Bearer " + token
+headers["X-Client-Id"] = "cli-9"
+
+ok: HttpResponse = aether.testing.get_headers(app, "/search?q=hello&page=1", headers)
+nox.test.assert_eq_int(ok.status, 200, "search ok")
+nox.test.assert_true(nox.strings.contains(ok.body, "hello"), "echo q")
+nox.test.assert_true(nox.strings.contains(ok.body, "cli-9"), "echo client")
+nox.test.assert_true(nox.strings.contains(ok.body, "s1"), "jwt claims")
+
+missing_q: HttpResponse = aether.testing.get_headers(app, "/search?page=1", headers)
+nox.test.assert_eq_int(missing_q.status, 422, "missing query field")
+
+no_auth: dict[str, str] = {}
+no_auth["X-Client-Id"] = "cli-9"
+unauth: HttpResponse = aether.testing.get_headers(app, "/search?q=x", no_auth)
+nox.test.assert_eq_int(unauth.status, 401, "jwt required")
+
+aether.application.shutdown(app)
+print("query_header_test ok")

@@ -6,3 +6,6 @@ tmp/
 db/*.sqlite
 db/*.sqlite-*
 .DS_Store
+benchmarks/nestjs/node_modules/
+benchmarks/nestjs/dist/
+benchmarks/results/

@@ -1,0 +1,52 @@
+# Ping / echo benchmark target (Aether)
+#
+# Nox serve* requires a bare top-level handle name - do not wrap serve().
+
+import nox.http
+import nox.json
+from nox.http import HttpRequest, HttpResponse
+import aether.application
+import aether.server
+import aether.config
+from aether.application import Application
+from aether.config import Config
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from aether.dto import DtoSchema
+
+class BenchModule:
+    def configure(self: BenchModule, m: ModuleBuilder) -> None:
+        echo_in: DtoSchema = DtoSchema("EchoIn")
+        echo_in.require("msg", "string")
+        echo_out: DtoSchema = DtoSchema("EchoOut")
+        echo_out.require("msg", "string")
+        m.get("/ping", self._ping())
+        m.post_body("/echo", self._echo(), "Echo", echo_in, echo_out)
+
+    def _ping(self: BenchModule) -> (HttpContext) -> HttpResponse:
+        def ping(ctx: HttpContext) -> HttpResponse:
+            return json_ok("{\"pong\":true}")
+        return ping
+
+    def _echo(self: BenchModule) -> (HttpContext) -> HttpResponse:
+        def echo(ctx: HttpContext) -> HttpResponse:
+            return json_ok("{\"msg\":" + nox.json.encode_string(ctx.input_str("msg")) + "}")
+        return echo
+
+def build(app: Application) -> None:
+    BenchModule().configure(app.module())
+
+cfg: Config = aether.config.from_env()
+cfg.log_requests = False
+cfg.cors_enabled = False
+app: Application = aether.application.boot_with_config(cfg, build)
+
+def handle(req: HttpRequest) -> HttpResponse:
+    return aether.application.dispatch(app, req)
+
+workers: int = aether.server.effective_workers(cfg)
+if workers > 1:
+    nox.http.serve_multicore(cfg.port, handle, workers)
+else:
+    nox.http.serve(cfg.port, handle)

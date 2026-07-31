@@ -1,10 +1,12 @@
 # aether.pipe - (HttpContext) -> None transforms.
 # Note: never write pipes[i](ctx) - Nox parses that as a generic type.
 
+import nox.json
 import aether.context
 from aether.context import HttpContext
 import aether.dto
-from aether.dto import DtoSchema, parse_or_raise
+from aether.dto import DtoSchema, parse_or_raise, validate_json_str
+from aether.errors import ValidationError
 
 def run_pipes(pipes: list[(HttpContext) -> None], ctx: HttpContext) -> None:
     i: int = 0
@@ -18,4 +20,45 @@ def validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
         raw: str = ctx.body()
         validated: str = parse_or_raise(raw, schema)
         ctx.set_input(validated)
+    return transform
+
+def _dict_to_json_object(data: dict[str, str]) -> str:
+    keys: list[str] = data.keys()
+    body: str = "{"
+    i: int = 0
+    while i < len(keys):
+        if i > 0:
+            body = body + ","
+        k: str = keys[i]
+        body = body + nox.json.encode_string(k) + ":" + nox.json.encode_string(data[k])
+        i = i + 1
+    body = body + "}"
+    return body
+
+def query_validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
+    def transform(ctx: HttpContext) -> None:
+        raw: str = _dict_to_json_object(ctx.query)
+        errors: list[str] = validate_json_str(raw, schema)
+        if len(errors) > 0:
+            raise ValidationError("query validation failed", errors)
+        ctx.set_request_value("aether.query_json", raw)
+    return transform
+
+def header_validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
+    def transform(ctx: HttpContext) -> None:
+        # Build object from schema field names (case-insensitive header lookup).
+        # Empty header value is treated as missing (required fields fail).
+        data: dict[str, str] = {}
+        i: int = 0
+        while i < len(schema.fields):
+            name: str = schema.fields[i].name
+            val: str = ctx.header(name)
+            if len(val) > 0:
+                data[name] = val
+            i = i + 1
+        raw: str = _dict_to_json_object(data)
+        errors: list[str] = validate_json_str(raw, schema)
+        if len(errors) > 0:
+            raise ValidationError("header validation failed", errors)
+        ctx.set_request_value("aether.header_json", raw)
     return transform
