@@ -17,7 +17,7 @@ import aether.pipe
 import aether.interceptor
 from aether.config import Config
 from aether.container import Container
-from aether.context import HttpContext, begin, end, path_only
+from aether.context import HttpContext, begin, finish, path_only
 from aether.module import ModuleBuilder, RouteDef, ModuleBase
 from aether.pipeline import MatchResult, find_route, execute
 from aether.errors import HttpError, NotFoundError, error_json
@@ -76,11 +76,13 @@ def _mount_framework_routes(app: Application) -> None:
     def openapi_handler(ctx: HttpContext) -> HttpResponse:
         return aether.response.json_ok(app.openapi_doc + "")
 
-    app.routes.append(RouteDef("GET", "/health", health, "Health check", "system", False, empty, False, empty))
+    routes: list[RouteDef] = app.routes
+    routes.append(RouteDef("GET", "/health", health, "Health check", "system", False, empty, False, empty))
     if app.config.openapi_enabled:
-        app.routes.append(
+        routes.append(
             RouteDef("GET", "/openapi.json", openapi_handler, "OpenAPI document", "system", False, empty, False, empty)
         )
+    app.routes = routes
 
 def boot(build: (Application) -> None) -> Application:
     cfg: Config = aether.config.load()
@@ -120,9 +122,10 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
             matched: MatchResult | None = find_route(app.routes, req.method, path)
             if matched == None:
                 raise NotFoundError("route not found: " + req.method + " " + path)
-            ctx: HttpContext = HttpContext(req, matched.params, app.container, rid, "")
+            hit: MatchResult = matched
+            ctx: HttpContext = HttpContext(req, hit.params, app.container, rid, "")
             resp = execute(
-                matched.route,
+                hit.route,
                 ctx,
                 app.global_guards,
                 app.global_pipes,
@@ -144,7 +147,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
             nox.log.info(
                 req.method + " " + path + " -> " + str(resp.status) + " " + str(elapsed) + "ms id=" + rid
             )
-        end()
+        finish()
     return resp
 
 def shutdown(app: Application) -> None:

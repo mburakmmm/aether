@@ -32,7 +32,7 @@ def begin(rid: str, method: str, path: str) -> None:
     st.path = path
     st.input_json = ""
 
-def end() -> None:
+def finish() -> None:
     st: RequestState = _state()
     st.active = False
     st.request_id = ""
@@ -50,10 +50,10 @@ def set_input_json(raw: str) -> None:
 def input_json() -> str:
     return _state().input_json
 
-def _substr(s: str, start: int, end: int) -> str:
+def _substr(s: str, start: int, end_idx: int) -> str:
     out: str = ""
     i: int = start
-    while i < end:
+    while i < end_idx:
         out = out + s[i]
         i = i + 1
     return out

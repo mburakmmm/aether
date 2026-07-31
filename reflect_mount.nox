@@ -31,7 +31,8 @@ def mount_decorators(app: Application) -> None:
                     return inner(rctx)
                 return wrapped
 
-            app.routes.append(
+            routes: list[RouteDef] = app.routes
+            routes.append(
                 RouteDef(
                     method,
                     pattern,
@@ -44,4 +45,5 @@ def mount_decorators(app: Application) -> None:
                     empty
                 )
             )
+            app.routes = routes
         i = i + 1

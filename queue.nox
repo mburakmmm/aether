@@ -197,25 +197,26 @@ def _field_int(v: JsonValue, name: str) -> int:
 def work(db: Connection, registry: JobRegistry, limit: int) -> int:
     processed: int = 0
     while processed < limit:
-        raw: str | None = reserve(db)
-        if raw == None:
+        raw_opt: str | None = reserve(db)
+        if raw_opt != None:
+            raw_s: str = raw_opt
+            job: JsonValue = nox.json.decode(raw_s)
+            id: int = _field_int(job, "id")
+            name: str = _field_str(job, "job_name")
+            payload: str = _field_str(job, "payload")
+            try:
+                handler: (str) -> None = registry.get(name)
+                handler(payload)
+                complete(db, id)
+                processed = processed + 1
+            except QueueError as e:
+                fail(db, id, e.message)
+                processed = processed + 1
+            except Exception as e:
+                fail(db, id, e.message)
+                processed = processed + 1
+        else:
             return processed
-        raw_s: str = raw
-        job: JsonValue = nox.json.decode(raw_s)
-        id: int = _field_int(job, "id")
-        name: str = _field_str(job, "job_name")
-        payload: str = _field_str(job, "payload")
-        try:
-            handler: (str) -> None = registry.get(name)
-            handler(payload)
-            complete(db, id)
-            processed = processed + 1
-        except QueueError as e:
-            fail(db, id, e.message)
-            processed = processed + 1
-        except Exception as e:
-            fail(db, id, e.message)
-            processed = processed + 1
     return processed
 
 def work_forever(db: Connection, registry: JobRegistry, idle_sleep_ms: int) -> None:
