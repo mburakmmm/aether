@@ -242,6 +242,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 **Impact:**
 - `xs: list[T] = []; self.xs = xs` without a class-level `xs: list[T]` field → codegen rejects the program
 - Assigning lists between holders does not share mutations → `ModuleBuilder` appends were invisible on `Application` until shared `RouteTable` / `HookState`
+- `obj.field.append(x)` is rejected: `append` only allowed on a bare variable (`xs.append(v)` then `obj.field = xs`)
 
 **Evidence:**
 - Minimal local empty-list field init → codegen "desteklenmeyen yapı"
