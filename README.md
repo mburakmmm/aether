@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.2.1 · **License:** MIT · **Requires Nox ≥ 1.26.0**  
+**Version:** 0.3.0 · **License:** MIT · **Requires Nox ≥ 1.26.0**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.2.1"
+      "ref": "v0.3.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.2.1
+noxc install github.com/mburakmmm/aether@v0.3.0
 aether new myapi
 cd myapi && noxc fetch && AETHER_ENV=development noxc run main.nox
 ```
@@ -98,7 +98,7 @@ Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
 
-## What’s new in 0.2.1
+## What’s new in 0.3.0
 
 Correctness hardening: response finalizers on all paths, interceptor unwind fix,
 TaskLocal request bag, safe rate-limit defaults, CORS allowlist + `Vary`,

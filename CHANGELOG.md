@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-07-31
+
+API ergonomics and safer gateway defaults.
+
+- `ValidatedBody` / `ctx.input_str|int|bool` / `ctx.validated_body()`
+- `RouteOptions` + `m.route(method, path, handler, opts)`
+- Guards: `api_key_header`, `require_header` (plus existing bearer)
+- `aether.logx` structured JSON logs
+- Metrics include per-route hit counts
+- OpenAPI: standard 4xx/5xx responses + `bearerAuth` / `apiKeyAuth` schemes
+- WebSocket rooms opt-in (`enable_rooms` + `set_room_auth`); message size limit
+
 ## 0.2.1 — 2026-07-31
 
 Correctness hardening (no new feature surface).
