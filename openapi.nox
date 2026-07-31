@@ -1,4 +1,4 @@
-# aether.openapi — OpenAPI 3 with nested $ref components + success status.
+# aether.openapi - OpenAPI 3 with nested $ref components + success status.
 
 import nox.json
 import nox.strings
@@ -60,7 +60,7 @@ def _has_name(names: list[str], name: str) -> bool:
     return False
 
 def _collect_schemas(routes: list[RouteDef]) -> list[DtoSchema]:
-    # Iterative BFS — Nox codegen rejects some recursive helpers.
+    # Iterative BFS - Nox codegen rejects some recursive helpers.
     out: list[DtoSchema] = []
     names: list[str] = []
     queue: list[DtoSchema] = []

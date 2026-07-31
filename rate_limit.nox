@@ -1,4 +1,4 @@
-# aether.rate_limit — in-process window with eviction (per-worker).
+# aether.rate_limit - in-process window with eviction (per-worker).
 #
 # Safe default: disabled in production until peer IP or trusted XFF is available.
 # Empty client_ip skips limiting (does NOT collapse into a shared "unknown" bucket).
@@ -75,7 +75,7 @@ def rate_limit_interceptor(max_n: int, window_ms: int) -> InterceptorFns:
     def before(ctx: HttpContext) -> HttpResponse | None:
         key: str = ctx.client_ip()
         if len(key) == 0:
-            # No peer identity — do not share a global "unknown" bucket.
+            # No peer identity - do not share a global "unknown" bucket.
             return None
         if not _store.allow(key, max_n, window_ms):
             raise TooManyRequestsError("rate limit exceeded")

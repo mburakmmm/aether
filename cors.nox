@@ -1,42 +1,31 @@
-# aether.cors — allowlist CORS with Origin reflection + Vary.
+# aether.cors - allowlist CORS with Origin reflection + Vary.
 
 import nox.strings
 from nox.http import HttpRequest, HttpResponse
 import aether.response
 from aether.context import header_get
 
-def parse_origins(raw: str) -> list[str]:
-    out: list[str] = []
-    if len(raw) == 0:
-        return out
-    parts: list[str] = nox.strings.split(raw, ",")
-    i: int = 0
-    while i < len(parts):
-        p: str = nox.strings.trim(parts[i])
-        if len(p) > 0:
-            out.append(p)
-        i = i + 1
-    return out
-
-def resolve_allow_origin(origins_cfg: str, request_origin: str) -> str:
-    origins: list[str] = parse_origins(origins_cfg)
-    n: int = len(origins)
-    if n == 0:
+def _origin_allowed(origins_cfg: str, request_origin: str) -> str:
+    # Returns the Allow-Origin value to emit, or "" if none.
+    cfg: str = nox.strings.trim(origins_cfg)
+    if len(cfg) == 0:
         return ""
-    if n == 1:
-        if origins[0] == "*":
-            return "*"
+    if cfg == "*":
+        return "*"
     if len(request_origin) == 0:
         return ""
+    # Comma-separated allowlist
+    parts: list[str] = nox.strings.split(cfg, ",")
     i: int = 0
-    while i < n:
-        if origins[i] == request_origin:
+    while i < len(parts):
+        item: str = nox.strings.trim(parts[i])
+        if item == request_origin:
             return request_origin
         i = i + 1
     return ""
 
 def apply_cors_headers(resp: HttpResponse, origins_cfg: str, request_origin: str) -> HttpResponse:
-    allow: str = resolve_allow_origin(origins_cfg, request_origin)
+    allow: str = _origin_allowed(origins_cfg, request_origin)
     if len(allow) == 0:
         return resp
     out: HttpResponse = aether.response.with_header(resp, "Access-Control-Allow-Origin", allow)
@@ -45,7 +34,7 @@ def apply_cors_headers(resp: HttpResponse, origins_cfg: str, request_origin: str
 
 def preflight_response(origins_cfg: str, request_origin: str) -> HttpResponse:
     headers: dict[str, str] = {}
-    allow: str = resolve_allow_origin(origins_cfg, request_origin)
+    allow: str = _origin_allowed(origins_cfg, request_origin)
     if len(allow) > 0:
         headers["Access-Control-Allow-Origin"] = allow
         headers["Vary"] = "Origin"

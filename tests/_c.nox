@@ -1,0 +1,2 @@
+import aether.cors
+print(aether.cors._origin_allowed("*", "x"))

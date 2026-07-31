@@ -51,7 +51,7 @@ aether.queue.mark_dead(db, dead2_id, "manual dead")
 dead2: list[str] = aether.queue.list_dead(db, 10)
 nox.test.assert_true(len(dead2) >= 1, "mark_dead works")
 
-# Lease failure exhaustion → DLQ (dedicated db)
+# Lease failure exhaustion -> DLQ (dedicated db)
 db2: Connection = aether.queue.open_db(":memory:")
 aether.queue.ensure_schema(db2)
 lease_id: int = aether.queue.enqueue(db2, "demo", "{\"lease\":1}", 0)

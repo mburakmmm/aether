@@ -1,4 +1,4 @@
-# aether.pipeline — path match + 405 + Guard → Pipe → Interceptor → Handler.
+# aether.pipeline - path match + 405 + Guard -> Pipe -> Interceptor -> Handler.
 
 import nox.strings
 from nox.http import HttpResponse

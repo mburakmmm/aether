@@ -1,4 +1,4 @@
-# aether.context — request-scoped HttpContext + TaskLocal.
+# aether.context - request-scoped HttpContext + TaskLocal.
 #
 # DI model (official): closure injection. Container tracks provider *names* only.
 # Request-scoped string values live in TaskLocal RequestState (fiber-safe).

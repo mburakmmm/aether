@@ -1,4 +1,4 @@
-# aether.metrics — per-Application counters (not process-global).
+# aether.metrics - per-Application counters (not process-global).
 
 class Metrics:
     requests: int

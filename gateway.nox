@@ -1,4 +1,4 @@
-# aether.gateway — WebSocket message routing + rooms (process-local hub).
+# aether.gateway - WebSocket message routing + rooms (process-local hub).
 
 import nox.json
 import nox.uuid

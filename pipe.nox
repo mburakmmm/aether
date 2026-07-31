@@ -1,5 +1,5 @@
-# aether.pipe — (HttpContext) -> None transforms.
-# Note: never write pipes[i](ctx) — Nox parses that as a generic type.
+# aether.pipe - (HttpContext) -> None transforms.
+# Note: never write pipes[i](ctx) - Nox parses that as a generic type.
 
 import aether.context
 from aether.context import HttpContext

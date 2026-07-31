@@ -1,4 +1,4 @@
-# aether.module — ModuleBuilder + RouteDef + shared RouteTable/HookState.
+# aether.module - ModuleBuilder + RouteDef + shared RouteTable/HookState.
 #
 # Official DI: register provider *names* with provide(name); inject services
 # via closures when registering handlers (Nox cannot subclass imported bases).
@@ -109,7 +109,7 @@ class ModuleBuilder:
         self._prefix = path
 
     def provide(self: ModuleBuilder, name: str) -> None:
-        # Name registry only — hold instances in closures.
+        # Name registry only - hold instances in closures.
         self._container.register_name(name)
 
     def use_guard(self: ModuleBuilder, guard: (HttpContext) -> bool) -> None:

@@ -1,4 +1,4 @@
-# aether.swagger — minimal Swagger UI HTML for /docs.
+# aether.swagger - minimal Swagger UI HTML for /docs.
 
 from nox.http import HttpResponse
 
