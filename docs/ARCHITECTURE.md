@@ -23,7 +23,9 @@ It is independent of Nyx (the Rails-style full-stack framework).
 
 ## Package layout
 
-Flat root `.nox` modules (`import aether.application`). See README for the full module table.
+Flat root `.nox` modules (`import aether.application`). Shared mutable route/hook state lives in `RouteTable` and `HookState` (list assignment does not share across holders in Nox).
+
+See README for the full module table.
 
 ## Performance
 

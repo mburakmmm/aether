@@ -233,4 +233,39 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Aether workaround:** Always bind `fn = xs[i]` before `fn(...)`.
 
+---
+
+## 15. List assignment copies; class fields required for empty `[]`
+
+**Status:** `workaround`
+
+**Impact:**
+- `xs: list[T] = []; self.xs = xs` without a class-level `xs: list[T]` field → codegen rejects the program
+- Assigning lists between holders does not share mutations → `ModuleBuilder` appends were invisible on `Application` until shared `RouteTable` / `HookState`
+
+**Evidence:**
+- Minimal local empty-list field init → codegen "desteklenmeyen yapı"
+- Works: class field + `self.names = []` (Nyx `JobRegistry` pattern)
+- Debug: `after_builder=1` / `after_app=0` before `RouteTable` fix
+
+**Desired Nox change:** Documented list reference semantics; allow empty list init without class fields.
+
+**Aether workaround:** Class-level fields; shared `RouteTable` / `HookState` objects.
+
+---
+
+## Priority asks for Nox (Aether ranking)
+
+0. Cross-module class inheritance
+0b. List reference sharing / empty-list codegen
+1. Class + method decorators + bound methods
+2. Constructor/param type metadata (real DI)
+3. Generic methods or safe downcast
+4. Caught Exception source span
+5. `HttpRequest` peer address
+6. Richer `nox.validate` / nested schemas
+7. Non-string decorator literal args
+8. First-class serve handlers
+9. Disambiguate `name[i](...)` from generics
+
 When an item is fixed upstream, update its **Status** to `resolved in nox X.Y` and tighten Aether APIs accordingly.
