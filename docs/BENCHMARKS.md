@@ -36,23 +36,25 @@ Raw wrk logs land in `benchmarks/results/*.txt` (gitignored).
 
 ## Results
 
-### 0.4.1 hot-path (local probe, `wrk -t4 -c40 -d5s`, darwin arm64)
+### 0.4.1 cross-stack (`wrk -t4 -c40 -d8s`, darwin arm64)
 
-| Target | GET /ping req/s | Notes |
-|--------|----------------:|-------|
-| Bare Nox `HttpResponse` | ~240k | No framework |
-| Aether production defaults (CORS off) | ~162k+ | After 0.4.1 opts; re-run for exact |
-| Aether `AETHER_CORS_ORIGINS=*` | ~90k | CORS header copy cost |
+| Target | GET /ping req/s | POST /echo req/s |
+|--------|----------------:|-----------------:|
+| **Aether** (`workers=1`, prod CORS off) | **166 506** | **79 147** |
+| NestJS Express | 64 905 | 51 538 |
+| Gin | 185 836 | 179 314 |
 
-### 0.4.0 published cross-stack (`wrk -t4 -c40 -d8s`)
+Same machine micro-probe (`-d5s`): bare Nox ~231k; Aether CORS off ~163k; Aether `cors=*` ~158k.
 
-| Target | GET /ping req/s | POST /echo req/s | Notes |
-|--------|----------------:|-----------------:|-------|
-| Aether (`AETHER_WORKERS=1`, CORS `*` default then) | ~90k | ~48k | Pre-0.4.1 |
-| NestJS Express | ~67k | ~52k | |
-| Gin | ~191k | ~181k | |
+vs **0.4.0** Aether ping ~90k / echo ~48k under the old always-on CORS header path (~**+85%** ping, **+65%** echo).
 
-Re-run `./benchmarks/run.sh` after upgrading to 0.4.1 for updated cross-stack numbers (production CORS off should lift Aether ping toward ~150–170k on this machine).
+### 0.4.0 published (historical)
+
+| Target | GET /ping req/s | POST /echo req/s |
+|--------|----------------:|-----------------:|
+| Aether (old CORS path) | ~90k | ~48k |
+| NestJS Express | ~67k | ~52k |
+| Gin | ~191k | ~181k |
 
 ## What the bench exposes about Nox / Aether
 
