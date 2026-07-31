@@ -131,6 +131,17 @@ def reclaim_stale(db: Connection, stale_ms: int) -> int:
         stale_ms = default_stale_ms()
     now: int = nox.time.now_ms()
     cutoff: int = now - stale_ms
+    cnt: Statement = db.prepare(
+        "SELECT COUNT(*) FROM aether_jobs WHERE status = ? AND updated_at_ms < ?"
+    )
+    cnt.bind_str(0, status_running())
+    cnt.bind_int(1, cutoff)
+    cnt_rows: list[Row] = cnt.query()
+    n: int = 0
+    if len(cnt_rows) > 0:
+        n = cnt_rows[0].get_int(0)
+    if n == 0:
+        return 0
     stmt: Statement = db.prepare(
         "UPDATE aether_jobs SET status = ?, last_error = ?, updated_at_ms = ?, run_at_ms = ? " +
         "WHERE status = ? AND updated_at_ms < ?"
@@ -142,7 +153,7 @@ def reclaim_stale(db: Connection, stale_ms: int) -> int:
     stmt.bind_str(4, status_running())
     stmt.bind_int(5, cutoff)
     stmt.execute()
-    return db.changes()
+    return n
 
 def list_dead(db: Connection, limit: int) -> list[str]:
     # Dead-letter: permanently failed jobs.
@@ -164,6 +175,14 @@ def list_dead(db: Connection, limit: int) -> list[str]:
 
 def requeue_dead(db: Connection, id: int) -> None:
     now: int = nox.time.now_ms()
+    check: Statement = db.prepare(
+        "SELECT id FROM aether_jobs WHERE id = ? AND status = ?"
+    )
+    check.bind_int(0, id)
+    check.bind_str(1, status_failed())
+    found: list[Row] = check.query()
+    if len(found) == 0:
+        raise QueueError("dead job not found: " + str(id))
     stmt: Statement = db.prepare(
         "UPDATE aether_jobs SET status = ?, attempts = 0, last_error = '', run_at_ms = ?, updated_at_ms = ? " +
         "WHERE id = ? AND status = ?"
@@ -174,8 +193,6 @@ def requeue_dead(db: Connection, id: int) -> None:
     stmt.bind_int(3, id)
     stmt.bind_str(4, status_failed())
     stmt.execute()
-    if db.changes() == 0:
-        raise QueueError("dead job not found: " + str(id))
 
 def complete(db: Connection, id: int) -> None:
     now: int = nox.time.now_ms()

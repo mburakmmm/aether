@@ -8,6 +8,26 @@ class ConfigError(Exception):
         self.message = message
 
 class Config:
+    env: str
+    host: str
+    port: int
+    workers: int
+    log_requests: bool
+    openapi_enabled: bool
+    openapi_title: str
+    openapi_version: str
+    jobs_db_path: str
+    tls_cert_path: str
+    tls_key_path: str
+    trust_x_forwarded_for: bool
+    ws_enabled: bool
+    max_body_bytes: int
+    rate_limit_enabled: bool
+    rate_limit_max: int
+    rate_limit_window_ms: int
+    cors_origins: str
+    job_stale_ms: int
+
     def __init__(
         self: Config,
         env: str,

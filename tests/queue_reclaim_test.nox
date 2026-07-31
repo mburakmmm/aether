@@ -18,12 +18,11 @@ registry.register("demo", handle_job)
 id: int = aether.queue.enqueue(db, "demo", "{\"n\":1}", 0)
 nox.test.assert_true(id > 0, "enqueue id")
 
-# Force a stale running job without completing it.
 raw: str | None = aether.queue.reserve(db)
 nox.test.assert_true(raw != None, "reserved")
 
-# Make it look stale by reclaiming with 0ms window after tiny sleep.
-nox.time.sleep_ms(5)
+# Force stale window: sleep then reclaim with tiny threshold.
+nox.time.sleep_ms(20)
 n_reclaim: int = aether.queue.reclaim_stale(db, 1)
 nox.test.assert_true(n_reclaim >= 1, "reclaimed")
 
@@ -31,19 +30,14 @@ n: int = aether.queue.work(db, registry, 5)
 nox.test.assert_eq_int(n, 1, "processed after reclaim")
 nox.test.assert_eq_int(len(seen), 1, "handler called")
 
-# DLQ: exhaust attempts
-fail_id: int = aether.queue.enqueue(db, "missing_handler", "{\"x\":1}", 0)
-
 def boom(payload: str) -> None:
     raise aether.queue.QueueError("always fail")
 
-# Register under wrong name so work fails via missing handler — use registered boom
 registry.register("boom", boom)
 boom_id: int = aether.queue.enqueue(db, "boom", "{\"x\":1}", 0)
 
-# fail until dead (max_attempts = 5)
 k: int = 0
-while k < 10:
+while k < 12:
     aether.queue.work(db, registry, 1)
     k = k + 1
 
@@ -51,6 +45,5 @@ dead: list[str] = aether.queue.list_dead(db, 10)
 nox.test.assert_true(len(dead) >= 1, "has dead letter")
 
 aether.queue.requeue_dead(db, boom_id)
-# After requeue it should be queued again (not assert work success — still fails)
 
 print("queue_reclaim_test ok")
