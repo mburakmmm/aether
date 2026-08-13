@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 — 2026-08-13
+
+Nox ≥ 1.29.0 dual runtime.
+
+- Floor Nox **1.29.0** (CI `NOX_VERSION=v1.29.0`)
+- `apply_pool_workers(cfg)` maps `AETHER_WORKERS` → `NOX_POOL_WORKERS` (`serve_multicore` flatten under `--release`)
+- Production path: `noxc build --release` (macOS/arm64 LLVM M:N); `noxc run` remains QBE / shared-nothing
+- macOS CI job: `scripts/smoke_http_release.sh`
+- In-memory `RateStore` documented as not thread-safe under `--release` multicore
+- Bench table: QBE vs `--release` vs Nest vs Gin
+
 ## 0.5.0 — 2026-07-31
 
 Supported multicore via per-worker ensure-boot.

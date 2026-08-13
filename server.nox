@@ -6,19 +6,30 @@
 #
 #   def handle(req: HttpRequest) -> HttpResponse:
 #       return aether.application.dispatch_ensure(req, cfg, build)
+#   aether.server.apply_pool_workers(cfg)
 #   nox.http.serve(app.config.port, handle)
 #
 # boot_with_config auto-calls bind(app). Do not close over Application in handle
-# (Nox codegen rejects that with serve*). Under serve_multicore each worker has a
-# fresh AppBind — dispatch_ensure re-boots from cfg+build on first use.
+# (Nox codegen rejects that with serve*).
+#
+# Dual runtime (Nox 1.29+):
+#   QBE (`noxc run` / `noxc test` / `noxc build`): shared-nothing workers.
+#     dispatch_ensure re-boots AppBind per worker on first use.
+#   LLVM (`noxc build --release`, macOS/arm64): shared M:N pool.
+#     serve_multicore flattens into $main's pool; size comes from
+#     NOX_POOL_WORKERS (apply_pool_workers maps AETHER_WORKERS there).
+#     dispatch_ensure is a no-op after the main-thread boot.
 #
 # Multicore:
-#   nox.http.serve_multicore(app.config.port, handle, aether.server.effective_workers(app.config))
+#   workers: int = aether.server.effective_workers(cfg)
+#   aether.server.apply_pool_workers(cfg)
+#   nox.http.serve_multicore(app.config.port, handle, workers)
 #
 # WebSocket:
 #   nox.http.serve_ws(app.config.port, handle, ws_handle)
 
 import nox.fs
+import nox.os
 import aether.config
 from aether.config import Config
 
@@ -39,13 +50,18 @@ def require_tls_files(cfg: Config) -> None:
     if not nox.fs.exists(cfg.tls_key_path):
         raise ServerError("TLS key missing: " + cfg.tls_key_path)
 
-# AppBind / module globals are not shared across serve_multicore workers.
-# Use dispatch_ensure(req, cfg, build) so each worker can boot its own AppBind.
 # Default workers=1; set AETHER_WORKERS>1 for multicore.
 def effective_workers(cfg: Config) -> int:
     if cfg.workers > 0:
         return cfg.workers
     return 1
+
+# Under Nox 1.29 `--release`, serve_multicore flattens into $main's M:N pool
+# and ignores the num_threads argument. Map AETHER_WORKERS → NOX_POOL_WORKERS
+# so the pool size matches the configured worker count.
+def apply_pool_workers(cfg: Config) -> None:
+    n: int = effective_workers(cfg)
+    nox.os.set_var("NOX_POOL_WORKERS", str(n))
 
 # "plain" | "tls" | "ws" | "ws_tls"
 def serve_mode(cfg: Config, want_ws: bool) -> str:
@@ -59,4 +75,10 @@ def serve_mode(cfg: Config, want_ws: bool) -> str:
     return "plain"
 
 def print_listen(cfg: Config, mode: str) -> None:
-    print("aether listening on :" + str(cfg.port) + " env=" + cfg.env + " mode=" + mode)
+    workers: int = effective_workers(cfg)
+    print(
+        "aether listening on :" + str(cfg.port) +
+        " env=" + cfg.env +
+        " mode=" + mode +
+        " workers=" + str(workers)
+    )

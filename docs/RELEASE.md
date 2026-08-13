@@ -36,6 +36,7 @@ Do not add application code to the lock commit.
 ## Checklist
 
 1. All unit tests + `scripts/smoke_http.sh` + `scripts/smoke_http_multicore.sh` + `scripts/smoke_package.sh` green locally.
+   On macOS/arm64 also `scripts/smoke_http_release.sh` (`noxc build --release`).
 2. `./scripts/check_release_refs.sh` passes.
 3. Push code commit, then lock commit.
 4. `git tag -a vX.Y.Z` on the lock commit; push the tag.

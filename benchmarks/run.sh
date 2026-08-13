@@ -12,6 +12,7 @@ DURATION="${DURATION:-15s}"
 CONNECTIONS="${CONNECTIONS:-50}"
 THREADS="${THREADS:-4}"
 AETHER_PORT="${AETHER_PORT:-3001}"
+AETHER_RELEASE_PORT="${AETHER_RELEASE_PORT:-3004}"
 NEST_PORT="${NEST_PORT:-3002}"
 GIN_PORT="${GIN_PORT:-3003}"
 AETHER_WORKERS="${AETHER_WORKERS:-1}"
@@ -73,17 +74,32 @@ echo "Starting NestJS on :$NEST_PORT"
 ) &
 PIDS+=($!)
 
-echo "Starting Aether on :$AETHER_PORT workers=$AETHER_WORKERS"
-(
-  cd "$ROOT"
-  AETHER_ENV=production \
-  AETHER_PORT="$AETHER_PORT" \
-  AETHER_WORKERS="$AETHER_WORKERS" \
-  AETHER_LOG_REQUESTS=0 \
-  AETHER_OPENAPI=0 \
-  noxc run benchmarks/aether/main.nox >/tmp/aether-bench-server.log 2>&1
-) &
-PIDS+=($!)
+start_aether_qbe() {
+  (
+    cd "$ROOT"
+    AETHER_ENV=production \
+      AETHER_PORT="$AETHER_PORT" \
+      AETHER_WORKERS="$AETHER_WORKERS" \
+      AETHER_LOG_REQUESTS=0 \
+      AETHER_OPENAPI=0 \
+      AETHER_CORS_ORIGINS= \
+      AETHER_METRICS_ROUTES=0 \
+      noxc run benchmarks/aether/main.nox >/tmp/aether-bench-server.log 2>&1
+  ) &
+  AETHER_PID=$!
+  PIDS+=("$AETHER_PID")
+}
+
+echo "Starting Aether QBE on :$AETHER_PORT workers=$AETHER_WORKERS"
+start_aether_qbe
+
+if [[ "${AETHER_SKIP_RELEASE:-0}" != "1" ]]; then
+  echo "Building Aether --release..."
+  (
+    cd "$ROOT"
+    noxc build --release -o "$OUT/aether-bench" benchmarks/aether/main.nox
+  )
+fi
 
 wait_http "http://127.0.0.1:$GIN_PORT/ping"
 wait_http "http://127.0.0.1:$NEST_PORT/ping"
@@ -108,5 +124,28 @@ EOF
 run_wrk "aether_echo" "http://127.0.0.1:$AETHER_PORT/echo" "-s $LUA"
 run_wrk "nestjs_echo" "http://127.0.0.1:$NEST_PORT/echo" "-s $LUA"
 run_wrk "gin_echo" "http://127.0.0.1:$GIN_PORT/echo" "-s $LUA"
+
+if [[ "${AETHER_SKIP_RELEASE:-0}" != "1" ]]; then
+  echo "Stopping Aether QBE; starting --release on :$AETHER_RELEASE_PORT"
+  kill "$AETHER_PID" 2>/dev/null || true
+  wait "$AETHER_PID" 2>/dev/null || true
+  (
+    cd "$ROOT"
+    AETHER_ENV=production \
+      AETHER_PORT="$AETHER_RELEASE_PORT" \
+      AETHER_WORKERS="$AETHER_WORKERS" \
+      AETHER_LOG_REQUESTS=0 \
+      AETHER_OPENAPI=0 \
+      AETHER_CORS_ORIGINS= \
+      AETHER_METRICS_ROUTES=0 \
+      "$OUT/aether-bench" >/tmp/aether-release-bench-server.log 2>&1
+  ) &
+  REL_PID=$!
+  PIDS+=("$REL_PID")
+  wait_http "http://127.0.0.1:$AETHER_RELEASE_PORT/ping"
+  curl -fsS "http://127.0.0.1:$AETHER_RELEASE_PORT/ping" >/dev/null
+  run_wrk "aether_release_ping" "http://127.0.0.1:$AETHER_RELEASE_PORT/ping"
+  run_wrk "aether_release_echo" "http://127.0.0.1:$AETHER_RELEASE_PORT/echo" "-s $LUA"
+fi
 
 echo "Results written under $OUT"

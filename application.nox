@@ -392,8 +392,9 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
         return _complete_request(app, req, rid, path, route_key, started, resp_opt)
 
 # Serve handlers must not close over Application directly — Nox codegen rejects
-# that combination. Prefer dispatch_ensure(req, cfg, build) under serve_multicore
-# (each worker has a fresh AppBind) or dispatch_bound() after a single-worker boot.
+# that combination. Always use dispatch_ensure(req, cfg, build):
+#   QBE: each serve_multicore worker has a fresh AppBind → first call boots.
+#   --release (Nox 1.29+): shared M:N pool → AppBind already bound, no-op.
 class AppBind:
     apps: list[Application]
 
@@ -413,8 +414,8 @@ def bound() -> Application:
     return _bind.apps[0]
 
 def ensure_bound(cfg: Config, build: (Application) -> None) -> Application:
-    # Per-worker boot for serve_multicore: each OS worker gets a fresh module-global
-    # AppBind. Pass cfg+build from the serve handle (Application must not be closed over).
+    # QBE serve_multicore: each OS worker has a fresh AppBind → boot here.
+    # --release M:N pool: main-thread boot already bound → no-op.
     if len(_bind.apps) == 0:
         return boot_with_config(cfg, build)
     return _bind.apps[0]

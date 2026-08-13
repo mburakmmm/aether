@@ -32,6 +32,7 @@ def handle(req: HttpRequest) -> HttpResponse:
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
 try:
     workers: int = aether.server.effective_workers(cfg)
+    aether.server.apply_pool_workers(cfg)
     if workers > 1:
         nox.http.serve_multicore(cfg.port, handle, workers)
     else:

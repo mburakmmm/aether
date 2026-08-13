@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.5.0 · **License:** MIT · **Requires Nox ≥ 1.26.0**  
+**Version:** 0.6.0 · **License:** MIT · **Requires Nox ≥ 1.29.0**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.5.0"
+      "ref": "v0.6.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.5.0
+noxc install github.com/mburakmmm/aether@v0.6.0
 aether new myapi
 cd myapi && noxc fetch && AETHER_ENV=development noxc run main.nox
 ```
@@ -86,6 +86,7 @@ def handle(req: HttpRequest) -> HttpResponse:
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
 try:
     workers: int = aether.server.effective_workers(cfg)
+    aether.server.apply_pool_workers(cfg)
     if workers > 1:
         nox.http.serve_multicore(cfg.port, handle, workers)
     else:
@@ -97,6 +98,13 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.6.0
+
+Nox ≥ 1.29.0 dual runtime: QBE (`noxc run`) stays shared-nothing; production
+`noxc build --release` uses the LLVM M:N pool (macOS/arm64). `apply_pool_workers`
+maps `AETHER_WORKERS` → `NOX_POOL_WORKERS`. In-memory rate-limit is not thread-safe
+under `--release`.
 
 ## What’s new in 0.5.0
 
@@ -186,7 +194,7 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 |-----|---------------|--------|
 | `AETHER_ENV` | `development` | `development` \| `test` \| `production` |
 | `AETHER_HOST` / `AETHER_PORT` | `0.0.0.0` / `3000` | Bind |
-| `AETHER_WORKERS` | `1` | Set `>1` for supported multicore (`dispatch_ensure` per-worker boot) |
+| `AETHER_WORKERS` | `1` | Set `>1` for multicore. `apply_pool_workers` also sets `NOX_POOL_WORKERS` (needed for `--release` flatten) |
 | `AETHER_OPENAPI` | on (off in prod) | `/openapi.json`, `/docs` |
 | `AETHER_RATE_LIMIT` | off | Opt-in; requires identifiable client IP (`AETHER_TRUST_X_FORWARDED_FOR` today) |
 | `AETHER_CORS_ORIGINS` | `*` (dev/test); **empty in production** | Opt-in CORS: `*` or comma-separated allowlist |
@@ -212,8 +220,10 @@ Built-in routes: `GET /health`, `GET /metrics`, and when OpenAPI is on: `GET /op
 Nox `serve*` requires a **bare top-level** `handle` / `ws_handle` name — do not wrap `dispatch` inside `aether.server.listen(...)`.
 
 Do **not** close over `Application` in that handle (`dispatch(app, req)`). Use
-`dispatch_ensure(req, cfg, build)` so single-worker and `serve_multicore` both work
-(per-worker `AppBind` boot).
+`dispatch_ensure(req, cfg, build)` + `apply_pool_workers(cfg)`. QBE workers re-boot
+`AppBind`; `--release` (macOS/arm64) shares one M:N pool.
+
+Production: `noxc build --release -o app && ./app` (Nox ≥ 1.29.0, macOS/arm64). Dev: `noxc run`.
 
 ## License
 

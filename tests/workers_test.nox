@@ -1,4 +1,5 @@
 import nox.test
+import nox.os
 import aether.server
 import aether.config
 from aether.config import Config
@@ -10,5 +11,8 @@ nox.test.assert_eq_int(aether.server.effective_workers(cfg_prod), 1, "effective 
 cfg_exp: Config = aether.config.defaults("production")
 cfg_exp.workers = 4
 nox.test.assert_eq_int(aether.server.effective_workers(cfg_exp), 4, "explicit workers")
+
+aether.server.apply_pool_workers(cfg_exp)
+nox.test.assert_eq_str(nox.os.getenv("NOX_POOL_WORKERS"), "4", "pool env mapped")
 
 print("workers_test ok")

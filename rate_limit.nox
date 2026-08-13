@@ -1,8 +1,13 @@
-# aether.rate_limit - in-process window with eviction (per-worker).
+# aether.rate_limit - in-process window with eviction.
 #
 # Safe default: disabled in production until peer IP or trusted XFF is available.
 # Empty client_ip skips limiting (does NOT collapse into a shared "unknown" bucket).
 # Each interceptor captures its own RateStore (not a process-global singleton).
+#
+# Threading: QBE serve_multicore keeps a RateStore per worker (safe).
+# Nox 1.29 `--release` shares one heap — this store is NOT mutex-protected.
+# Do not enable in-memory rate limit under `--release` multicore; use an
+# external limiter if you need cross-core correctness.
 
 import nox.time
 from nox.http import HttpResponse

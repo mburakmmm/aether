@@ -16,7 +16,7 @@ jobs:
 
       - name: Install Nox
         run: |
-          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.26.0 bash
+          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.29.0 bash
           echo "$HOME/.nox-lang/bin" >> "$GITHUB_PATH"
 
       - name: Check release refs (VERSION / nox.json / nox.lock)
@@ -84,3 +84,53 @@ jobs:
         run: |
           chmod +x scripts/smoke_package.sh
           ./scripts/smoke_package.sh
+
+  release-smoke:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nox
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.29.0 bash
+          echo "$HOME/.nox-lang/bin" >> "$GITHUB_PATH"
+
+      - name: Point package at checkout
+        run: |
+          python3 - <<'PY'
+          import json, os
+          ws = os.environ["GITHUB_WORKSPACE"]
+          sha = os.environ["GITHUB_SHA"]
+          data = {
+            "name": "aether",
+            "entry": "examples/hello_api/main.nox",
+            "bin": {"name": "aether", "path": "cli.nox"},
+            "requires": [{
+              "alias": "aether",
+              "repo": ws,
+              "ref": "master",
+            }],
+          }
+          with open("nox.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+          lock = {
+            "packages": [{
+              "alias": "aether",
+              "repo": ws,
+              "ref": "master",
+              "resolved": sha,
+            }]
+          }
+          with open("nox.lock", "w", encoding="utf-8") as f:
+            json.dump(lock, f, indent=2)
+            f.write("\n")
+          PY
+
+      - name: Fetch
+        run: noxc fetch
+
+      - name: HTTP smoke (noxc build --release)
+        run: |
+          chmod +x scripts/smoke_http_release.sh
+          ./scripts/smoke_http_release.sh
