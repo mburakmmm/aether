@@ -28,6 +28,8 @@ class Config:
     cors_origins: str
     job_stale_ms: int
     metrics_routes: bool
+    request_id: bool
+    request_headers: bool
 
     def __init__(
         self: Config,
@@ -50,7 +52,9 @@ class Config:
         rate_limit_window_ms: int,
         cors_origins: str,
         job_stale_ms: int,
-        metrics_routes: bool
+        metrics_routes: bool,
+        request_id: bool,
+        request_headers: bool
     ) -> None:
         self.env = env
         self.host = host
@@ -72,6 +76,8 @@ class Config:
         self.cors_origins = cors_origins
         self.job_stale_ms = job_stale_ms
         self.metrics_routes = metrics_routes
+        self.request_id = request_id
+        self.request_headers = request_headers
 
     def is_development(self: Config) -> bool:
         return self.env == "development"
@@ -139,7 +145,7 @@ def defaults(env: str) -> Config:
         log_req,
         openapi_on,
         "Aether API",
-        "0.6.0",
+        "0.6.2",
         jobs,
         "",
         "",
@@ -151,7 +157,9 @@ def defaults(env: str) -> Config:
         60000,
         cors,
         300000,
-        metrics_routes
+        metrics_routes,
+        True,
+        True
     )
 
 def from_env() -> Config:
@@ -176,6 +184,8 @@ def from_env() -> Config:
     cfg.cors_origins = _env_or("AETHER_CORS_ORIGINS", cfg.cors_origins)
     cfg.job_stale_ms = _env_int("AETHER_JOB_STALE_MS", cfg.job_stale_ms)
     cfg.metrics_routes = _env_bool("AETHER_METRICS_ROUTES", cfg.metrics_routes)
+    cfg.request_id = _env_bool("AETHER_REQUEST_ID", cfg.request_id)
+    cfg.request_headers = _env_bool("AETHER_REQUEST_HEADERS", cfg.request_headers)
     return cfg
 
 def load() -> Config:

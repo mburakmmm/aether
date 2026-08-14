@@ -290,9 +290,9 @@ def _error_response(cfg: Config, err: HttpError, kind: str) -> HttpResponse:
     return aether.response.json(err.status, body)
 
 def _finalize_response(app: Application, req: HttpRequest, rid: str, resp: HttpResponse) -> HttpResponse:
-    # Always-on finalizers (error and success paths). One header-map copy.
     extra: dict[str, str] = {}
-    extra["X-Request-Id"] = rid + ""
+    if app.config.request_id:
+        extra["X-Request-Id"] = rid
     cors_cfg: str = app.config.cors_origins
     if len(cors_cfg) > 0:
         origin: str = ""
@@ -302,7 +302,10 @@ def _finalize_response(app: Application, req: HttpRequest, rid: str, resp: HttpR
         if len(allow) > 0:
             extra["Access-Control-Allow-Origin"] = allow
             extra["Vary"] = "Origin"
-    return aether.response.with_headers(resp, extra)
+    extra_keys: list[str] = extra.keys()
+    if len(extra_keys) == 0:
+        return resp
+    return aether.response.apply_headers(resp, extra)
 
 def _complete_request(
     app: Application,
@@ -325,10 +328,14 @@ def _complete_request(
     return out
 
 def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
-    rid: str = nox.uuid.uuid4()
+    rid: str = ""
+    if app.config.request_id:
+        rid = nox.uuid.uuid4()
     path: str = normalize_path(path_only(req.target))
     begin(rid, req.method, path)
-    started: int = nox.time.now_ms()
+    started: int = 0
+    if app.config.log_requests:
+        started = nox.time.now_ms()
     resp_opt: HttpResponse | None = None
     # Metrics key uses route pattern (not raw path) to bound cardinality.
     route_key: str = ""
@@ -425,6 +432,23 @@ def dispatch_bound(req: HttpRequest) -> HttpResponse:
 
 def dispatch_ensure(req: HttpRequest, cfg: Config, build: (Application) -> None) -> HttpResponse:
     return dispatch(ensure_bound(cfg, build), req)
+
+# Empty header map for handle_bare (Nox 1.29.2 skips iterateHeaders when
+# the serve handle never reads req.headers).
+EMPTY_HEADERS: dict[str, str] = {}
+
+# Rebuild HttpRequest from fields the serve handle already read. Passing
+# `req` as a call argument marks all fields used (header-skip never fires).
+def dispatch_from_parts(
+    method: str,
+    target: str,
+    body: str,
+    headers: dict[str, str],
+    cfg: Config,
+    build: (Application) -> None
+) -> HttpResponse:
+    req: HttpRequest = HttpRequest(method, target, body, headers)
+    return dispatch_ensure(req, cfg, build)
 
 def shutdown(app: Application) -> None:
     if app._closed:

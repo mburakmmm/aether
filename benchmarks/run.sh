@@ -16,6 +16,9 @@ AETHER_RELEASE_PORT="${AETHER_RELEASE_PORT:-3004}"
 NEST_PORT="${NEST_PORT:-3002}"
 GIN_PORT="${GIN_PORT:-3003}"
 AETHER_WORKERS="${AETHER_WORKERS:-1}"
+# shellcheck source=../scripts/aether_env.sh
+source "$ROOT/scripts/aether_env.sh"
+aether_export_pool_workers
 
 PIDS=()
 cleanup() {
@@ -80,10 +83,13 @@ start_aether_qbe() {
     AETHER_ENV=production \
       AETHER_PORT="$AETHER_PORT" \
       AETHER_WORKERS="$AETHER_WORKERS" \
+      NOX_POOL_WORKERS="$NOX_POOL_WORKERS" \
       AETHER_LOG_REQUESTS=0 \
       AETHER_OPENAPI=0 \
       AETHER_CORS_ORIGINS= \
       AETHER_METRICS_ROUTES=0 \
+      AETHER_REQUEST_ID=0 \
+      AETHER_REQUEST_HEADERS=0 \
       noxc run benchmarks/aether/main.nox >/tmp/aether-bench-server.log 2>&1
   ) &
   AETHER_PID=$!
@@ -134,10 +140,14 @@ if [[ "${AETHER_SKIP_RELEASE:-0}" != "1" ]]; then
     AETHER_ENV=production \
       AETHER_PORT="$AETHER_RELEASE_PORT" \
       AETHER_WORKERS="$AETHER_WORKERS" \
+      NOX_POOL_WORKERS="$NOX_POOL_WORKERS" \
+      AETHER_LLVM=1 \
       AETHER_LOG_REQUESTS=0 \
       AETHER_OPENAPI=0 \
       AETHER_CORS_ORIGINS= \
       AETHER_METRICS_ROUTES=0 \
+      AETHER_REQUEST_ID=0 \
+      AETHER_REQUEST_HEADERS=0 \
       "$OUT/aether-bench" >/tmp/aether-release-bench-server.log 2>&1
   ) &
   REL_PID=$!

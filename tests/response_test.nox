@@ -1,0 +1,23 @@
+import nox.test
+import nox.strings
+import aether.response
+from nox.http import HttpResponse
+
+data: dict[str, str] = {}
+data["msg"] = "hello"
+encoded: str = aether.response.encode_str_map(data)
+nox.test.assert_true(nox.strings.contains(encoded, "\"msg\""), "key")
+nox.test.assert_true(nox.strings.contains(encoded, "\"hello\""), "value")
+
+ok: HttpResponse = aether.response.json_ok_str(data)
+nox.test.assert_eq_int(ok.status, 200, "json_ok_str status")
+nox.test.assert_true(nox.strings.contains(ok.body, "hello"), "json_ok_str body")
+
+base: HttpResponse = aether.response.json_ok("{\"pong\":true}")
+extra: dict[str, str] = {}
+extra["X-Request-Id"] = "rid-1"
+patched: HttpResponse = aether.response.apply_headers(base, extra)
+nox.test.assert_true(patched.headers["X-Request-Id"] == "rid-1", "apply_headers")
+nox.test.assert_true(nox.strings.contains(patched.body, "pong"), "body preserved")
+
+print("response_test ok")

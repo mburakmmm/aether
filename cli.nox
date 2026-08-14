@@ -58,9 +58,11 @@ def cmd_new(name: str) -> None:
     _copy_template_file(template_root + "/worker.nox", name + "/worker.nox", name)
     _copy_template_file(template_root + "/nox.json", name + "/nox.json", name)
     _copy_template_file(template_root + "/ws.nox", name + "/ws.nox", name)
+    _copy_template_file(template_root + "/run.sh", name + "/run.sh", name)
+    _copy_template_file(template_root + "/run-release.sh", name + "/run-release.sh", name)
     print("created " + name)
-    print("  cd " + name + " && noxc fetch && AETHER_ENV=development noxc run main.nox")
-    print("  production (Nox 1.29+, macOS/arm64): noxc build --release -o app && ./app")
+    print("  cd " + name + " && noxc fetch && chmod +x run.sh run-release.sh && ./run.sh")
+    print("  production (Nox 1.29.4+, macOS/arm64): ./run-release.sh")
 
 def run() -> None:
     n: int = nox.os.arg_count()

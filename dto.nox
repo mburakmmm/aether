@@ -226,8 +226,18 @@ def validate_json_str(raw: str, schema: DtoSchema) -> list[str]:
         errors.append(e.message)
         return errors
 
-def parse_or_raise(raw: str, schema: DtoSchema) -> str:
-    errors: list[str] = validate_json_str(raw, schema)
-    if len(errors) > 0:
+def parse_value_or_raise(raw: str, schema: DtoSchema) -> JsonValue:
+    try:
+        v: JsonValue = nox.json.decode(raw)
+    except JsonError as e:
+        errors: list[str] = []
+        errors.append(e.message)
         raise ValidationError("request body validation failed", errors)
+    errors2: list[str] = validate_value(v, schema)
+    if len(errors2) > 0:
+        raise ValidationError("request body validation failed", errors2)
+    return v
+
+def parse_or_raise(raw: str, schema: DtoSchema) -> str:
+    parse_value_or_raise(raw, schema)
     return raw + ""

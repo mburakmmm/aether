@@ -235,6 +235,13 @@ class HttpContext:
         set_input_json(raw)
         self._has_body = False
 
+    def set_validated_body(self: HttpContext, body: ValidatedBody) -> None:
+        raw: str = body.raw()
+        self.input_body = raw
+        set_input_json(raw)
+        self._body = body
+        self._has_body = True
+
     def input(self: HttpContext) -> str:
         if len(self.input_body) > 0:
             return self.input_body

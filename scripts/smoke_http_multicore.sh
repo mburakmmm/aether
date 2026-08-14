@@ -4,15 +4,22 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${AETHER_PORT:-34568}"
 cd "$ROOT"
+# shellcheck source=aether_env.sh
+source "$ROOT/scripts/aether_env.sh"
+AETHER_WORKERS=2
+aether_export_pool_workers
 
 rm -f /tmp/aether-smoke-mc.log
 AETHER_ENV=production \
 AETHER_PORT="$PORT" \
-AETHER_WORKERS=2 \
+AETHER_WORKERS="$AETHER_WORKERS" \
+NOX_POOL_WORKERS="$NOX_POOL_WORKERS" \
 AETHER_OPENAPI=0 \
 AETHER_LOG_REQUESTS=0 \
 AETHER_CORS_ORIGINS= \
 AETHER_METRICS_ROUTES=0 \
+AETHER_REQUEST_ID=0 \
+AETHER_REQUEST_HEADERS=0 \
 noxc run benchmarks/aether/main.nox >/tmp/aether-smoke-mc.log 2>&1 &
 PID=$!
 cleanup() { kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }

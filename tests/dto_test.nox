@@ -1,4 +1,5 @@
 import nox.test
+import nox.json
 import aether.dto
 from aether.dto import DtoSchema, validate_json_str
 from aether.errors import ValidationError
@@ -20,6 +21,12 @@ arr: DtoSchema = DtoSchema("Tags")
 arr.require_array("tags", "string")
 bad_arr: list[str] = validate_json_str("{\"tags\":[1,2]}", arr)
 nox.test.assert_true(len(bad_arr) > 0, "invalid array items")
+
+ok_v: JsonValue = aether.dto.parse_value_or_raise(
+    "{\"name\":\"ada\",\"address\":{\"city\":\"paris\"}}",
+    user
+)
+nox.test.assert_true(nox.json.is_object(ok_v), "parse_value object")
 
 try:
     aether.dto.parse_or_raise("{}", user)

@@ -2,6 +2,7 @@
 
 from nox.http import HttpResponse
 import nox.json
+import nox.strings
 
 def json(status: int, body: str) -> HttpResponse:
     headers: dict[str, str] = {}
@@ -36,7 +37,7 @@ def _copy_headers(resp: HttpResponse) -> dict[str, str]:
 def with_header(resp: HttpResponse, key: str, value: str) -> HttpResponse:
     out: dict[str, str] = _copy_headers(resp)
     out[key] = value
-    return HttpResponse(resp.status, resp.body + "", out)
+    return HttpResponse(resp.status, resp.body, out)
 
 def with_headers(resp: HttpResponse, extra: dict[str, str]) -> HttpResponse:
     # Single header-map copy for multiple keys (finalize / CORS hot path).
@@ -47,17 +48,35 @@ def with_headers(resp: HttpResponse, extra: dict[str, str]) -> HttpResponse:
         k: str = keys[i]
         out[k] = extra[k]
         i = i + 1
-    return HttpResponse(resp.status, resp.body + "", out)
+    return HttpResponse(resp.status, resp.body, out)
+
+# Mutate the response header map in place (finalize hot path). Caller owns resp.
+def apply_headers(resp: HttpResponse, extra: dict[str, str]) -> HttpResponse:
+    out: dict[str, str] = resp.headers
+    keys: list[str] = extra.keys()
+    i: int = 0
+    while i < len(keys):
+        k: str = keys[i]
+        out[k] = extra[k]
+        i = i + 1
+    resp.headers = out
+    return resp
 
 def encode_str_map(data: dict[str, str]) -> str:
     keys: list[str] = data.keys()
-    body: str = "{"
+    parts: list[str] = []
+    parts.append("{")
     i: int = 0
     while i < len(keys):
         if i > 0:
-            body = body + ","
+            parts.append(",")
         k: str = keys[i]
-        body = body + nox.json.encode_string(k) + ":" + nox.json.encode_string(data[k])
+        parts.append(nox.json.encode_string(k))
+        parts.append(":")
+        parts.append(nox.json.encode_string(data[k]))
         i = i + 1
-    body = body + "}"
-    return body
+    parts.append("}")
+    return nox.strings.join(parts, "")
+
+def json_ok_str(data: dict[str, str]) -> HttpResponse:
+    return json_ok(encode_str_map(data))

@@ -1,6 +1,6 @@
 # Aether Architecture
 
-Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 1.29.0).
+Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 1.29.4).
 It is independent of Nyx (the Rails-style full-stack framework).
 
 ## Design
@@ -13,7 +13,7 @@ It is independent of Nyx (the Rails-style full-stack framework).
 
 ## Request flow
 
-1. Bare `handle(req)` (Nox `serve*` requirement)
+1. Bare `handle` reads `req.method/target/body[/headers]` then `dispatch_from_parts` (Nox `serve*` requirement; do not pass `req` through)
 2. `application.dispatch` → normalize path → body limit / CORS OPTIONS / 405 → match → `HttpContext` + `TaskLocal`
 3. Global + route guards
 4. Input pipes / DTO validation (including format checks)
@@ -33,7 +33,7 @@ See README for the full module table.
 
 - Boot-time route/guard/pipe binding
 - OpenAPI built once at boot
-- `dispatch_ensure(req, cfg, build)` + `apply_pool_workers(cfg)` when serving
+- `dispatch_from_parts(...)` when serving; export `NOX_POOL_WORKERS` before exec
 - Default `AETHER_WORKERS=1`
-- QBE (`noxc run`): shared-nothing workers; in-memory state is per-worker
-- `--release` (`noxc build --release`, macOS/arm64): shared M:N pool; in-memory `RateStore` / metrics / WS hubs are **not** thread-safe — keep rate-limit off in production
+- QBE (`noxc run`): shared-nothing `serve_multicore` (SO_REUSEPORT when `workers>1`)
+- `--release` (`noxc build --release`, macOS/arm64): `AETHER_LLVM=1` + single `serve()`; M:N pool sized by `NOX_POOL_WORKERS`. Do not call `serve_multicore` (1.29.4 flatten opens N accept loops). In-memory `RateStore` / metrics / WS hubs are **not** thread-safe — keep rate-limit off in production

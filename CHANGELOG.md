@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.2 — 2026-08-13
+
+Nox 1.29.4 floor + `--release` listen path.
+
+- Floor Nox **1.29.4** (CI `NOX_VERSION=v1.29.4`; SO_REUSEPORT per `serve_multicore` worker)
+- `--release` never calls `serve_multicore`: `AETHER_LLVM=1` (`./run-release.sh`) uses a single `nox.http.serve` so the M:N pool can steal. 1.29.4 flatten + SO_REUSEPORT opened N accept loops inside the pool (8-worker ping collapsed)
+- QBE `workers>1` still uses `serve_multicore` (`aether.server.use_os_workers`)
+
+## 0.6.1 — 2026-08-13
+
+Aether-side PERF_GAPS (G1–G3) + Nox 1.29.3 floor.
+
+- Floor Nox **1.29.3** (CI `NOX_VERSION=v1.29.3`; 1.29.2 TCP_NODELAY + 1.29.3 lock-free ARC free-lists under `--release` multicore)
+- `NOX_POOL_WORKERS` must be in the **process environment before exec** (`scripts/aether_env.sh`, scaffold `run.sh`). `apply_pool_workers` / `set_var` cannot resize the `--release` `$main` pool
+- Validation pipe hands the decoded `JsonValue` to `ValidatedBody` (one `nox.json.decode` per body)
+- `json_ok_str` / `encode_str_map` via `nox.strings.join`; finalize mutates headers in place (`apply_headers`)
+- `dispatch_from_parts` + optional `handle_bare` so Nox can skip `iterateHeaders` when `AETHER_REQUEST_HEADERS=0`
+- `AETHER_REQUEST_ID=0` skips `uuid4` + `X-Request-Id`
+
 ## 0.6.0 — 2026-08-13
 
 Nox ≥ 1.29.0 dual runtime.

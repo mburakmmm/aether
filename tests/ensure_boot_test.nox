@@ -3,7 +3,7 @@ import aether.config
 import aether.application
 import aether.testing
 from aether.config import Config
-from aether.application import Application
+from aether.application import Application, EMPTY_HEADERS
 from aether.module import ModuleBuilder
 from aether.context import HttpContext
 from aether.response import json_ok
@@ -35,6 +35,32 @@ r_ensure: HttpResponse = aether.application.dispatch_ensure(
     build
 )
 nox.test.assert_eq_int(r_ensure.status, 200, "dispatch_ensure ping")
+
+r_parts: HttpResponse = aether.application.dispatch_from_parts(
+    "GET",
+    "/ping",
+    "",
+    EMPTY_HEADERS,
+    cfg,
+    build
+)
+nox.test.assert_eq_int(r_parts.status, 200, "dispatch_from_parts ping")
+
+cfg_noid: Config = aether.config.defaults("test")
+cfg_noid.log_requests = False
+cfg_noid.request_id = False
+aether.application.shutdown_bound()
+app_noid: Application = aether.application.boot_with_config(cfg_noid, build)
+r_noid: HttpResponse = aether.testing.get(app_noid, "/ping")
+nox.test.assert_eq_int(r_noid.status, 200, "no request id status")
+has_rid: bool = False
+nk: list[str] = r_noid.headers.keys()
+ni: int = 0
+while ni < len(nk):
+    if nk[ni] == "X-Request-Id":
+        has_rid = True
+    ni = ni + 1
+nox.test.assert_true(not has_rid, "request id omitted")
 
 aether.application.shutdown_bound()
 print("ensure_boot_test ok")

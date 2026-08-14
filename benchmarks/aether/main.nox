@@ -1,25 +1,27 @@
 # Ping / echo benchmark target (Aether)
 #
-# Use dispatch_ensure: serve_multicore workers get a fresh AppBind and must re-boot.
+# Use dispatch_from_parts: serve_multicore workers get a fresh AppBind and must re-boot.
+# handle_bare never reads req.headers so Nox 1.29.2 skips iterateHeaders.
 
 import nox.http
-import nox.json
 from nox.http import HttpRequest, HttpResponse
 import aether.application
 import aether.server
 import aether.config
-from aether.application import Application
+from aether.application import Application, EMPTY_HEADERS
 from aether.config import Config
 from aether.module import ModuleBuilder
 from aether.context import HttpContext
-from aether.response import json_ok
+from aether.response import json_ok, json_ok_str
 from aether.dto import DtoSchema
 
 def ping_handler(ctx: HttpContext) -> HttpResponse:
     return json_ok("{\"pong\":true}")
 
 def echo_handler(ctx: HttpContext) -> HttpResponse:
-    return json_ok("{\"msg\":" + nox.json.encode_string(ctx.input_str("msg")) + "}")
+    fields: dict[str, str] = {}
+    fields["msg"] = ctx.input_str("msg")
+    return json_ok_str(fields)
 
 def build(app: Application) -> None:
     m: ModuleBuilder = app.module()
@@ -34,15 +36,29 @@ cfg: Config = aether.config.load()
 app: Application = aether.application.boot_with_config(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
-    return aether.application.dispatch_ensure(req, cfg, build)
+    return aether.application.dispatch_from_parts(
+        req.method, req.target, req.body, req.headers, cfg, build
+    )
+
+def handle_bare(req: HttpRequest) -> HttpResponse:
+    return aether.application.dispatch_from_parts(
+        req.method, req.target, req.body, EMPTY_HEADERS, cfg, build
+    )
 
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
 try:
     workers: int = aether.server.effective_workers(cfg)
     aether.server.apply_pool_workers(cfg)
-    if workers > 1:
-        nox.http.serve_multicore(cfg.port, handle, workers)
+    want_headers: bool = aether.server.materialize_request_headers(cfg)
+    if aether.server.use_os_workers(cfg):
+        if want_headers:
+            nox.http.serve_multicore(cfg.port, handle, workers)
+        else:
+            nox.http.serve_multicore(cfg.port, handle_bare, workers)
     else:
-        nox.http.serve(cfg.port, handle)
+        if want_headers:
+            nox.http.serve(cfg.port, handle)
+        else:
+            nox.http.serve(cfg.port, handle_bare)
 finally:
     aether.application.shutdown_bound()

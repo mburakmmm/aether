@@ -7,7 +7,8 @@ import nox.json
 import aether.context
 from aether.context import HttpContext
 import aether.dto
-from aether.dto import DtoSchema, parse_or_raise, validate_json_str
+from aether.dto import DtoSchema, parse_value_or_raise, validate_json_str
+import aether.body
 from aether.errors import ValidationError
 
 def run_pipes(pipes: list[(HttpContext) -> None], ctx: HttpContext) -> None:
@@ -20,8 +21,8 @@ def run_pipes(pipes: list[(HttpContext) -> None], ctx: HttpContext) -> None:
 def validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
     def transform(ctx: HttpContext) -> None:
         raw: str = ctx.body()
-        validated: str = parse_or_raise(raw, schema)
-        ctx.set_input(validated)
+        v: JsonValue = parse_value_or_raise(raw, schema)
+        ctx.set_validated_body(aether.body.from_decoded(raw, v))
     return transform
 
 def _dict_to_json_object(data: dict[str, str]) -> str:

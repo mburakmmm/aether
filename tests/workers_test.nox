@@ -12,7 +12,22 @@ cfg_exp: Config = aether.config.defaults("production")
 cfg_exp.workers = 4
 nox.test.assert_eq_int(aether.server.effective_workers(cfg_exp), 4, "explicit workers")
 
+nox.test.assert_eq_str(aether.server.pool_workers_wanted(cfg_exp), "4", "wanted 4")
+nox.test.assert_true(aether.server.materialize_request_headers(cfg_prod), "headers default on")
+
 aether.server.apply_pool_workers(cfg_exp)
 nox.test.assert_eq_str(nox.os.getenv("NOX_POOL_WORKERS"), "4", "pool env mapped")
+nox.test.assert_true(aether.server.pool_env_matches(cfg_exp), "matches after set_var")
+
+cfg_bare: Config = aether.config.defaults("production")
+cfg_bare.request_headers = False
+nox.test.assert_true(not aether.server.materialize_request_headers(cfg_bare), "headers opt-out")
+
+nox.test.assert_true(aether.server.use_os_workers(cfg_exp), "qbe workers>1 reuseport")
+nox.test.assert_true(not aether.server.use_os_workers(cfg_prod), "qbe workers=1 serve")
+nox.os.set_var("AETHER_LLVM", "1")
+nox.test.assert_true(not aether.server.use_os_workers(cfg_exp), "llvm workers>1 serve")
+nox.os.set_var("AETHER_LLVM", "0")
+nox.test.assert_true(aether.server.use_os_workers(cfg_exp), "llvm off restores reuseport")
 
 print("workers_test ok")

@@ -5,31 +5,48 @@
 # Kullanım (scaffold / examples):
 #
 #   def handle(req: HttpRequest) -> HttpResponse:
-#       return aether.application.dispatch_ensure(req, cfg, build)
-#   aether.server.apply_pool_workers(cfg)
-#   nox.http.serve(app.config.port, handle)
+#       return aether.application.dispatch_from_parts(
+#           req.method, req.target, req.body, req.headers, cfg, build)
+#   def handle_bare(req: HttpRequest) -> HttpResponse:
+#       return aether.application.dispatch_from_parts(
+#           req.method, req.target, req.body, aether.application.EMPTY_HEADERS, cfg, build)
+#   # NOX_POOL_WORKERS must be in the process environment BEFORE exec
+#   # (Nox --release $main pool). apply_pool_workers is too late for that.
+#   if aether.server.materialize_request_headers(cfg):
+#       nox.http.serve(cfg.port, handle)
+#   else:
+#       nox.http.serve(cfg.port, handle_bare)
 #
 # boot_with_config auto-calls bind(app). Do not close over Application in handle
 # (Nox codegen rejects that with serve*).
 #
-# Dual runtime (Nox 1.29+):
+# Dual runtime (Nox 1.29.4+):
 #   QBE (`noxc run` / `noxc test` / `noxc build`): shared-nothing workers.
 #     dispatch_ensure re-boots AppBind per worker on first use.
+#     workers>1 → serve_multicore (SO_REUSEPORT, one listen fd per OS thread).
 #   LLVM (`noxc build --release`, macOS/arm64): shared M:N pool.
-#     serve_multicore flattens into $main's pool; size comes from
-#     NOX_POOL_WORKERS (apply_pool_workers maps AETHER_WORKERS there).
+#     Size comes from process-env NOX_POOL_WORKERS (read at $main init —
+#     not set_var). ALWAYS call serve() / serve_tls() — never
+#     serve_multicore. Nox 1.29.4 flatten still runs N independent
+#     SO_REUSEPORT accept loops inside the pool and destroys steal
+#     (8w ping ~56k vs 1w ~209k). run-release.sh exports AETHER_LLVM=1.
 #     dispatch_ensure is a no-op after the main-thread boot.
 #
 # Multicore:
 #   workers: int = aether.server.effective_workers(cfg)
-#   aether.server.apply_pool_workers(cfg)
-#   nox.http.serve_multicore(app.config.port, handle, workers)
+#   # export NOX_POOL_WORKERS=$AETHER_WORKERS before launching the process
+#   # QBE: serve_multicore when use_os_workers; --release: serve()
+#   if aether.server.use_os_workers(cfg):
+#       nox.http.serve_multicore(app.config.port, handle, workers)
+#   else:
+#       nox.http.serve(app.config.port, handle)
 #
 # WebSocket:
 #   nox.http.serve_ws(app.config.port, handle, ws_handle)
 
 import nox.fs
 import nox.os
+from nox.os import OsError
 import aether.config
 from aether.config import Config
 
@@ -56,12 +73,68 @@ def effective_workers(cfg: Config) -> int:
         return cfg.workers
     return 1
 
-# Under Nox 1.29 `--release`, serve_multicore flattens into $main's M:N pool
-# and ignores the num_threads argument. Map AETHER_WORKERS → NOX_POOL_WORKERS
-# so the pool size matches the configured worker count.
+# Wanted pool size as a decimal string (AETHER_WORKERS / cfg.workers).
+def pool_workers_wanted(cfg: Config) -> str:
+    return str(effective_workers(cfg))
+
+def pool_workers_env() -> str:
+    try:
+        return nox.os.getenv("NOX_POOL_WORKERS")
+    except OsError:
+        return ""
+
+# True when the process already has NOX_POOL_WORKERS matching cfg.workers.
+# --release $main reads this at init; in-process set_var cannot resize the pool.
+def pool_env_matches(cfg: Config) -> bool:
+    return pool_workers_env() == pool_workers_wanted(cfg)
+
+# True when launched via run-release.sh / AETHER_LLVM=1 (LLVM M:N pool).
+def llvm_mn_pool() -> bool:
+    raw: str = ""
+    try:
+        raw = nox.os.getenv("AETHER_LLVM")
+    except OsError:
+        raw = ""
+    if raw == "1":
+        return True
+    if raw == "true":
+        return True
+    if raw == "TRUE":
+        return True
+    if raw == "yes":
+        return True
+    if raw == "on":
+        return True
+    return False
+
+# QBE workers>1 uses serve_multicore (SO_REUSEPORT). --release always serve():
+# Nox 1.29.4 flatten still opens N independent sockets inside the M:N pool.
+def use_os_workers(cfg: Config) -> bool:
+    if llvm_mn_pool():
+        return False
+    return effective_workers(cfg) > 1
+
+# Best-effort: sets NOX_POOL_WORKERS for *child* processes spawned after this
+# call. Does NOT resize an already-created --release $main pool — export the
+# variable in the launching shell (scripts/aether_env.sh, run.sh).
 def apply_pool_workers(cfg: Config) -> None:
     n: int = effective_workers(cfg)
     nox.os.set_var("NOX_POOL_WORKERS", str(n))
+
+def warn_pool_env(cfg: Config) -> None:
+    if pool_env_matches(cfg):
+        return
+    print(
+        "aether warning: NOX_POOL_WORKERS='" + pool_workers_env() +
+        "' wanted='" + pool_workers_wanted(cfg) +
+        "' — export before exec; apply_pool_workers is too late for --release"
+    )
+
+# When false, serve handle_bare so Nox 1.29.2 skips iterateHeaders (G1).
+# Default true: JWT / CORS / ctx.header() need the map. Bench sets
+# AETHER_REQUEST_HEADERS=0.
+def materialize_request_headers(cfg: Config) -> bool:
+    return cfg.request_headers
 
 # "plain" | "tls" | "ws" | "ws_tls"
 def serve_mode(cfg: Config, want_ws: bool) -> str:
@@ -76,9 +149,14 @@ def serve_mode(cfg: Config, want_ws: bool) -> str:
 
 def print_listen(cfg: Config, mode: str) -> None:
     workers: int = effective_workers(cfg)
+    warn_pool_env(cfg)
+    listen: str = "serve"
+    if use_os_workers(cfg):
+        listen = "reuseport"
     print(
         "aether listening on :" + str(cfg.port) +
         " env=" + cfg.env +
         " mode=" + mode +
-        " workers=" + str(workers)
+        " workers=" + str(workers) +
+        " listen=" + listen
     )

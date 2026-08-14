@@ -27,13 +27,7 @@ class ValidatedBody:
     def raw(self: ValidatedBody) -> str:
         return self._raw + ""
 
-    def _ensure(self: ValidatedBody) -> None:
-        if self._ready:
-            return
-        try:
-            v: JsonValue = nox.json.decode(self._raw)
-        except JsonError as e:
-            raise BadRequestError("invalid json body: " + e.message)
+    def _ingest(self: ValidatedBody, v: JsonValue) -> None:
         if not nox.json.is_object(v):
             details: list[str] = []
             raise ValidationError("body must be a json object", details)
@@ -75,6 +69,15 @@ class ValidatedBody:
         self._ints = ints
         self._bools = bools
         self._ready = True
+
+    def _ensure(self: ValidatedBody) -> None:
+        if self._ready:
+            return
+        try:
+            v: JsonValue = nox.json.decode(self._raw)
+        except JsonError as e:
+            raise BadRequestError("invalid json body: " + e.message)
+        self._ingest(v)
 
     def _index(self: ValidatedBody, name: str) -> int:
         self._ensure()
@@ -138,3 +141,10 @@ class ValidatedBody:
 
 def from_raw(raw: str) -> ValidatedBody:
     return ValidatedBody(raw)
+
+# Hydrate from an already-decoded object (validation_pipe). Skips a second
+# nox.json.decode on the same bytes.
+def from_decoded(raw: str, v: JsonValue) -> ValidatedBody:
+    body: ValidatedBody = ValidatedBody(raw)
+    body._ingest(v)
+    return body

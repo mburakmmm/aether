@@ -5,7 +5,7 @@
 **[Nox](https://github.com/mburakmmm/nox-lang) için NestJS esintili API / backend framework’ü.**  
 Pythonic modüller, closure tabanlı DI, guard / pipe / interceptor, typed DTO, OpenAPI + Swagger UI, WebSocket gateway ve SQLite iş kuyrukları.
 
-**Sürüm:** 0.6.0 · **Lisans:** MIT · **Nox ≥ 1.29.0**  
+**Sürüm:** 0.6.2 · **Lisans:** MIT · **Nox ≥ 1.29.4**  
 Paket: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > [Nyx](https://github.com/mburakmmm/nyx)’ten bağımsızdır (Rails tarzı full-stack). HTTP API için **Aether**; HTML monolit için **Nyx**.
@@ -24,7 +24,7 @@ Uygulama `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.6.0"
+      "ref": "v0.6.2"
     }
   ]
 }
@@ -32,7 +32,7 @@ Uygulama `nox.json`:
 
 ```sh
 noxc fetch
-AETHER_ENV=development noxc run main.nox
+AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ```
 
 ### Yerel path (geliştirme)
@@ -44,17 +44,27 @@ AETHER_ENV=development noxc run main.nox
 ### CLI iskelet
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.6.0
+noxc install github.com/mburakmmm/aether@v0.6.2
 aether new myapi
-cd myapi && noxc fetch && AETHER_ENV=development noxc run main.nox
+cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
 
 ---
 
+## 0.6.2
+
+Nox ≥ 1.29.4. `--release` tek `serve()` (`AETHER_LLVM=1`); QBE `workers>1`
+`serve_multicore` (SO_REUSEPORT).
+
+## 0.6.1
+
+Nox ≥ 1.29.3. `NOX_POOL_WORKERS` exec’ten önce (`./run.sh`). Tek JSON decode.
+`dispatch_from_parts` / `handle_bare`. `AETHER_REQUEST_ID=0`.
+
 ## 0.6.0
 
 Nox ≥ 1.29.0 çift runtime: QBE shared-nothing; `noxc build --release` M:N havuz
-(macOS/arm64). `apply_pool_workers` → `NOX_POOL_WORKERS`.
+(macOS/arm64).
 
 ## 0.5.0
 
