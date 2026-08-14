@@ -36,4 +36,5 @@ See README for the full module table.
 - `dispatch_from_parts(...)` when serving; export `NOX_POOL_WORKERS` before exec
 - Default `AETHER_WORKERS=1`
 - QBE (`noxc run`): shared-nothing `serve_multicore` (SO_REUSEPORT when `workers>1`)
-- `--release` (`noxc build --release`, macOS/arm64): `serve_multicore` flattens into the M:N pool sized by `NOX_POOL_WORKERS`; connection fibers are stealable (Nox ≥ 1.29.5). In-memory `RateStore` / metrics / WS hubs are **not** thread-safe — keep rate-limit off in production
+- `--release` (`noxc build --release`, macOS/arm64): shared M:N heap + stealable connection fibers; **module globals / Application remain per worker slot**
+- In-memory `RateStore` / `Metrics` / closure services are **worker-local** (not process-wide). See [SCOPE.md](SCOPE.md).

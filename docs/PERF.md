@@ -14,8 +14,10 @@
 
 | Path | Command | Scheduler | AppBind |
 |------|---------|-----------|---------|
-| QBE (default) | `noxc run` / `noxc test` / `noxc build` | M:1 fiber per OS thread; shared-nothing | Fresh per worker → `dispatch_ensure` boots |
-| LLVM `--release` | `noxc build --release` | Shared M:N work-stealing + atomic ARC | Shared `rt`; `dispatch_ensure` is a no-op after main boot |
+| QBE (default) | `noxc run` / `noxc test` / `noxc build` | M:1 fiber per OS thread; shared-nothing | Fresh globals per OS worker → `dispatch_ensure` boots |
+| LLVM `--release` | `noxc build --release` | Shared M:N work-stealing + atomic ARC | **Also** per worker-slot globals — not a process-wide Application |
+
+See [SCOPE.md](SCOPE.md). Parent `boot_with_config` does not fill sibling slots; `build()` must be idempotent.
 
 `--release` is comprehensively supported on **macOS/arm64**. Linux/Windows LLVM is not a production claim.
 
@@ -55,7 +57,7 @@ else:
 ```
 
 - **QBE:** in-memory `RateStore` / `Metrics` / WS hubs are **worker-local** (safe).
-- **`--release`:** they share one heap and are **not mutex-protected**. Keep production rate-limit off; use SQLite queue / external store for cross-core work.
+- **`--release`:** same worker-local module globals (shared heap ≠ shared Application). Effective rate-limit ≈ `workers × max`. Prefer external limiters / metrics when `workers>1`.
 
 Default remains `AETHER_WORKERS=1`.
 

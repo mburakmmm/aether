@@ -4,7 +4,7 @@ import aether.config
 import aether.application
 from aether.config import Config
 from aether.application import Application, AppError
-from aether.module import ModuleBuilder
+from aether.module import ModuleBuilder, RouteDef
 from aether.context import HttpContext
 from aether.response import json_ok
 from aether.dto import DtoSchema
@@ -101,5 +101,36 @@ try:
     nox.test.assert_true(False, "trailing slash clash should raise")
 except AppError as e4:
     nox.test.assert_true(nox.strings.contains(e4.message, "duplicate route"), "slash msg")
+
+# /users/:id and /users/:name share a param shape → rejected at boot.
+def build_shape_clash(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.get("/users/:id", empty_handler)
+    m.get("/users/:name", empty_handler)
+
+try:
+    aether.application.boot_with_config(cfg, build_shape_clash)
+    nox.test.assert_true(False, "shape clash should raise")
+except AppError as e5:
+    nox.test.assert_true(nox.strings.contains(e5.message, "duplicate route shape"), "shape msg")
+
+# Trailing slash on a param route still recomputes route_key after normalize.
+def build_key_normalize(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.get("/items/:id/", empty_handler)
+
+app_key: Application = aether.application.boot_with_config(cfg, build_key_normalize)
+rk: str = ""
+ki: int = 0
+while ki < len(app_key.route_table.routes):
+    rr: RouteDef = app_key.route_table.routes[ki]
+    if nox.strings.contains(rr.pattern, "items"):
+        rk = rr.route_key
+        nox.test.assert_eq_str(rr.pattern, "/items/:id", "pattern normalized")
+        nox.test.assert_eq_str(rr.route_key, "GET /items/:id", "route_key recomputed")
+        nox.test.assert_true(not rr.is_static, "param not static")
+    ki = ki + 1
+nox.test.assert_eq_str(rk, "GET /items/:id", "found items route_key")
+aether.application.shutdown(app_key)
 
 print("boot_validate_test ok")

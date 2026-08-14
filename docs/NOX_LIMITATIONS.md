@@ -191,17 +191,18 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 12. Multicore workers do not share in-memory singletons
 
-**Status:** `resolved in nox 1.29 --release only` (QBE workaround persists)
+**Status:** `workaround` (documented; probe-proven on Nox ≥ 1.29.8)
 
-**Impact:** QBE `serve_multicore` still gives each OS worker a fresh module-global copy (non-atomic ARC). Under `noxc build --release` (Nox 1.29, macOS/arm64) workers share one M:N pool + atomic ARC heap, so `AppBind` is visible — but in-memory `RateStore` / metrics / WS hubs are **not mutex-protected**.
+**Impact:** Both QBE `serve_multicore` and `--release` M:N keep **module globals per worker slot** (`RuntimeState.globals_blocks[g_worker_slot]`). Aether `AppBind` / `Application` / closure services / `Metrics` / `RateStore` are **worker-local**. Shared heap under `--release` does **not** imply a shared Application. Parent `boot_with_config` before serve does not populate sibling slots; `dispatch_ensure` boots each empty slot on first request.
 
 **Evidence:**
-- QBE: `stdlib/nox/router.nox` multicore note (fresh globals)
-- `--release`: CHANGELOG `[1.28.0]`/`[1.29.0]` `nox_pool_serve` flatten + shared `rt`
+- Nox `runtime/alloc/asap.zig` `globals_blocks` / `nox_globals_get`
+- Aether `scripts/smoke_worker_bind.sh` (`AETHER_PROBE_SKIP_PARENT_BOOT=1` → multiple live `boot_id`s)
+- `docs/SCOPE.md`
 
-**Desired Nox change:** Userland mutex / documented thread-safe collections for shared mutable state.
+**Desired Nox change:** Optional process-wide atomic counters / documented shared-mutable collections when frameworks need aggregate metrics.
 
-**Aether workaround:** Keep `dispatch_ensure` / `dispatch_from_parts` (QBE per-worker boot, `--release` no-op). Export `NOX_POOL_WORKERS=$AETHER_WORKERS` before exec (`scripts/aether_env.sh`). `apply_pool_workers` (`set_var`) is too late for the `$main` pool. `workers>1` → `serve_multicore` on both runtimes (Nox ≥ 1.29.5 steals connection fibers under `--release`). Document in-memory rate-limit as unsafe under `--release` multicore; use `aether.queue` (SQLite) for cross-core work.
+**Aether workaround:** Document worker-local scope; require idempotent `build()`; keep in-memory rate-limit / metrics opt-in with external backends for process-wide truth; default `AETHER_WORKERS=1`. Export `NOX_POOL_WORKERS=$AETHER_WORKERS` before exec.
 
 ---
 
@@ -316,10 +317,11 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Desired Nox change:** Allow serve handlers to close over complex package class instances (or document free-variable restrictions for serve intrinsics).
 
-**Aether workaround:** `boot_with_config` calls `bind(app)` on the calling thread. Entrypoints use
-`dispatch_ensure(req, cfg, build)` so QBE `serve_multicore` workers (fresh `AppBind`) re-boot from
-`cfg`+`build` without closing over `Application`. Under `--release` the same call is a no-op after
-the shared-pool boot. `dispatch_bound` / `shutdown_bound` remain for already-bound paths.
+**Aether workaround:** `boot_with_config` calls `bind(app)` on the calling worker slot. Entrypoints use
+`dispatch_ensure(req, cfg, build)` so every worker slot with an empty `AppBind` boots from
+`cfg`+`build` without closing over `Application`. Sibling slots are **not** filled by a parent boot
+(QBE and `--release`). `build()` must be idempotent. `shutdown_bound` only closes the current slot.
+See `docs/SCOPE.md`.
 
 ---
 

@@ -112,6 +112,23 @@ def _mount_framework_routes(app: Application) -> None:
 def _route_key(method: str, pattern: str) -> str:
     return method + " " + pattern
 
+# Canonical path shape for collision checks: /users/:id and /users/:name → /users/:
+def _route_shape(pattern: str) -> str:
+    parts: list[str] = nox.strings.split(pattern, "/")
+    out: list[str] = []
+    i: int = 0
+    while i < len(parts):
+        p: str = parts[i]
+        if len(p) > 0 and nox.strings.starts_with(p, ":"):
+            out.append(":")
+        else:
+            out.append(p)
+        i = i + 1
+    return nox.strings.join(out, "/")
+
+def _pattern_is_static(pattern: str) -> bool:
+    return nox.strings.index_of(pattern, ":") < 0
+
 def _str_less(a: str, b: str) -> bool:
     i: int = 0
     na: int = len(a)
@@ -231,6 +248,9 @@ def _normalize_route_patterns(routes: list[RouteDef]) -> None:
     while i < len(routes):
         r: RouteDef = routes[i]
         r.pattern = normalize_path(r.pattern)
+        # Keep metrics/log keys aligned with the canonical pattern (A6 follow-up).
+        r.route_key = _route_key(r.method, r.pattern)
+        r.is_static = _pattern_is_static(r.pattern)
         i = i + 1
 
 def _validate_boot(app: Application) -> None:
@@ -239,16 +259,26 @@ def _validate_boot(app: Application) -> None:
     routes: list[RouteDef] = app.route_table.routes
     _normalize_route_patterns(routes)
     seen_routes: list[str] = []
+    seen_shapes: list[str] = []
     i: int = 0
     while i < len(routes):
         r: RouteDef = routes[i]
-        key: str = _route_key(r.method, r.pattern)
+        key: str = r.route_key
+        shape_key: str = _route_key(r.method, _route_shape(r.pattern))
         j: int = 0
         while j < len(seen_routes):
             if seen_routes[j] == key:
                 raise AppError("duplicate route: " + key)
             j = j + 1
+        sj: int = 0
+        while sj < len(seen_shapes):
+            if seen_shapes[sj] == shape_key:
+                raise AppError(
+                    "duplicate route shape: " + shape_key + " (conflicts with " + key + ")"
+                )
+            sj = sj + 1
         seen_routes.append(key)
+        seen_shapes.append(shape_key)
         i = i + 1
     _validate_schema_names(routes)
 
@@ -409,8 +439,11 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
 
 # Serve handlers must not close over Application directly — Nox codegen rejects
 # that combination. Always use dispatch_ensure(req, cfg, build):
-#   QBE: each serve_multicore worker has a fresh AppBind → first call boots.
-#   --release (Nox 1.29+): shared M:N pool → AppBind already bound, no-op.
+#   Nox keeps module globals per worker slot (globals_blocks[g_worker_slot]).
+#   Each worker with an empty AppBind boots its own Application on first request.
+#   Parent boot_with_config before serve does NOT populate sibling worker slots.
+#   build() must be idempotent / free of process-once side effects (migrations,
+#   cron, listen sockets). Prefer external stores for cross-worker state.
 class AppBind:
     apps: list[Application]
 
@@ -430,8 +463,8 @@ def bound() -> Application:
     return _bind.apps[0]
 
 def ensure_bound(cfg: Config, build: (Application) -> None) -> Application:
-    # QBE serve_multicore: each OS worker has a fresh AppBind → boot here.
-    # --release M:N pool: main-thread boot already bound → no-op.
+    # Per worker-slot AppBind (QBE shared-nothing and --release M:N alike).
+    # Empty slot → boot_with_config. Already bound on this slot → reuse.
     if len(_bind.apps) == 0:
         return boot_with_config(cfg, build)
     return _bind.apps[0]
@@ -473,5 +506,8 @@ def shutdown(app: Application) -> None:
         i = i + 1
 
 def shutdown_bound() -> None:
+    # Only the Application bound in *this* worker slot. Sibling workers keep
+    # their own AppBind until their process/slot tears down — call process-level
+    # cleanup outside Aether (or keep workers=1) for coordinated graceful stop.
     if len(_bind.apps) > 0:
         shutdown(_bind.apps[0])

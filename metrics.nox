@@ -1,4 +1,9 @@
 # aether.metrics - per-Application counters + optional route hits.
+#
+# Scope: worker-local. Nox module globals (and therefore Application / Metrics)
+# are per worker slot. GET /metrics returns only the counters of the worker that
+# handled that request — not a process-wide aggregate.
+# Prefer AETHER_METRICS=0 + an external metrics backend when workers>1.
 
 import nox.json
 
@@ -57,7 +62,8 @@ class Metrics:
             i = i + 1
         routes = routes + "}"
         return (
-            "{\"requests\":" + str(self.requests) +
+            "{\"scope\":\"worker\"" +
+            ",\"requests\":" + str(self.requests) +
             ",\"errors\":" + str(self.errors) +
             ",\"status_2xx\":" + str(self.status_2xx) +
             ",\"status_4xx\":" + str(self.status_4xx) +

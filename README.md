@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.6.3 · **License:** MIT · **Requires Nox ≥ 1.29.8**  
+**Version:** 0.6.4 · **License:** MIT · **Requires Nox ≥ 1.29.8**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.6.3"
+      "ref": "v0.6.4"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.6.3
+noxc install github.com/mburakmmm/aether@v0.6.4
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -100,12 +100,19 @@ Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
 
+## What’s new in 0.6.4
+
+Worker-local Application scope proven and documented (`docs/SCOPE.md`).
+`build()` must be idempotent; metrics/rate-limit are per-worker; route param
+shapes (`/:id` vs `/:name`) collide at boot; `route_key` recomputed after
+normalize. AppBind probe smoke in CI.
+
 ## What’s new in 0.6.3
 
 Nox ≥ 1.29.8. `workers>1` → `serve_multicore` on `--release` (1.29.5 steal).
 Dropped `AETHER_LLVM`. JSON decode arena (1.29.8) + Aether G2 path
 (`ValidatedBody` keeps `JsonValue`, flat validate short-circuit, single-field
-encode). Echo ≈ Gin on this microbench. Export `NOX_POOL_WORKERS` before exec.
+encode) + A1–A7 hot-path. Echo ≈ Gin on this microbench.
 
 ## What’s new in 0.6.2
 
@@ -233,6 +240,7 @@ Built-in routes: `GET /health`, `GET /metrics`, and when OpenAPI is on: `GET /op
 ## Docs
 
 - Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Scopes (Application / Worker / Request): [docs/SCOPE.md](docs/SCOPE.md)
 - Nox limitations (upstream evidence): [docs/NOX_LIMITATIONS.md](docs/NOX_LIMITATIONS.md)
 - Queue leases / at-least-once: [docs/QUEUE.md](docs/QUEUE.md)
 - Benchmarks (Aether vs NestJS vs Gin): [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
@@ -244,8 +252,8 @@ Nox `serve*` requires a **bare top-level** `handle` / `ws_handle` name — do no
 
 Do **not** close over `Application` in that handle (`dispatch(app, req)`). Use
 `dispatch_from_parts(method, target, body, headers, cfg, build)` so the serve
-handle does not escape `req`. QBE workers re-boot `AppBind`; `--release`
-(macOS/arm64) shares one M:N pool sized by **process-env** `NOX_POOL_WORKERS`.
+handle does not escape `req`. Each worker slot boots its own `AppBind` via
+`dispatch_ensure` (QBE and `--release`). See [docs/SCOPE.md](docs/SCOPE.md).
 
 Production: `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
 (Nox ≥ 1.29.8, macOS/arm64). Dev: `./run.sh`. Prefer `./run-release.sh`.

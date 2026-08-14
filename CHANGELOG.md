@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.4 — 2026-08-14
+
+Worker-local Application semantics (proven) + boot correctness.
+
+- Document **Application / Worker / Request** scopes (`docs/SCOPE.md`); fix AppBind comments that claimed `--release` shared Application
+- `build()` must be idempotent; parent boot does not fill sibling worker slots; `shutdown_bound` is slot-local
+- `Metrics.to_json` includes `"scope":"worker"`; rate-limit docs describe N×max effective cap
+- Boot rejects param **route-shape** collisions (`GET /users/:id` vs `GET /users/:name`)
+- Recompute `route_key` / `is_static` after pattern normalize
+- Worker AppBind probe (`benchmarks/worker_probe`, `scripts/smoke_worker_bind.sh`) in CI
+
 ## 0.6.3 — 2026-08-14
 
 Nox 1.29.8 floor; restore `--release` `serve_multicore`; close remaining Aether echo tax (G2 + A1–A7).

@@ -22,13 +22,12 @@
 #
 # Dual runtime (Nox 1.29.5+):
 #   QBE (`noxc run` / `noxc test` / `noxc build`): shared-nothing workers.
-#     dispatch_ensure re-boots AppBind per worker on first use.
-#     workers>1 → serve_multicore (SO_REUSEPORT, one listen fd per OS thread).
-#   LLVM (`noxc build --release`, macOS/arm64): shared M:N pool.
-#     Size comes from process-env NOX_POOL_WORKERS (read at $main init —
-#     not set_var). workers>1 → serve_multicore; Nox flattens into the pool
-#     and (1.29.5+) connection fibers are work-stealable across workers.
-#     dispatch_ensure is a no-op after the main-thread boot.
+#     Module globals (AppBind) are per OS worker; dispatch_ensure boots each slot.
+#   LLVM (`noxc build --release`, macOS/arm64): shared M:N pool + steal (1.29.5+).
+#     Heap is shared, but module globals remain per worker slot — Application,
+#     Metrics, RateStore, and closure services are worker-local, not process-wide.
+#     Size the pool with process-env NOX_POOL_WORKERS (read at $main init).
+#   See docs/SCOPE.md.
 #
 # Multicore:
 #   workers: int = aether.server.effective_workers(cfg)
@@ -38,6 +37,9 @@
 #   else:
 #       nox.http.serve(app.config.port, handle)
 #
+# build() must be idempotent (no process-once migrations/cron). Parent
+# boot_with_config does not populate sibling worker AppBinds.
+
 # WebSocket:
 #   nox.http.serve_ws(app.config.port, handle, ws_handle)
 
