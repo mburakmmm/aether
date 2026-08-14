@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.5 — 2026-08-14
+
+Serve entrypoints + coordinated graceful drain.
+
+- `boot_for_serve(cfg, build)`: validate once; when `workers>1` `release_bound()` so no idle parent AppBind (siblings still boot via `dispatch_ensure`)
+- `finalize_serve(cfg)`: set process drain flag + `release_bound` after `serve*` returns
+- `shutdown_bound()`: slot-local hooks, keeps closed Application bound (no rebuild during drain); `release_bound()` clears AppBind
+- `aether.lifecycle`: file-backed stopping flag + per-worker registry (`/tmp/aether-life-<port>/…` or `AETHER_LIFECYCLE_DIR/<port>/…`)
+- While stopping: request traffic → **503** then slot-local `on_shutdown`; `/health` → 503
+- Opt-in `POST /__aether/shutdown` (`AETHER_SHUTDOWN_ROUTE=1`); `await_workers_drained`
+- Scaffolds / hello_api / benches use `boot_for_serve` + `finalize_serve`; see `docs/SCOPE.md`
+
+
 ## 0.6.4 — 2026-08-14
 
 Worker-local Application semantics (proven) + boot correctness.

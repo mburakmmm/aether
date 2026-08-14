@@ -80,12 +80,18 @@ jobs:
           chmod +x scripts/smoke_http_multicore.sh
           ./scripts/smoke_http_multicore.sh
 
-      - name: Worker AppBind probe (QBE, skip parent boot)
+      - name: Worker AppBind probe (QBE)
         run: |
           chmod +x scripts/smoke_worker_bind.sh
           AETHER_PORT=34680 AETHER_WORKERS=2 AETHER_PROBE_MODE=qbe \
-            AETHER_PROBE_SKIP_PARENT_BOOT=1 AETHER_PROBE_REQUESTS=200 \
+            AETHER_PROBE_REQUESTS=200 \
             ./scripts/smoke_worker_bind.sh
+
+      - name: Graceful shutdown drain smoke (QBE)
+        run: |
+          chmod +x scripts/smoke_shutdown.sh
+          AETHER_PORT=34681 AETHER_WORKERS=2 AETHER_PROBE_MODE=qbe \
+            ./scripts/smoke_shutdown.sh
 
       - name: Package-install smoke
         run: |
@@ -142,10 +148,16 @@ jobs:
           chmod +x scripts/smoke_http_release.sh
           ./scripts/smoke_http_release.sh
 
-      - name: Worker AppBind probe (--release, skip parent boot)
+      - name: Worker AppBind probe (--release)
         run: |
           chmod +x scripts/smoke_worker_bind.sh
           AETHER_PORT=34681 AETHER_WORKERS=4 AETHER_PROBE_MODE=release \
-            AETHER_PROBE_SKIP_PARENT_BOOT=1 AETHER_PROBE_REQUESTS=400 \
+            AETHER_PROBE_REQUESTS=400 \
             AETHER_PROBE_REQUIRE_MULTI=1 \
             ./scripts/smoke_worker_bind.sh
+
+      - name: Graceful shutdown drain smoke (--release)
+        run: |
+          chmod +x scripts/smoke_shutdown.sh
+          AETHER_PORT=34682 AETHER_WORKERS=4 AETHER_PROBE_MODE=release \
+            ./scripts/smoke_shutdown.sh

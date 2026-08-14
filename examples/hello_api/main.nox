@@ -151,7 +151,7 @@ def build(app: Application) -> None:
     app.import_module(configure)
 
 cfg: Config = aether.config.load()
-app: Application = aether.application.boot_with_config(cfg, build)
+aether.application.boot_for_serve(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
     return aether.application.dispatch_from_parts(
@@ -192,4 +192,4 @@ try:
             else:
                 nox.http.serve(cfg.port, handle_bare)
 finally:
-    aether.application.shutdown_bound()
+    aether.application.finalize_serve(cfg)

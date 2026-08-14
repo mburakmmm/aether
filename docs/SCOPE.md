@@ -6,7 +6,7 @@ Proven against Nox ≥ 1.29.8 (`globals_blocks[g_worker_slot]` + `scripts/smoke_
 
 | Scope | Lifetime | Examples |
 |-------|----------|----------|
-| **Process** | Whole OS process | Listen sockets, env, SQLite files, external DBs |
+| **Process** | Whole OS process | Listen sockets, env, SQLite files, external DBs, lifecycle drain flag |
 | **Worker** | One Nox worker slot (OS thread / pool member) | `AppBind`, `Application`, in-memory services, `Metrics`, `RateStore`, WS hubs |
 | **Request** | Single HTTP dispatch | `HttpContext`, TaskLocal values, validated body |
 
@@ -18,12 +18,11 @@ Nox isolates **module globals per worker slot** on both runtimes (shared heap un
 
 Consequences:
 
-1. `boot_with_config` on the main thread only fills **that** slot’s `AppBind`.
+1. `boot_for_serve(cfg, build)` validates routes once, then **clears** this slot when `workers>1` so no idle parent Application remains.
 2. Sibling workers start empty → `dispatch_ensure` / `dispatch_from_parts` call `boot_with_config` again on first request.
-3. Docs that claimed “`--release` → ensure_bound is a no-op after main boot” were **wrong**; probe evidence shows multiple `build()` runs and multiple live `boot_id`s when traffic hits multiple slots.
+3. `workers=1` keeps the bound Application after `boot_for_serve`.
 
-Probe: `benchmarks/worker_probe/main.nox` + `scripts/smoke_worker_bind.sh`  
-(`AETHER_PROBE_SKIP_PARENT_BOOT=1` forces every serving worker through `ensure_bound`).
+Probe: `benchmarks/worker_probe/main.nox` + `scripts/smoke_worker_bind.sh`.
 
 ## `build()` contract
 
@@ -34,7 +33,19 @@ Probe: `benchmarks/worker_probe/main.nox` + `scripts/smoke_worker_bind.sh`
 
 Put process-level work in the launching shell / supervisor **before** `serve*`, or behind an external system that is safe under concurrent callers.
 
-Parent `boot_with_config` before `serve_multicore` is optional convenience for worker 0; it does **not** replace per-worker ensure-boot and can create an idle Application that never serves.
+## Graceful shutdown (coordinated drain)
+
+Because hooks cannot be invoked across worker slots, Aether uses a **shared filesystem drain flag** (`aether.lifecycle`):
+
+1. `begin_shutdown(port)` or `POST /__aether/shutdown` (opt-in: `AETHER_SHUTDOWN_ROUTE=1`) sets `/tmp/aether-life-<port>/stopping`.
+2. Each worker that still handles a request returns **503** and runs **its own** `on_shutdown` hooks via `shutdown_bound()`.
+3. `GET /health` also returns 503 while stopping (load balancer drain).
+4. Entrypoint `finally: finalize_serve(cfg)` sets the flag and `release_bound()` after `serve*` returns.
+5. `await_workers_drained(port, timeout_ms)` polls until worker registry files are gone.
+6. `shutdown_bound()` runs hooks but keeps the closed Application bound (no rebuild during drain).
+   `release_bound()` clears AppBind (parent clear / process exit).
+
+Process-once cleanup that is not per-Application still belongs in the supervisor (migrations, shared cron).
 
 ## Metrics
 
@@ -44,13 +55,11 @@ Parent `boot_with_config` before `serve_multicore` is optional convenience for w
 
 In-memory `RateStore` is **worker-local**. Effective process capacity ≈ `workers × max` (skewed by accept affinity). Keep `AETHER_RATE_LIMIT` off for global quotas; use Redis/Postgres/API gateway.
 
-## Shutdown
-
-`shutdown_bound()` only runs hooks for the **current** worker slot’s Application. Coordinated graceful shutdown across siblings is not provided — prefer `workers=1` for simple lifecycle, or external orchestration.
-
 ## Recommended production defaults
 
 - `AETHER_WORKERS=1` unless you need multicore throughput **and** all mutable state is external.
 - Export `NOX_POOL_WORKERS=$AETHER_WORKERS` before exec.
+- Use `boot_for_serve` + `finalize_serve` in entrypoints (scaffolds do).
 - External DB/queue for anything that must be process-wide.
 - `AETHER_RATE_LIMIT=0`; `AETHER_METRICS=0` or per-worker scrape understanding.
+- Enable `AETHER_SHUTDOWN_ROUTE=1` only behind a trusted network / admin path.

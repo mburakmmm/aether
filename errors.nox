@@ -58,6 +58,11 @@ class TooManyRequestsError(HttpError):
         details: list[str] = []
         super().__init__(429, "too_many_requests", message, details)
 
+class ServiceUnavailableError(HttpError):
+    def __init__(self: ServiceUnavailableError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(503, "service_unavailable", message, details)
+
 class InternalError(HttpError):
     def __init__(self: InternalError, message: str) -> None:
         details: list[str] = []

@@ -1,0 +1,124 @@
+# aether.lifecycle - process drain flag + per-worker registry (file-backed).
+#
+# Nox isolates module globals per worker slot, so Application hooks cannot be
+# invoked on siblings from another slot. Coordination uses a shared filesystem
+# tree keyed by listen port:
+#
+#   /tmp/aether-life-<port>/stopping          - drain mode
+#   /tmp/aether-life-<port>/workers/<boot_id> - live worker Application
+#
+# Flow:
+#   1) begin_shutdown(port) sets the stopping flag
+#   2) Each worker that handles a request sees is_stopping then 503 + shutdown_bound
+#   3) Ops may touch the stopping file or POST /__aether/shutdown (opt-in)
+#   4) await_workers_drained waits until worker markers disappear (or timeout)
+
+import nox.fs
+import nox.os
+import nox.time
+from nox.os import OsError
+from nox.fs import FsError
+
+def root_dir(port: int) -> str:
+    try:
+        base: str = nox.os.getenv("AETHER_LIFECYCLE_DIR")
+        if len(base) > 0:
+            return base + "/" + str(port)
+        return "/tmp/aether-life-" + str(port)
+    except OsError:
+        return "/tmp/aether-life-" + str(port)
+
+def _workers_dir(port: int) -> str:
+    return root_dir(port) + "/workers"
+
+def _stopping_path(port: int) -> str:
+    return root_dir(port) + "/stopping"
+
+def _ignore_fs(err: FsError) -> None:
+    msg: str = err.message
+    if len(msg) < 0:
+        print(msg)
+
+def _ensure_tree(port: int) -> None:
+    root: str = root_dir(port)
+    workers: str = _workers_dir(port)
+    if not nox.fs.exists(root):
+        try:
+            nox.fs.create_dir(root)
+        except FsError as e:
+            _ignore_fs(e)
+    if not nox.fs.exists(workers):
+        try:
+            nox.fs.create_dir(workers)
+        except FsError as e:
+            _ignore_fs(e)
+
+def begin_shutdown(port: int) -> None:
+    _ensure_tree(port)
+    nox.fs.write_string(_stopping_path(port), "1\n")
+
+def clear_shutdown(port: int) -> None:
+    path: str = _stopping_path(port)
+    if nox.fs.exists(path):
+        try:
+            nox.fs.remove_file(path)
+        except FsError as e:
+            _ignore_fs(e)
+
+def is_stopping(port: int) -> bool:
+    return nox.fs.exists(_stopping_path(port))
+
+def register_worker(port: int, boot_id: str) -> None:
+    if len(boot_id) == 0:
+        return
+    _ensure_tree(port)
+    nox.fs.write_string(_workers_dir(port) + "/" + boot_id, "1\n")
+
+def unregister_worker(port: int, boot_id: str) -> None:
+    if len(boot_id) == 0:
+        return
+    path: str = _workers_dir(port) + "/" + boot_id
+    if nox.fs.exists(path):
+        try:
+            nox.fs.remove_file(path)
+        except FsError as e:
+            _ignore_fs(e)
+
+def active_worker_count(port: int) -> int:
+    workers: str = _workers_dir(port)
+    if not nox.fs.exists(workers):
+        return 0
+    try:
+        entries: list[str] = nox.fs.read_dir(workers)
+        return len(entries)
+    except FsError as e:
+        _ignore_fs(e)
+        return 0
+
+def await_workers_drained(port: int, timeout_ms: int) -> bool:
+    started: int = nox.time.now_ms()
+    done: bool = False
+    timed_out: bool = False
+    while (not done) and (not timed_out):
+        if active_worker_count(port) == 0:
+            done = True
+        else:
+            if nox.time.now_ms() - started >= timeout_ms:
+                timed_out = True
+            else:
+                nox.time.sleep_ms(25)
+    if done:
+        return True
+    return False
+
+def shutdown_route_enabled() -> bool:
+    try:
+        v: str = nox.os.getenv("AETHER_SHUTDOWN_ROUTE")
+        if v == "1" or v == "true" or v == "TRUE" or v == "yes" or v == "on":
+            return True
+        return False
+    except OsError:
+        return False
+
+def finalize_serve(port: int) -> None:
+    begin_shutdown(port)

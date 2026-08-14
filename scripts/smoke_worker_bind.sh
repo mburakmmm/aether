@@ -3,10 +3,13 @@
 #
 # Evidence channels:
 #   1) HTTP GET /__worker → boot_id (only workers that served)
-#   2) /tmp/aether-boot-markers/*.boot → every build() (including idle parent boot)
+#   2) /tmp/aether-boot-markers/*.boot → every build() (validation boot + serving workers)
+#
+# boot_for_serve validates once then clears idle parent AppBind when workers>1;
+# sibling workers still boot via dispatch_ensure on first request.
 #
 # Interpretation:
-#   markers > http_unique  → extra boots happened (parent vs serving worker)
+#   markers > http_unique  → validation boot and/or extra slots beyond those hit
 #   http_unique >= 2       → multiple workers served (strong worker-local proof)
 #   markers == 1 && workers>1 → only one slot ever ran build() (accept affinity)
 set -euo pipefail
@@ -16,7 +19,6 @@ WORKERS="${AETHER_WORKERS:-4}"
 MODE="${AETHER_PROBE_MODE:-qbe}" # qbe | release
 REQUESTS="${AETHER_PROBE_REQUESTS:-400}"
 PARALLEL="${AETHER_PROBE_PARALLEL:-40}"
-SKIP_PARENT="${AETHER_PROBE_SKIP_PARENT_BOOT:-0}"
 MARKERS="${AETHER_BOOT_MARKERS:-/tmp/aether-boot-markers}"
 cd "$ROOT"
 # shellcheck source=aether_env.sh
@@ -64,15 +66,14 @@ export AETHER_METRICS=0
 export AETHER_METRICS_ROUTES=0
 export AETHER_REQUEST_ID=0
 export AETHER_REQUEST_HEADERS=0
-export AETHER_PROBE_SKIP_PARENT_BOOT="$SKIP_PARENT"
 
 if [[ "$MODE" == "release" ]]; then
-  echo "building --release probe (workers=$WORKERS skip_parent=$SKIP_PARENT)..."
+  echo "building --release probe (workers=$WORKERS)..."
   noxc build --release -o "$BIN" benchmarks/worker_probe/main.nox
   "$BIN" >"$LOG" 2>&1 &
   PID=$!
 else
-  echo "starting QBE probe (workers=$WORKERS skip_parent=$SKIP_PARENT)..."
+  echo "starting QBE probe (workers=$WORKERS)..."
   noxc run benchmarks/worker_probe/main.nox >"$LOG" 2>&1 &
   PID=$!
 fi
@@ -134,7 +135,7 @@ if [[ -f "$MARKERS/builds.log" ]]; then
   LOG_U=$(sort -u "$MARKERS/builds.log" | grep -c . || true)
 fi
 
-echo "mode=$MODE workers=$WORKERS skip_parent=$SKIP_PARENT"
+echo "mode=$MODE workers=$WORKERS"
 echo "http_responses=$TOTAL http_unique_boot_ids=$UNIQUE"
 echo "build_marker_files=$MARK_N builds_log_lines=$LOG_N builds_log_unique=$LOG_U"
 sort -u "$OUT_DIR/ids.clean" | sed 's/^/  http_boot_id=/'

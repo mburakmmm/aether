@@ -1,0 +1,94 @@
+import nox.test
+import nox.fs
+import aether.config
+import aether.application
+import aether.lifecycle
+import aether.testing
+from aether.config import Config
+from aether.application import Application, AppError
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from nox.http import HttpResponse
+
+PORT: int = 34991
+HOOK: str = "/tmp/aether-life-hook-34991"
+
+def build(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+
+    def ping(ctx: HttpContext) -> HttpResponse:
+        return json_ok("{\"pong\":true}")
+
+    m.get("/ping", ping)
+
+    def on_stop() -> None:
+        nox.fs.write_string(HOOK, "1\n")
+
+    app.on_shutdown(on_stop)
+
+def build_plain(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+
+    def ping2(ctx: HttpContext) -> HttpResponse:
+        return json_ok("{\"pong\":true}")
+
+    m.get("/ping", ping2)
+
+if nox.fs.exists(HOOK):
+    nox.fs.remove_file(HOOK)
+
+aether.lifecycle.clear_shutdown(PORT)
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+cfg.port = PORT
+cfg.metrics = False
+
+app: Application = aether.application.boot_with_config(cfg, build)
+nox.test.assert_true(len(app.boot_id) > 0, "boot_id set")
+nox.test.assert_eq_int(aether.lifecycle.active_worker_count(PORT), 1, "registered")
+
+r0: HttpResponse = aether.testing.get(app, "/ping")
+nox.test.assert_eq_int(r0.status, 200, "ping before drain")
+
+aether.lifecycle.begin_shutdown(PORT)
+nox.test.assert_true(aether.lifecycle.is_stopping(PORT), "stopping flag")
+
+r1: HttpResponse = aether.testing.get(app, "/ping")
+nox.test.assert_eq_int(r1.status, 503, "ping drains with 503")
+nox.test.assert_eq_int(aether.lifecycle.active_worker_count(PORT), 0, "unregistered after drain")
+nox.test.assert_true(nox.fs.exists(HOOK), "shutdown hook ran")
+
+r_health: HttpResponse = aether.testing.get(app, "/health")
+nox.test.assert_eq_int(r_health.status, 503, "health 503 while stopping")
+
+cfg2: Config = aether.config.defaults("test")
+cfg2.log_requests = False
+cfg2.port = 34992
+cfg2.workers = 4
+cfg2.metrics = False
+aether.lifecycle.clear_shutdown(cfg2.port)
+aether.application.boot_for_serve(cfg2, build_plain)
+try:
+    aether.application.bound()
+    nox.test.assert_true(False, "bound should raise after multicore boot_for_serve")
+except AppError as e:
+    nox.test.assert_true(len(e.message) > 0, "cleared bind message")
+
+cfg3: Config = aether.config.defaults("test")
+cfg3.log_requests = False
+cfg3.port = 34993
+cfg3.workers = 1
+cfg3.metrics = False
+aether.lifecycle.clear_shutdown(cfg3.port)
+aether.application.boot_for_serve(cfg3, build_plain)
+app3: Application = aether.application.bound()
+nox.test.assert_true(len(app3.boot_id) > 0, "workers=1 stays bound")
+aether.application.release_bound()
+
+aether.lifecycle.clear_shutdown(PORT)
+aether.lifecycle.clear_shutdown(cfg2.port)
+aether.lifecycle.clear_shutdown(cfg3.port)
+if nox.fs.exists(HOOK):
+    nox.fs.remove_file(HOOK)
+print("lifecycle_test ok")

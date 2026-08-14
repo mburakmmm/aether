@@ -1,11 +1,10 @@
 # Worker / AppBind probe — proves Application / module-global locality.
 #
-# build() mints a boot_id into module-global BootBox.
+# build() mints a boot_id into module-global BootBox AND Application.boot_id.
 # GET /__worker returns it. Under workers>1 + per-worker globals,
 # parallel hits should observe multiple distinct boot_ids.
 #
-# AETHER_PROBE_SKIP_PARENT_BOOT=1 skips boot_with_config before serve so every
-# worker must boot via dispatch_ensure on first request.
+# Uses boot_for_serve (no idle parent AppBind when workers>1).
 
 import nox.http
 import nox.uuid
@@ -44,11 +43,12 @@ def worker_handler(ctx: HttpContext) -> HttpResponse:
 
 def build(app: Application) -> None:
     ids: list[str] = []
-    bid: str = nox.uuid.uuid4()
+    bid: str = app.boot_id
+    if len(bid) == 0:
+        bid = nox.uuid.uuid4()
     ids.append(bid)
     _BOOT.ids = ids
     _BOOT.builds = _BOOT.builds + 1
-    # Durable side-effect: one file per build (survives stdout buffering).
     marker: str = "/tmp/aether-boot-markers/" + bid + ".boot"
     nox.fs.write_string(marker, "builds=" + str(_BOOT.builds) + "\n")
     nox.fs.append_string("/tmp/aether-boot-markers/builds.log", bid + "\n")
@@ -56,18 +56,8 @@ def build(app: Application) -> None:
     m.get("/ping", ping_handler)
     m.get("/__worker", worker_handler)
 
-def _env_flag(name: str) -> bool:
-    try:
-        v: str = nox.os.getenv(name)
-        return v == "1" or v == "true" or v == "TRUE"
-    except OsError:
-        return False
-
 cfg: Config = aether.config.load()
-if _env_flag("AETHER_PROBE_SKIP_PARENT_BOOT"):
-    print("aether worker_probe skip_parent_boot=1")
-else:
-    app: Application = aether.application.boot_with_config(cfg, build)
+aether.application.boot_for_serve(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
     return aether.application.dispatch_from_parts(
@@ -95,4 +85,4 @@ try:
         else:
             nox.http.serve(cfg.port, handle_bare)
 finally:
-    aether.application.shutdown_bound()
+    aether.application.finalize_serve(cfg)

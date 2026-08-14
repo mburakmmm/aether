@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.6.4 · **License:** MIT · **Requires Nox ≥ 1.29.8**  
+**Version:** 0.6.5 · **License:** MIT · **Requires Nox ≥ 1.29.8**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.6.4"
+      "ref": "v0.6.5"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.6.4
+noxc install github.com/mburakmmm/aether@v0.6.5
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -78,7 +78,8 @@ def build(app: Application) -> None:
     HealthModule().configure(app.module())
 
 cfg: Config = aether.config.load()
-app: Application = aether.application.boot_with_config(cfg, build)
+# Validates once; workers>1 clears idle parent AppBind (siblings boot on first request).
+aether.application.boot_for_serve(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
     return aether.application.dispatch_from_parts(
@@ -93,12 +94,19 @@ try:
     else:
         nox.http.serve(cfg.port, handle)
 finally:
-    aether.application.shutdown_bound()
+    aether.application.finalize_serve(cfg)
 ```
 
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.6.5
+
+`boot_for_serve` / `finalize_serve` entrypoints; no idle parent Application
+when `workers>1`. Coordinated graceful drain (`aether.lifecycle`): process
+stopping flag, per-worker registry, 503 + `on_shutdown` per slot, opt-in
+`POST /__aether/shutdown` (`AETHER_SHUTDOWN_ROUTE=1`). See `docs/SCOPE.md`.
 
 ## What’s new in 0.6.4
 

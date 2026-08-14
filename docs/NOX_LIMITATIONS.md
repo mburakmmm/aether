@@ -197,7 +197,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Evidence:**
 - Nox `runtime/alloc/asap.zig` `globals_blocks` / `nox_globals_get`
-- Aether `scripts/smoke_worker_bind.sh` (`AETHER_PROBE_SKIP_PARENT_BOOT=1` → multiple live `boot_id`s)
+- Aether `scripts/smoke_worker_bind.sh` (multiple `build()` markers under `workers>1`)
 - `docs/SCOPE.md`
 
 **Desired Nox change:** Optional process-wide atomic counters / documented shared-mutable collections when frameworks need aggregate metrics.
@@ -317,10 +317,12 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Desired Nox change:** Allow serve handlers to close over complex package class instances (or document free-variable restrictions for serve intrinsics).
 
-**Aether workaround:** `boot_with_config` calls `bind(app)` on the calling worker slot. Entrypoints use
-`dispatch_ensure(req, cfg, build)` so every worker slot with an empty `AppBind` boots from
-`cfg`+`build` without closing over `Application`. Sibling slots are **not** filled by a parent boot
-(QBE and `--release`). `build()` must be idempotent. `shutdown_bound` only closes the current slot.
+**Aether workaround:** Prefer `boot_for_serve(cfg, build)` in entrypoints: validate once,
+then clear this slot’s AppBind when `workers>1` so no idle parent Application remains.
+Serving handlers use `dispatch_ensure` / `dispatch_from_parts` so every empty worker slot
+boots from `cfg`+`build` without closing over `Application`. Sibling slots are **not** filled
+by a parent boot (QBE and `--release`). `build()` must be idempotent. `shutdown_bound` /
+`finalize_serve` only close the current slot; process drain uses `aether.lifecycle`.
 See `docs/SCOPE.md`.
 
 ---
