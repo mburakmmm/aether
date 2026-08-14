@@ -4,10 +4,11 @@ from nox.http import HttpResponse
 import nox.json
 import nox.strings
 
+_JSON_HEADERS: dict[str, str] = {}
+_JSON_HEADERS["Content-Type"] = "application/json; charset=utf-8"
+
 def json(status: int, body: str) -> HttpResponse:
-    headers: dict[str, str] = {}
-    headers["Content-Type"] = "application/json; charset=utf-8"
-    return HttpResponse(status, body, headers)
+    return HttpResponse(status, body, _JSON_HEADERS)
 
 def json_ok(body: str) -> HttpResponse:
     return json(200, body)
@@ -50,9 +51,9 @@ def with_headers(resp: HttpResponse, extra: dict[str, str]) -> HttpResponse:
         i = i + 1
     return HttpResponse(resp.status, resp.body, out)
 
-# Mutate the response header map in place (finalize hot path). Caller owns resp.
+# Copy-on-write then mutate (safe with shared _JSON_HEADERS).
 def apply_headers(resp: HttpResponse, extra: dict[str, str]) -> HttpResponse:
-    out: dict[str, str] = resp.headers
+    out: dict[str, str] = _copy_headers(resp)
     keys: list[str] = extra.keys()
     i: int = 0
     while i < len(keys):
@@ -64,10 +65,16 @@ def apply_headers(resp: HttpResponse, extra: dict[str, str]) -> HttpResponse:
 
 def encode_str_map(data: dict[str, str]) -> str:
     keys: list[str] = data.keys()
+    n: int = len(keys)
+    if n == 0:
+        return "{}"
+    if n == 1:
+        k0: str = keys[0]
+        return "{" + nox.json.encode_string(k0) + ":" + nox.json.encode_string(data[k0]) + "}"
     parts: list[str] = []
     parts.append("{")
     i: int = 0
-    while i < len(keys):
+    while i < n:
         if i > 0:
             parts.append(",")
         k: str = keys[i]

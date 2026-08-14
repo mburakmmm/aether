@@ -35,6 +35,8 @@ class RouteDef:
     guards: list[(HttpContext) -> bool]
     pipes: list[(HttpContext) -> None]
     interceptors: list[InterceptorFns]
+    route_key: str
+    is_static: bool
 
     def __init__(
         self: RouteDef,
@@ -67,6 +69,13 @@ class RouteDef:
         self.guards = []
         self.pipes = []
         self.interceptors = []
+        self.route_key = method + " " + pattern
+        self.is_static = True
+        pi: int = 0
+        while pi < len(pattern):
+            if pattern[pi] == ":":
+                self.is_static = False
+            pi = pi + 1
 
 class RouteOptions:
     summary: str

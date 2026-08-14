@@ -13,6 +13,9 @@ from aether.pipe import run_pipes
 from aether.interceptor import InterceptorFns, BeforeResult, run_before, run_after
 from aether.module import RouteDef, RouteTable
 
+# Shared empty params for static route hits (never mutated).
+EMPTY_PARAMS: dict[str, str] = {}
+
 def _drop_first_char(s: str) -> str:
     result: str = ""
     i: int = 1
@@ -49,12 +52,21 @@ class MatchResult:
         self.params = params
 
 def _find_in(routes: list[RouteDef], path: str) -> MatchResult | None:
+    # A1: static exact match first (no split); then param patterns.
     i: int = 0
     while i < len(routes):
         route: RouteDef = routes[i]
-        params: dict[str, str] | None = match_path(route.pattern, path)
-        if params != None:
-            return MatchResult(route, params)
+        if route.is_static:
+            if route.pattern == path:
+                return MatchResult(route, EMPTY_PARAMS)
+        i = i + 1
+    i = 0
+    while i < len(routes):
+        route2: RouteDef = routes[i]
+        if not route2.is_static:
+            params: dict[str, str] | None = match_path(route2.pattern, path)
+            if params != None:
+                return MatchResult(route2, params)
         i = i + 1
     return None
 
@@ -65,31 +77,40 @@ def find_route(routes: list[RouteDef], method: str, path: str) -> MatchResult | 
     while i < len(routes):
         route: RouteDef = routes[i]
         if route.method == method:
-            params: dict[str, str] | None = match_path(route.pattern, norm)
-            if params != None:
-                return MatchResult(route, params)
+            if route.is_static:
+                if route.pattern == norm:
+                    return MatchResult(route, EMPTY_PARAMS)
+            else:
+                params: dict[str, str] | None = match_path(route.pattern, norm)
+                if params != None:
+                    return MatchResult(route, params)
         i = i + 1
     return None
 
+# path must already be normalized (A2 — caller normalizes once).
 def find_route_indexed(table: RouteTable, method: str, path: str) -> MatchResult | None:
-    norm: str = normalize_path(path)
     if method == "GET":
-        return _find_in(table.get_routes, norm)
+        return _find_in(table.get_routes, path)
     if method == "POST":
-        return _find_in(table.post_routes, norm)
+        return _find_in(table.post_routes, path)
     if method == "PUT":
-        return _find_in(table.put_routes, norm)
+        return _find_in(table.put_routes, path)
     if method == "DELETE":
-        return _find_in(table.delete_routes, norm)
-    return _find_in(table.other_routes, norm)
+        return _find_in(table.delete_routes, path)
+    return _find_in(table.other_routes, path)
 
 def path_exists(routes: list[RouteDef], path: str) -> bool:
-    norm: str = normalize_path(path)
+    # path already normalized by dispatch.
     i: int = 0
     while i < len(routes):
-        params: dict[str, str] | None = match_path(routes[i].pattern, norm)
-        if params != None:
-            return True
+        route: RouteDef = routes[i]
+        if route.is_static:
+            if route.pattern == path:
+                return True
+        else:
+            params: dict[str, str] | None = match_path(route.pattern, path)
+            if params != None:
+                return True
         i = i + 1
     return False
 

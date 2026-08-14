@@ -1,6 +1,6 @@
 # Aether Architecture
 
-Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 1.29.4).
+Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 1.29.8).
 It is independent of Nyx (the Rails-style full-stack framework).
 
 ## Design
@@ -36,4 +36,4 @@ See README for the full module table.
 - `dispatch_from_parts(...)` when serving; export `NOX_POOL_WORKERS` before exec
 - Default `AETHER_WORKERS=1`
 - QBE (`noxc run`): shared-nothing `serve_multicore` (SO_REUSEPORT when `workers>1`)
-- `--release` (`noxc build --release`, macOS/arm64): `AETHER_LLVM=1` + single `serve()`; M:N pool sized by `NOX_POOL_WORKERS`. Do not call `serve_multicore` (1.29.4 flatten opens N accept loops). In-memory `RateStore` / metrics / WS hubs are **not** thread-safe — keep rate-limit off in production
+- `--release` (`noxc build --release`, macOS/arm64): `serve_multicore` flattens into the M:N pool sized by `NOX_POOL_WORKERS`; connection fibers are stealable (Nox ≥ 1.29.5). In-memory `RateStore` / metrics / WS hubs are **not** thread-safe — keep rate-limit off in production

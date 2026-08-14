@@ -73,7 +73,7 @@ headers0: dict[str, str] = {}
 req: HttpRequest = HttpRequest("GET", "/x", "", headers0)
 params: dict[str, str] = {}
 begin("i1", "GET", "/x")
-ctx: HttpContext = HttpContext(req, params, app0.container, "i1", "", False)
+ctx: HttpContext = HttpContext(req, params, app0.container, "i1", "", False, "/x")
 br: BeforeResult = run_before(xs, ctx)
 early_opt: HttpResponse | None = br.response
 nox.test.assert_eq_int(br.entered_count, 2, "entered 1 and 2")

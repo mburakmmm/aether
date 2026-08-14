@@ -1,0 +1,60 @@
+import nox.test
+import nox.strings
+import aether.config
+import aether.application
+import aether.testing
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from aether.pipeline import find_route_indexed, MatchResult
+from nox.http import HttpResponse
+
+class RoutesMod:
+    def configure(self: RoutesMod, m: ModuleBuilder) -> None:
+        m.get("/ping", self._ping())
+        m.get("/users/:id", self._user())
+
+    def _ping(self: RoutesMod) -> (HttpContext) -> HttpResponse:
+        def ping(ctx: HttpContext) -> HttpResponse:
+            return json_ok("{\"pong\":true}")
+        return ping
+
+    def _user(self: RoutesMod) -> (HttpContext) -> HttpResponse:
+        def user(ctx: HttpContext) -> HttpResponse:
+            return json_ok("{\"id\":\"" + ctx.param("id") + "\"}")
+        return user
+
+def build(app: Application) -> None:
+    RoutesMod().configure(app.module())
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+cfg.metrics = False
+app: Application = aether.application.boot_with_config(cfg, build)
+
+nox.test.assert_true(len(app.route_table.get_routes) >= 2, "has get routes")
+
+hit: MatchResult | None = find_route_indexed(app.route_table, "GET", "/ping")
+nox.test.assert_true(hit != None, "static ping found")
+if hit != None:
+    found: MatchResult = hit
+    nox.test.assert_true(found.route.is_static, "ping is_static")
+    nox.test.assert_eq_str(found.route.route_key, "GET /ping", "route_key")
+    nox.test.assert_eq_int(len(found.params.keys()), 0, "empty params")
+
+hit2: MatchResult | None = find_route_indexed(app.route_table, "GET", "/users/42")
+nox.test.assert_true(hit2 != None, "param user found")
+if hit2 != None:
+    found2: MatchResult = hit2
+    nox.test.assert_true(not found2.route.is_static, "user not static")
+    nox.test.assert_eq_str(found2.params["id"], "42", "param id")
+
+r: HttpResponse = aether.testing.get(app, "/ping")
+nox.test.assert_eq_int(r.status, 200, "ping ok")
+r2: HttpResponse = aether.testing.get(app, "/users/7")
+nox.test.assert_eq_int(r2.status, 200, "user ok")
+nox.test.assert_true(nox.strings.contains(r2.body, "7"), "user body")
+
+print("route_index_test ok")

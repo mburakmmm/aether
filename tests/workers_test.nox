@@ -23,11 +23,7 @@ cfg_bare: Config = aether.config.defaults("production")
 cfg_bare.request_headers = False
 nox.test.assert_true(not aether.server.materialize_request_headers(cfg_bare), "headers opt-out")
 
-nox.test.assert_true(aether.server.use_os_workers(cfg_exp), "qbe workers>1 reuseport")
-nox.test.assert_true(not aether.server.use_os_workers(cfg_prod), "qbe workers=1 serve")
-nox.os.set_var("AETHER_LLVM", "1")
-nox.test.assert_true(not aether.server.use_os_workers(cfg_exp), "llvm workers>1 serve")
-nox.os.set_var("AETHER_LLVM", "0")
-nox.test.assert_true(aether.server.use_os_workers(cfg_exp), "llvm off restores reuseport")
+nox.test.assert_true(aether.server.use_os_workers(cfg_exp), "workers>1 multicore")
+nox.test.assert_true(not aether.server.use_os_workers(cfg_prod), "workers=1 serve")
 
 print("workers_test ok")

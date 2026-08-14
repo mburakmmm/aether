@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.3 — 2026-08-14
+
+Nox 1.29.8 floor; restore `--release` `serve_multicore`; close remaining Aether echo tax (G2 + A1–A7).
+
+- Floor Nox **1.29.8** (1.29.5 steal; 1.29.6 TLS; 1.29.8 `nox.json.decode` threadlocal arena)
+- Remove `AETHER_LLVM`: `workers>1` → `serve_multicore` on QBE and `--release`
+- Still export `NOX_POOL_WORKERS=$AETHER_WORKERS` before exec
+- **G2 Aether path:** `ValidatedBody` keeps decoded `JsonValue` (no parallel-array re-walk); skip `validate_value` extra field pass when `schema.flat()` suffices; single-field `encode_str_map` fast path
+- **A1:** Static routes match with exact `pattern == path` (no `split`) before param patterns
+- **A2:** Path normalized once in `dispatch`; passed into `find_route_indexed` + `HttpContext`
+- **A3:** `ValidatedBody` lazy via shared `_EMPTY_BODY` sentinel (ping allocates none)
+- **A4:** TaskLocal `begin`/`finish` only when `request_id` or `log_requests`; `EMPTY_VALUES` + COW `set_request_value`
+- **A5:** `Config.metrics` + `AETHER_METRICS` (bench/smokes set `0`; status counters opt-out)
+- **A6:** `RouteDef.route_key` / `is_static` computed at route construction
+- **A7:** Shared `_JSON_HEADERS` for `json()`; `apply_headers` copy-on-write
+- Echo microbench (`--release`, isolated): ~114k → ~170k (G2) → **~177k** (A1–A7) req/s; ping **~224k**
+
 ## 0.6.2 — 2026-08-13
 
 Nox 1.29.4 floor + `--release` listen path.

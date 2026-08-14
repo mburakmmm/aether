@@ -1,6 +1,6 @@
-# Aether throughput gaps — teknik rapor (0.6.2)
+# Aether throughput gaps — teknik rapor (0.6.3)
 
-Kaynak ölçüm: `wrk -t4 -c40 -d8s`, darwin arm64, Nox **1.29.4**, Aether **0.6.2**,
+Kaynak ölçüm: `wrk -t4 -c40 -d8s`, darwin arm64, Nox **1.29.8**, Aether **0.6.3**,
 `AETHER_WORKERS=1`, `NOX_POOL_WORKERS=1`, `AETHER_REQUEST_ID=0`,
 `AETHER_REQUEST_HEADERS=0`, production CORS/metrics/openapi/log kapalı.
 Ham log: `benchmarks/results/*.txt`.
@@ -10,25 +10,31 @@ ayırmak. Mutlak RPS makineye bağlıdır; oranlar ve hot-path kanıtı asıl te
 
 ## 1. Ölçülen matris
 
-### 0.6.2 + Nox 1.29.4 (güncel)
+### 0.6.3 + Nox 1.29.8 + Aether G2 path (güncel)
 
-| Hedef | GET /ping req/s | POST /echo req/s | ping→echo düşüş | wrk `read` error |
-|--------|----------------:|-----------------:|----------------:|-----------------:|
-| Aether QBE | 206 199 | 89 096 | −57% | 1645 / 700 |
-| Aether `--release` | **209 364** | **90 908** | −57% | 1676 / 718 |
-| NestJS Express | 64 394 | 51 546 | −20% | 0 |
-| Gin | 192 468 | 186 202 | **−3%** | 0 |
+İzole Aether (Nest/Gin kapalı):
 
-Oranlar (`--release` = 1.00):
+| Hedef | GET /ping req/s | POST /echo req/s | ping→echo düşüş |
+|--------|----------------:|-----------------:|----------------:|
+| Aether QBE | 208 213 | **163 343** | −22% |
+| Aether `--release` | **202 562** | **169 672** | **−16%** |
 
-| Karşılaştırma | Ping | Echo |
-|---------------|-----:|-----:|
-| Gin / Aether `--release` | **0.92×** (Aether önde) | **2.05×** |
-| Aether `--release` / Nest | 3.25× | 1.76× |
-| Aether `--release` / QBE | **1.02×** | 1.02× |
+Aynı oturumda Gin echo ~174k → Gin/Aether echo ≈ **1.02×–1.09×** (önceden 1.63× / 2.0×).
 
-QBE 8 worker (SO_REUSEPORT, tablo dışı): ping 204 055, echo 86 467.
-`--release` 8 worker (`AETHER_LLVM=1`, tablo dışı): ping 49 776, echo 48 843.
+### 0.6.3 + Nox 1.29.8 decode-only (tarihsel, Aether G2 path öncesi)
+
+QBE 199 015 / 106 417; `--release` 210 165 / 113 592; Nest 65 603 / 51 712; Gin 192 403 / 185 482.
+Gin/echo **1.63×**. Ping→echo ~−46%.
+
+### 0.6.3 + Nox 1.29.6 (tarihsel)
+
+QBE 206 956 / 89 940; `--release` 207 402 / 91 019; Nest 65 412 / 50 969; Gin 191 539 / 185 185.
+`--release` 8w: ping 66 382, echo 90 460. Gin/echo **2.03×**.
+
+### 0.6.2 + Nox 1.29.4 (tarihsel)
+
+QBE 206 199 / 89 096; `--release` 209 364 / 90 908; Nest 64 394 / 51 546; Gin 192 468 / 186 202.
+`--release` 8w (`AETHER_LLVM=1`): ping 49 776, echo 48 843.
 
 ### 0.6.1 + Nox 1.29.3 (tarihsel)
 
@@ -50,9 +56,72 @@ echo  : ping + JSON decode + DTO validate + encode_string + concat
 | ID | Semptom | Kök katman | Gin’e kapanır mı? |
 |----|---------|------------|-------------------|
 | G1 | Ping QBE 159k vs Gin 191k (~%17) | Nox HTTP + Aether dispatch bookkeeping | Kısmen (Aether+Nox) |
-| G2 | Echo QBE −51% vs Gin −6% | Aether JSON/string / çift parse | Evet, Aether işi |
+| G2 | Echo ~1.05× Gin (önceden ~2.0×) | Nox decode (1.29.8) + Aether validate/ingest/encode | Kısmen kapandı — kalan Nest-style DTO tax |
 | G3 | `--release` ping 3.1× yavaş | Nox 1.29 M:N otomatik havuz | Hayır — yanlış workload veya `NOX_POOL_WORKERS=1` |
 | G4 | wrk socket `read` error (yalnız Aether) | Nox HTTP keep-alive / connection teardown | Nox runtime |
+
+## Aether G2 path — validate/ingest/encode (2026-08-14)
+
+Bare `nox.http`+`nox.json` ping≈echo (1.29.8 sonrası). Aether echo ekleri:
+
+1. `validation_pipe` → `nox.validate.validate(schema.flat())` (+ gereksiz 2. tur format/min/max)
+2. `ValidatedBody._ingest` — decode edilmiş nesneyi 4 paralel diziye **yeniden** yürüyüş
+3. `encode_str_map` — tek alan için list+join
+
+**Düzeltme (0.6.3):** `_jsons` içinde `JsonValue` tut / accessor doğrudan okur;
+`_schema_needs_extra` yoksa 2. validate turu yok; tek alan `encode_str_map` hızlı yolu.
+
+**Ölçüm:** `--release` echo 114k→**170k**; ping↔echo −46%→**−16%**; Gin’e ~1.05×.
+
+G4 açık.
+
+## Nox 1.29.7 / 1.29.8 — `nox.json.decode` (2026-08-14)
+
+Diff `v1.29.6...v1.29.8`: yalnız `runtime/stdlib_shims/json.zig` + golden
+`json_decode_repeated_calls`. HTTP/keep-alive yok. **API değişmedi.**
+
+**1.29.7 — dürüst negatif:** Aether ping/echo ~2.3× farkı izole edildi → kök
+`decode()` (body okuma / `encode` değil). Hipotez “düğüm-başına Nox çağrısı
+domine ediyor” `--release`’de yanlış çıktı (~%1–2). Yine de `JsonValue` artık
+Zig’de doğrudan inşa (class_id runtime keşif) — sadeleştirme, PUBLIK API aynı.
+
+**1.29.8 — asıl darboğaz:** her `decode()`’da taze `ArenaAllocator` →
+`page_allocator` → **mmap+munmap** (profil: maliyetin ~%62’si). Düzeltme:
+`threadlocal` arena + `reset(.retain_with_limit(64KiB))`. Nox kendi ölçümü:
+sıkı döngü decode **6.2×**; wrk echo-decode-only 138k→**226k** (+64%), raw
+passthrough’a yakınlık %57→**%94**.
+
+**Bu microbench (Aether):** `--release` echo **91k→114k (+25%)**; QBE echo
+**90k→106k (+18%)**. Gin/echo **2.03×→1.63×**. Ping gürültü bandında.
+Kalan G2: Aether DTO validate + `encode_str_map` / `json_ok_str` (ve Nox
+`std.json` / `dupeToNoxStr` artığı). G4 açık.
+
+**Aether kodu:** gerekmez (zaten tek decode). Floor pin **1.29.8**.
+
+## Nox 1.29.5 / 1.29.6 — steal + TLS (2026-08-14)
+
+Diff `v1.29.4...v1.29.6`: `runtime/stdlib_shims/http_server.zig`, `scheduler.zig`,
+`tls_server.zig` + golden testler. JSON/keep-alive yok.
+
+**1.29.5 — ne çözüldü:** `--release` `serve_multicore` bağlantı fiber’ları artık
+Chase-Lev deque’e gidiyor (work-steal). 1.29.4 SO_REUSEPORT sonrası dengesiz
+kernel dağılımında boş worker yardım edemiyordu → Aether dispatch maliyetinde
+8w ping ~209k→~56k (−%73). Nox kendi ölçümü (Aether handler, atlatma bypass):
+8w artık 1w altına düşmüyor (+%6…+%25).
+
+**Bu microbench (c=40):** 8w echo **~90k ≈ 1w** (1.29.4 `AETHER_LLVM` 8w ~49k’tan
+kurtuldu). 8w ping hâlâ 66k (1w 207k) — ucuz non-yielding ping + steal vergisi.
+Varsayılan `AETHER_WORKERS=1` kalsın; JSON-ağır production `--release`’de
+`workers>1` + `serve_multicore` tekrar doğru yol.
+
+**1.29.6:** `serve_tls` threadlocal BIO buffer yarışı (aynı OS thread’de iç içe
+TLS fiber’ları). Ping/echo bench’i etkilemez; production TLS için floor.
+
+**Aether kodu (0.6.3):** `AETHER_LLVM` atlatması kaldırıldı. `use_os_workers` =
+`workers>1` → `serve_multicore` (QBE + `--release`). Floor pin later raised to
+**1.29.8** (JSON decode). `NOX_POOL_WORKERS` hâlâ exec öncesi.
+
+G2 (echo ~2× Gin) ve G4 (wrk `read`) açık.
 
 ## Nox 1.29.4 — SO_REUSEPORT (2026-08-13)
 
@@ -378,7 +447,7 @@ NOX_POOL_WORKERS=1 AETHER_WORKERS=1 AETHER_SKIP_RELEASE=1 \
 # sonra ayrıca:
 NOX_POOL_WORKERS=1 AETHER_ENV=production AETHER_PORT=3004 AETHER_WORKERS=1 \
   AETHER_OPENAPI=0 AETHER_LOG_REQUESTS=0 AETHER_CORS_ORIGINS= \
-  AETHER_METRICS_ROUTES=0 \
+  AETHER_METRICS=0 AETHER_METRICS_ROUTES=0 \
   noxc build --release -o /tmp/aether-rel benchmarks/aether/main.nox
 /tmp/aether-rel
 wrk -t4 -c40 -d8s http://127.0.0.1:3004/ping

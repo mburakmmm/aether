@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.6.2 · **License:** MIT · **Requires Nox ≥ 1.29.4**  
+**Version:** 0.6.3 · **License:** MIT · **Requires Nox ≥ 1.29.8**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.6.2"
+      "ref": "v0.6.3"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.6.2
+noxc install github.com/mburakmmm/aether@v0.6.3
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -100,12 +100,18 @@ Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
 
+## What’s new in 0.6.3
+
+Nox ≥ 1.29.8. `workers>1` → `serve_multicore` on `--release` (1.29.5 steal).
+Dropped `AETHER_LLVM`. JSON decode arena (1.29.8) + Aether G2 path
+(`ValidatedBody` keeps `JsonValue`, flat validate short-circuit, single-field
+encode). Echo ≈ Gin on this microbench. Export `NOX_POOL_WORKERS` before exec.
+
 ## What’s new in 0.6.2
 
-Nox ≥ 1.29.4. `--release` uses a single `nox.http.serve` (`AETHER_LLVM=1` from
-`./run-release.sh`); QBE `workers>1` keeps `serve_multicore` (SO_REUSEPORT).
-Do not flatten `serve_multicore` into the M:N pool — N independent accept loops
-destroy steal.
+Nox ≥ 1.29.4. `--release` used a single `nox.http.serve` (`AETHER_LLVM=1`) as a
+workaround for 1.29.4 SO_REUSEPORT + non-stealable connection fibers. Superseded
+by 0.6.3 / Nox 1.29.5.
 
 ## What’s new in 0.6.1
 
@@ -209,12 +215,12 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 | `AETHER_HOST` / `AETHER_PORT` | `0.0.0.0` / `3000` | Bind |
 | `AETHER_WORKERS` | `1` | Set `>1` for multicore. Also export `NOX_POOL_WORKERS` to the same value **before** launching (`./run.sh`) |
 | `NOX_POOL_WORKERS` | (unset) | Nox `--release` `$main` pool size. Read at process start — `set_var` in `main` is too late |
-| `AETHER_LLVM` | unset | `1` from `./run-release.sh`: single `serve()` + M:N pool. Unset on QBE so `workers>1` uses SO_REUSEPORT |
 | `AETHER_REQUEST_ID` | on | `0` skips `uuid4` + `X-Request-Id` |
 | `AETHER_REQUEST_HEADERS` | on | `0` uses `handle_bare` (Nox skips copying request headers) |
 | `AETHER_OPENAPI` | on (off in prod) | `/openapi.json`, `/docs` |
 | `AETHER_RATE_LIMIT` | off | Opt-in; requires identifiable client IP (`AETHER_TRUST_X_FORWARDED_FOR` today) |
 | `AETHER_CORS_ORIGINS` | `*` (dev/test); **empty in production** | Opt-in CORS: `*` or comma-separated allowlist |
+| `AETHER_METRICS` | on | `0` skips status counters in `/metrics` (fair bench / hot path) |
 | `AETHER_METRICS_ROUTES` | on (dev/test); **off in production** | Per-route hit counters in `/metrics` |
 | `AETHER_TRUST_X_FORWARDED_FOR` | `false` | Enable only behind a trusted proxy |
 | `AETHER_JOBS_DB` | `db/jobs.sqlite` | Queue SQLite path |
@@ -241,8 +247,8 @@ Do **not** close over `Application` in that handle (`dispatch(app, req)`). Use
 handle does not escape `req`. QBE workers re-boot `AppBind`; `--release`
 (macOS/arm64) shares one M:N pool sized by **process-env** `NOX_POOL_WORKERS`.
 
-Production: `NOX_POOL_WORKERS=$AETHER_WORKERS AETHER_LLVM=1 noxc build --release -o app && ./app`
-(Nox ≥ 1.29.4, macOS/arm64). Dev: `./run.sh`. Prefer `./run-release.sh`.
+Production: `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
+(Nox ≥ 1.29.8, macOS/arm64). Dev: `./run.sh`. Prefer `./run-release.sh`.
 
 ## License
 

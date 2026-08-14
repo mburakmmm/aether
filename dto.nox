@@ -176,6 +176,10 @@ def validate_value(v: JsonValue, schema: DtoSchema) -> list[str]:
     errors: list[str] = nox.validate.validate(v, schema.flat())
     if len(errors) > 0:
         return errors
+    # Hot path: flat string/number/bool schemas with no format/min/max/nested
+    # are fully covered by nox.validate.validate(schema.flat()).
+    if len(schema.nested_names) == 0 and not _schema_needs_extra(schema):
+        return errors
     i: int = 0
     while i < len(schema.nested_names):
         nest_name: str = schema.nested_names[i]
@@ -216,6 +220,22 @@ def validate_value(v: JsonValue, schema: DtoSchema) -> list[str]:
                         k = k + 1
         i = i + 1
     return errors
+
+# True when validate_value must walk fields beyond schema.flat().
+def _schema_needs_extra(schema: DtoSchema) -> bool:
+    i: int = 0
+    while i < len(schema.fields):
+        field: Field = schema.fields[i]
+        if len(field.format_name) > 0:
+            return True
+        if field.has_min:
+            return True
+        if field.has_max:
+            return True
+        if field.kind == "array" and len(field.item_kind) > 0:
+            return True
+        i = i + 1
+    return False
 
 def validate_json_str(raw: str, schema: DtoSchema) -> list[str]:
     try:

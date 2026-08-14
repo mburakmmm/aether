@@ -317,9 +317,10 @@ def _complete_request(
     resp: HttpResponse
 ) -> HttpResponse:
     out: HttpResponse = _finalize_response(app, req, rid, resp)
-    app.metrics.record(out.status)
-    if app.config.metrics_routes and len(route_key) > 0:
-        app.metrics.record_route_key(route_key)
+    if app.config.metrics:
+        app.metrics.record(out.status)
+        if app.config.metrics_routes and len(route_key) > 0:
+            app.metrics.record_route_key(route_key)
     if app.config.log_requests:
         elapsed: int = nox.time.now_ms() - started
         nox.log.info(
@@ -332,7 +333,13 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
     if app.config.request_id:
         rid = nox.uuid.uuid4()
     path: str = normalize_path(path_only(req.target))
-    begin(rid, req.method, path)
+    want_tl: bool = False
+    if app.config.request_id:
+        want_tl = True
+    if app.config.log_requests:
+        want_tl = True
+    if want_tl:
+        begin(rid, req.method, path)
     started: int = 0
     if app.config.log_requests:
         started = nox.time.now_ms()
@@ -356,14 +363,15 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                     raise NotFoundError("route not found: " + req.method + " " + path)
                 else:
                     hit: MatchResult = matched
-                    route_key = hit.route.method + " " + hit.route.pattern
+                    route_key = hit.route.route_key
                     ctx: HttpContext = HttpContext(
                         req,
                         hit.params,
                         app.container,
                         rid,
                         "",
-                        app.config.trust_x_forwarded_for
+                        app.config.trust_x_forwarded_for,
+                        path
                     )
                     resp_opt = execute(
                         hit.route,
@@ -387,7 +395,8 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                 internal2: HttpError = HttpError(500, "internal_error", "internal server error", [])
                 resp_opt = _error_response(app.config, internal2, "Exception")
     finally:
-        finish()
+        if want_tl:
+            finish()
     if resp_opt == None:
         unset: HttpResponse = _error_response(
             app.config,

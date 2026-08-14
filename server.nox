@@ -20,22 +20,19 @@
 # boot_with_config auto-calls bind(app). Do not close over Application in handle
 # (Nox codegen rejects that with serve*).
 #
-# Dual runtime (Nox 1.29.4+):
+# Dual runtime (Nox 1.29.5+):
 #   QBE (`noxc run` / `noxc test` / `noxc build`): shared-nothing workers.
 #     dispatch_ensure re-boots AppBind per worker on first use.
 #     workers>1 → serve_multicore (SO_REUSEPORT, one listen fd per OS thread).
 #   LLVM (`noxc build --release`, macOS/arm64): shared M:N pool.
 #     Size comes from process-env NOX_POOL_WORKERS (read at $main init —
-#     not set_var). ALWAYS call serve() / serve_tls() — never
-#     serve_multicore. Nox 1.29.4 flatten still runs N independent
-#     SO_REUSEPORT accept loops inside the pool and destroys steal
-#     (8w ping ~56k vs 1w ~209k). run-release.sh exports AETHER_LLVM=1.
+#     not set_var). workers>1 → serve_multicore; Nox flattens into the pool
+#     and (1.29.5+) connection fibers are work-stealable across workers.
 #     dispatch_ensure is a no-op after the main-thread boot.
 #
 # Multicore:
 #   workers: int = aether.server.effective_workers(cfg)
 #   # export NOX_POOL_WORKERS=$AETHER_WORKERS before launching the process
-#   # QBE: serve_multicore when use_os_workers; --release: serve()
 #   if aether.server.use_os_workers(cfg):
 #       nox.http.serve_multicore(app.config.port, handle, workers)
 #   else:
@@ -88,30 +85,8 @@ def pool_workers_env() -> str:
 def pool_env_matches(cfg: Config) -> bool:
     return pool_workers_env() == pool_workers_wanted(cfg)
 
-# True when launched via run-release.sh / AETHER_LLVM=1 (LLVM M:N pool).
-def llvm_mn_pool() -> bool:
-    raw: str = ""
-    try:
-        raw = nox.os.getenv("AETHER_LLVM")
-    except OsError:
-        raw = ""
-    if raw == "1":
-        return True
-    if raw == "true":
-        return True
-    if raw == "TRUE":
-        return True
-    if raw == "yes":
-        return True
-    if raw == "on":
-        return True
-    return False
-
-# QBE workers>1 uses serve_multicore (SO_REUSEPORT). --release always serve():
-# Nox 1.29.4 flatten still opens N independent sockets inside the M:N pool.
+# workers>1 → serve_multicore (QBE SO_REUSEPORT; --release M:N + steal since 1.29.5).
 def use_os_workers(cfg: Config) -> bool:
-    if llvm_mn_pool():
-        return False
     return effective_workers(cfg) > 1
 
 # Best-effort: sets NOX_POOL_WORKERS for *child* processes spawned after this
@@ -152,7 +127,7 @@ def print_listen(cfg: Config, mode: str) -> None:
     warn_pool_env(cfg)
     listen: str = "serve"
     if use_os_workers(cfg):
-        listen = "reuseport"
+        listen = "multicore"
     print(
         "aether listening on :" + str(cfg.port) +
         " env=" + cfg.env +

@@ -27,6 +27,7 @@ class Config:
     rate_limit_window_ms: int
     cors_origins: str
     job_stale_ms: int
+    metrics: bool
     metrics_routes: bool
     request_id: bool
     request_headers: bool
@@ -52,6 +53,7 @@ class Config:
         rate_limit_window_ms: int,
         cors_origins: str,
         job_stale_ms: int,
+        metrics: bool,
         metrics_routes: bool,
         request_id: bool,
         request_headers: bool
@@ -75,6 +77,7 @@ class Config:
         self.rate_limit_window_ms = rate_limit_window_ms
         self.cors_origins = cors_origins
         self.job_stale_ms = job_stale_ms
+        self.metrics = metrics
         self.metrics_routes = metrics_routes
         self.request_id = request_id
         self.request_headers = request_headers
@@ -126,6 +129,7 @@ def defaults(env: str) -> Config:
     rate_on: bool = False
     cors: str = "*"
     metrics_routes: bool = True
+    metrics_on: bool = True
     if env == "test":
         log_req = False
         jobs = ":memory:"
@@ -145,7 +149,7 @@ def defaults(env: str) -> Config:
         log_req,
         openapi_on,
         "Aether API",
-        "0.6.2",
+        "0.6.3",
         jobs,
         "",
         "",
@@ -157,6 +161,7 @@ def defaults(env: str) -> Config:
         60000,
         cors,
         300000,
+        metrics_on,
         metrics_routes,
         True,
         True
@@ -183,6 +188,7 @@ def from_env() -> Config:
     cfg.rate_limit_window_ms = _env_int("AETHER_RATE_LIMIT_WINDOW_MS", cfg.rate_limit_window_ms)
     cfg.cors_origins = _env_or("AETHER_CORS_ORIGINS", cfg.cors_origins)
     cfg.job_stale_ms = _env_int("AETHER_JOB_STALE_MS", cfg.job_stale_ms)
+    cfg.metrics = _env_bool("AETHER_METRICS", cfg.metrics)
     cfg.metrics_routes = _env_bool("AETHER_METRICS_ROUTES", cfg.metrics_routes)
     cfg.request_id = _env_bool("AETHER_REQUEST_ID", cfg.request_id)
     cfg.request_headers = _env_bool("AETHER_REQUEST_HEADERS", cfg.request_headers)

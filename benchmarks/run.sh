@@ -88,6 +88,7 @@ start_aether_qbe() {
       AETHER_OPENAPI=0 \
       AETHER_CORS_ORIGINS= \
       AETHER_METRICS_ROUTES=0 \
+      AETHER_METRICS=0 \
       AETHER_REQUEST_ID=0 \
       AETHER_REQUEST_HEADERS=0 \
       noxc run benchmarks/aether/main.nox >/tmp/aether-bench-server.log 2>&1
@@ -141,11 +142,11 @@ if [[ "${AETHER_SKIP_RELEASE:-0}" != "1" ]]; then
       AETHER_PORT="$AETHER_RELEASE_PORT" \
       AETHER_WORKERS="$AETHER_WORKERS" \
       NOX_POOL_WORKERS="$NOX_POOL_WORKERS" \
-      AETHER_LLVM=1 \
       AETHER_LOG_REQUESTS=0 \
       AETHER_OPENAPI=0 \
       AETHER_CORS_ORIGINS= \
       AETHER_METRICS_ROUTES=0 \
+      AETHER_METRICS=0 \
       AETHER_REQUEST_ID=0 \
       AETHER_REQUEST_HEADERS=0 \
       "$OUT/aether-bench" >/tmp/aether-release-bench-server.log 2>&1

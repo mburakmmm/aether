@@ -1,6 +1,6 @@
 # Nox limitations (Aether evidence)
 
-Aether targets **Nox ≥ 1.29.4**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
+Aether targets **Nox ≥ 1.29.8**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
 
 Status legend: `blocked` | `workaround` | `resolved in nox X.Y`
 
@@ -201,7 +201,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 **Desired Nox change:** Userland mutex / documented thread-safe collections for shared mutable state.
 
-**Aether workaround:** Keep `dispatch_ensure` / `dispatch_from_parts` (QBE per-worker boot, `--release` no-op). Export `NOX_POOL_WORKERS=$AETHER_WORKERS` and `AETHER_LLVM=1` for `--release` (`./run-release.sh`) so Aether calls `serve()` instead of `serve_multicore`. `apply_pool_workers` (`set_var`) is too late for the `$main` pool. Document in-memory rate-limit as unsafe under `--release` multicore; use `aether.queue` (SQLite) for cross-core work.
+**Aether workaround:** Keep `dispatch_ensure` / `dispatch_from_parts` (QBE per-worker boot, `--release` no-op). Export `NOX_POOL_WORKERS=$AETHER_WORKERS` before exec (`scripts/aether_env.sh`). `apply_pool_workers` (`set_var`) is too late for the `$main` pool. `workers>1` → `serve_multicore` on both runtimes (Nox ≥ 1.29.5 steals connection fibers under `--release`). Document in-memory rate-limit as unsafe under `--release` multicore; use `aether.queue` (SQLite) for cross-core work.
 
 ---
 

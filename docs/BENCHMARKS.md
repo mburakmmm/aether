@@ -12,7 +12,7 @@ Same workload, same machine, `wrk` load generator.
 Implementations:
 
 - **Aether QBE** — `noxc run benchmarks/aether/main.nox` (`dispatch_from_parts` / `handle_bare`; `AETHER_WORKERS=1`, `NOX_POOL_WORKERS=1`)
-- **Aether `--release`** — `noxc build --release` (Nox 1.29.4 LLVM M:N, macOS/arm64; process-env `NOX_POOL_WORKERS` + `AETHER_LLVM=1`)
+- **Aether `--release`** — `noxc build --release` (Nox 1.29.8 LLVM M:N, macOS/arm64; process-env `NOX_POOL_WORKERS`)
 - **NestJS** — `@nestjs/platform-express` (`benchmarks/nestjs`)
 - **Gin** — `github.com/gin-gonic/gin` release mode (`benchmarks/gin`)
 
@@ -38,9 +38,78 @@ Raw wrk logs land in `benchmarks/results/*.txt` (gitignored).
 
 ## Results
 
-### 0.6.2 + Nox 1.29.4 (`wrk -t4 -c40 -d8s`, darwin arm64)
+### 0.6.3 + Nox 1.29.8 + G2 + A1–A7 (`wrk -t4 -c40 -d8s`, darwin arm64)
 
-Same Aether hot path as 0.6.1. Nox **1.29.4** (`serve_multicore` SO_REUSEPORT). Fairness flags unchanged: `NOX_POOL_WORKERS=1`, `AETHER_REQUEST_ID=0`, `AETHER_REQUEST_HEADERS=0`. `--release` sets `AETHER_LLVM=1` so the process calls `serve()` (single listen fd).
+Isolated Aether (Nest/Gin stopped). Fair flags: `NOX_POOL_WORKERS=1`, `AETHER_REQUEST_ID=0`, `AETHER_REQUEST_HEADERS=0`, `AETHER_METRICS=0`, `AETHER_METRICS_ROUTES=0`.
+
+| Target | GET /ping req/s | POST /echo req/s |
+|--------|----------------:|-----------------:|
+| Aether QBE (`workers=1`) | **223 000** | **174 607** |
+| **Aether `--release` (`workers=1`)** | **223 755** | **177 003** |
+
+vs **prior same-session G2-only isolated** (ping 208k / 203k, echo 163k / 170k): QBE ping **+7%**, QBE echo **+7%**, `--release` ping **+10%**, `--release` echo **+4%**. A1–A7 (static exact-match, path once, lazy body, TaskLocal slim, metrics off, precomputed `route_key`, shared JSON headers) moved the needle on both ping and echo.
+
+Same-session fair table vs Nest/Gin (concurrent servers; absolute RPS noisier — prefer isolated for Aether absolutes):
+
+| Target | GET /ping req/s | POST /echo req/s |
+|--------|----------------:|-----------------:|
+| Aether QBE | 226 320 | 168 545 |
+| NestJS Express | 65 168 | 51 293 |
+| Gin | 186 473 | 167 323 |
+
+Gin/Aether echo ≈ **0.99×–1.02×** (isolated Aether echo 177k vs prior fair Gin ~174k). Remaining delta vs a bare binder is Nest-style DTO validate + field extract + re-encode. `wrk` socket read errors remain Aether-only (G4).
+
+### 0.6.3 + Nox 1.29.8 + Aether G2 path (pre–A1–A7) — historical
+
+Isolated Aether. Flags: `NOX_POOL_WORKERS=1`, `AETHER_REQUEST_ID=0`, `AETHER_REQUEST_HEADERS=0`.
+
+| Target | GET /ping req/s | POST /echo req/s |
+|--------|----------------:|-----------------:|
+| Aether QBE (`workers=1`) | 208 213 | **163 343** |
+| **Aether `--release` (`workers=1`)** | **202 562** | **169 672** |
+
+Same-session fair table vs Nest/Gin (concurrent servers; absolute RPS noisier):
+
+| Target | GET /ping req/s | POST /echo req/s |
+|--------|----------------:|-----------------:|
+| Aether QBE | 210 389 | 168 204 |
+| NestJS Express | 64 438 | 50 894 |
+| Gin | 189 504 | 173 658 |
+
+vs **prior 0.6.3 / 1.29.8 before Aether G2 path** (`--release` echo 114k): echo **+49%**; ping↔echo drop **−46% → −16%**. Gin/Aether echo ≈ **1.02×–1.09×** (was 1.63×).
+
+Notes:
+
+- Bare `nox.http`+`nox.json` ping≈echo after 1.29.8; the previous Aether-only tax was `_ingest` re-walk + always-on extra validate pass + multi-part encode for one field.
+- `wrk` socket read errors remain Aether-only. — G4.
+
+### 0.6.3 + Nox 1.29.8 (decode only, pre–Aether G2 path) — historical
+
+| Target | GET /ping req/s | POST /echo req/s |
+|--------|----------------:|-----------------:|
+| Aether QBE (`workers=1`) | 199 015 | 106 417 |
+| **Aether `--release` (`workers=1`)** | **210 165** | **113 592** |
+| NestJS Express | 65 603 | 51 712 |
+| Gin | 192 403 | 185 482 |
+
+Gin/echo **1.63×**. Ping→echo drop ~−46%.
+
+### 0.6.3 + Nox 1.29.6 (`wrk -t4 -c40 -d8s`, darwin arm64) — historical
+
+Same Aether hot path as 0.6.2. Nox **1.29.6** (1.29.5 stealable connection fibers + 1.29.6 TLS fix). Fairness flags: `NOX_POOL_WORKERS=1`, `AETHER_REQUEST_ID=0`, `AETHER_REQUEST_HEADERS=0`. `workers>1` → `serve_multicore` on both runtimes (no `AETHER_LLVM`).
+
+| Target | GET /ping req/s | POST /echo req/s |
+|--------|----------------:|-----------------:|
+| Aether QBE (`workers=1`) | 206 956 | 89 940 |
+| **Aether `--release` (`workers=1`)** | **207 402** | **91 019** |
+| NestJS Express | 65 412 | 50 969 |
+| Gin | 191 539 | 185 185 |
+
+Extra: `--release` 8w (`serve_multicore`, steal) ping 66 382, echo 90 460.
+
+### 0.6.2 + Nox 1.29.4 (`wrk -t4 -c40 -d8s`, darwin arm64) — historical
+
+Same Aether hot path as 0.6.1. Nox **1.29.4** (`serve_multicore` SO_REUSEPORT). Fairness flags unchanged: `NOX_POOL_WORKERS=1`, `AETHER_REQUEST_ID=0`, `AETHER_REQUEST_HEADERS=0`. `--release` used `AETHER_LLVM=1` → single `serve()` (workaround, removed in 0.6.3).
 
 | Target | GET /ping req/s | POST /echo req/s |
 |--------|----------------:|-----------------:|
@@ -49,21 +118,7 @@ Same Aether hot path as 0.6.1. Nox **1.29.4** (`serve_multicore` SO_REUSEPORT). 
 | NestJS Express | 64 394 | 51 546 |
 | Gin | 192 468 | 186 202 |
 
-Extra rows (same wrk, **not** in the fairness table):
-
-| Extra | GET /ping | POST /echo |
-|-------|----------:|-----------:|
-| QBE 8 workers (SO_REUSEPORT) | 204 055 | 86 467 |
-| `--release` 8 workers (`AETHER_LLVM=1`, single `serve()` + pool=8) | 49 776 | 48 843 |
-
-vs **0.6.1 / Nox 1.29.3** (same machine/flags): workers=1 within noise (QBE ping −1%, `--release` ping +1%). Gin/Nest within noise. 1.29.4 does **not** move G1/G2/G4.
-
-Notes:
-
-- `--release` ping now **beats Gin** (209k vs 192k) and matches QBE (~1.02×). Echo still ~2.0× behind Gin (91k vs 186k) — G2.
-- QBE 8 workers at c=40 ≈ 1 worker (204k vs 206k). SO_REUSEPORT is the right QBE listen model; this microbench has too few connections to scale ping.
-- `--release` 8 workers **collapses** (~50k ping, ~4.2× slower than 1 worker). Nox 1.29.4 flatten + SO_REUSEPORT opens N accept loops inside the M:N pool; Aether therefore uses `serve()` + `AETHER_LLVM=1`. Extra pool workers still tax this tiny non-yielding ping (G3). Default `AETHER_WORKERS=1`. Naive `serve_multicore` under `--release` is equally collapsed (~56k) — do not use it.
-- `wrk` socket read errors remain Aether-only (QBE ping 1645 / echo 700; `--release` ping 1676 / echo 718). Nest/Gin 0.
+Extra: QBE 8w 204 055 / 86 467; `--release` 8w (`AETHER_LLVM=1`) 49 776 / 48 843.
 
 ### 0.6.1 + Nox 1.29.3 (`wrk -t4 -c40 -d8s`, darwin arm64) — historical
 

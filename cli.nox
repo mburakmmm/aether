@@ -62,7 +62,7 @@ def cmd_new(name: str) -> None:
     _copy_template_file(template_root + "/run-release.sh", name + "/run-release.sh", name)
     print("created " + name)
     print("  cd " + name + " && noxc fetch && chmod +x run.sh run-release.sh && ./run.sh")
-    print("  production (Nox 1.29.4+, macOS/arm64): ./run-release.sh")
+    print("  production (Nox 1.29.8+, macOS/arm64): ./run-release.sh")
 
 def run() -> None:
     n: int = nox.os.arg_count()

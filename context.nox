@@ -12,6 +12,13 @@ import nox.strings
 import nox.url
 from nox.url import UrlError
 
+# Shared empty map for begin() — set_request_value copy-on-writes (A4).
+EMPTY_VALUES: dict[str, str] = {}
+
+# Shared sentinel before first validated_body() (A3). Ping/static handlers never
+# allocate a per-request ValidatedBody; _has_body stays false.
+_EMPTY_BODY: ValidatedBody = aether.body.from_raw("")
+
 class RequestState:
     active: bool
     request_id: str
@@ -26,7 +33,7 @@ class RequestState:
         self.input_json = ""
         self.path = ""
         self.method = ""
-        self.values = {}
+        self.values = EMPTY_VALUES
 
 _tl: TaskLocal[RequestState] = TaskLocal[RequestState]()
 
@@ -46,7 +53,7 @@ def begin(rid: str, method: str, path: str) -> None:
     st.method = method
     st.path = path
     st.input_json = ""
-    st.values = {}
+    st.values = EMPTY_VALUES
 
 def finish() -> None:
     st: RequestState = _state()
@@ -55,7 +62,7 @@ def finish() -> None:
     st.input_json = ""
     st.path = ""
     st.method = ""
-    st.values = {}
+    st.values = EMPTY_VALUES
     _tl.clear()
 
 def current_request_id() -> str:
@@ -68,8 +75,16 @@ def input_json() -> str:
     return _state().input_json
 
 def set_request_value(key: str, value: str) -> None:
+    # Copy-on-write so EMPTY_VALUES is never mutated across fibers (A4).
     st: RequestState = _state()
-    vals: dict[str, str] = st.values
+    vals: dict[str, str] = {}
+    old: dict[str, str] = st.values
+    keys: list[str] = old.keys()
+    i: int = 0
+    while i < len(keys):
+        k: str = keys[i]
+        vals[k] = old[k]
+        i = i + 1
     vals[key] = value
     st.values = vals
 
@@ -177,7 +192,8 @@ class HttpContext:
         container: Container,
         request_id_value: str,
         input_body: str,
-        trust_xff: bool
+        trust_xff: bool,
+        path: str
     ) -> None:
         empty_q: dict[str, str] = {}
         self.request = request
@@ -187,11 +203,12 @@ class HttpContext:
         self.container = container
         self.request_id = request_id_value
         self.input_body = input_body
-        self.path = normalize_path(path_only(request.target))
+        # path already normalized by dispatch (A2).
+        self.path = path
         self.method = request.method
         self.trust_xff = trust_xff
         self._has_body = False
-        self._body = aether.body.from_raw("")
+        self._body = _EMPTY_BODY
 
     def ensure_query(self: HttpContext) -> None:
         if self._query_parsed:
@@ -234,6 +251,7 @@ class HttpContext:
         self.input_body = raw
         set_input_json(raw)
         self._has_body = False
+        self._body = _EMPTY_BODY
 
     def set_validated_body(self: HttpContext, body: ValidatedBody) -> None:
         raw: str = body.raw()
