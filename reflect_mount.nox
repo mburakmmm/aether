@@ -1,6 +1,8 @@
 # aether.reflect_mount - mount top-level @get/@post/@put/@delete into Application.
 #
-# Decorated handlers still go through Application.dispatch (guards/pipes/filters).
+# decorator_handler is only valid for kind 0 (top-level functions). Class and
+# method decorators (Nox >= 1.138) are metadata; call the bound method from
+# configure (`m.get(path, ctl.show)`), which Nox >= 1.139 accepts.
 
 import nox.reflect
 import nox.strings

@@ -1,7 +1,8 @@
 # aether.module - ModuleBuilder + RouteDef + shared RouteTable/HookState.
 #
-# Official DI: register provider *names* with provide(name); inject services
-# via closures when registering handlers (Nox cannot subclass imported bases).
+# Official DI: register provider names with provide(name). Handlers may be
+# closures or bound methods (Nox >= 1.139). Cross-module inheritance is
+# allowed (Nox >= 1.125); Aether modules still use configure().
 
 from nox.http import HttpResponse
 import aether.container

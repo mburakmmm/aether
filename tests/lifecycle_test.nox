@@ -50,6 +50,13 @@ nox.test.assert_eq_int(aether.lifecycle.active_worker_count(PORT), 1, "registere
 
 r0: HttpResponse = aether.testing.get(app, "/ping")
 nox.test.assert_eq_int(r0.status, 200, "ping before drain")
+nox.test.assert_true(aether.lifecycle.is_stopping(PORT) == False, "not stopping yet")
+
+aether.lifecycle.begin_shutdown(PORT)
+aether.lifecycle.clear_shutdown(PORT)
+nox.test.assert_true(aether.lifecycle.is_stopping(PORT) == False, "clear publishes immediately")
+nox.fs.write_string(aether.lifecycle.root_dir(PORT) + "/stopping", "1\n")
+nox.test.assert_true(aether.lifecycle.is_stopping(PORT) == False, "poll hides a fresh external flag")
 
 aether.lifecycle.begin_shutdown(PORT)
 nox.test.assert_true(aether.lifecycle.is_stopping(PORT), "stopping flag")

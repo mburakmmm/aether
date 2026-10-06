@@ -25,12 +25,12 @@ nox.test.assert_eq_int(aether.testing.get(app1, "/ping").status, 200, "ensure bo
 # Already bound: ensure_bound is a no-op (same bound app).
 app2: Application = aether.application.ensure_bound(cfg, build)
 r_bound: HttpResponse = aether.application.dispatch_bound(
-    HttpRequest("GET", "/ping", "", {})
+    HttpRequest("GET", "/ping", "", {}, "")
 )
 nox.test.assert_eq_int(r_bound.status, 200, "dispatch_bound after ensure")
 
 r_ensure: HttpResponse = aether.application.dispatch_ensure(
-    HttpRequest("GET", "/ping", "", {}),
+    HttpRequest("GET", "/ping", "", {}, ""),
     cfg,
     build
 )
@@ -41,6 +41,7 @@ r_parts: HttpResponse = aether.application.dispatch_from_parts(
     "/ping",
     "",
     EMPTY_HEADERS,
+    "",
     cfg,
     build
 )

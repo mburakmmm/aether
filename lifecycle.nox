@@ -12,12 +12,71 @@
 #   2) Each worker that handles a request sees is_stopping then 503 + shutdown_bound
 #   3) Ops may touch the stopping file or POST /__aether/shutdown (opt-in)
 #   4) await_workers_drained waits until worker markers disappear (or timeout)
+#
+# is_stopping is on the request hot path (dispatch calls it twice). Module
+# globals are per worker slot, so the file stays the cross-slot source of
+# truth, but each slot caches the last stat for AETHER_STOP_POLL_MS
+# (default 200). begin_shutdown / clear_shutdown publish into the calling
+# slot immediately. Other slots observe the file on their next request
+# after the window. AETHER_STOP_POLL_MS=0 stats on every call.
 
 import nox.fs
 import nox.os
 import nox.time
 from nox.os import OsError
 from nox.fs import FsError
+
+class StopCache:
+    live: bool
+    port: int
+    stopping: bool
+    checked_ms: int
+    poll_ms: int
+    poll_ready: bool
+
+    def __init__(self: StopCache) -> None:
+        self.live = False
+        self.port = 0
+        self.stopping = False
+        self.checked_ms = 0
+        self.poll_ms = 200
+        self.poll_ready = False
+
+_stop_cache: StopCache = StopCache()
+
+def _poll_ms() -> int:
+    cache: StopCache = _stop_cache
+    if cache.poll_ready:
+        return cache.poll_ms
+    raw: str = ""
+    try:
+        raw = nox.os.getenv("AETHER_STOP_POLL_MS")
+    except OsError:
+        raw = ""
+    ms: int = 200
+    if len(raw) > 0:
+        ms = int(raw)
+    if ms < 0:
+        ms = 0
+    cache.poll_ms = ms
+    cache.poll_ready = True
+    return ms
+
+def _publish_stopping(port: int, stopping: bool) -> None:
+    cache: StopCache = _stop_cache
+    cache.live = True
+    cache.port = port
+    cache.stopping = stopping
+    cache.checked_ms = nox.time.now_ms()
+
+def _read_stopping(port: int) -> bool:
+    hit: bool = nox.fs.exists(_stopping_path(port))
+    cache: StopCache = _stop_cache
+    cache.live = True
+    cache.port = port
+    cache.stopping = hit
+    cache.checked_ms = nox.time.now_ms()
+    return hit
 
 def root_dir(port: int) -> str:
     try:
@@ -56,6 +115,7 @@ def _ensure_tree(port: int) -> None:
 def begin_shutdown(port: int) -> None:
     _ensure_tree(port)
     nox.fs.write_string(_stopping_path(port), "1\n")
+    _publish_stopping(port, True)
 
 def clear_shutdown(port: int) -> None:
     path: str = _stopping_path(port)
@@ -64,9 +124,21 @@ def clear_shutdown(port: int) -> None:
             nox.fs.remove_file(path)
         except FsError as e:
             _ignore_fs(e)
+    _publish_stopping(port, False)
 
 def is_stopping(port: int) -> bool:
-    return nox.fs.exists(_stopping_path(port))
+    cache: StopCache = _stop_cache
+    poll: int = _poll_ms()
+    if cache.live and cache.port == port:
+        if poll == 0:
+            return _read_stopping(port)
+        if cache.stopping:
+            return True
+        now: int = nox.time.now_ms()
+        elapsed: int = now - cache.checked_ms
+        if elapsed >= 0 and elapsed < poll:
+            return False
+    return _read_stopping(port)
 
 def register_worker(port: int, boot_id: str) -> None:
     if len(boot_id) == 0:

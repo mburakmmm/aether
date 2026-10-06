@@ -6,7 +6,7 @@ from aether.application import Application
 
 def request(app: Application, method: str, target: str, body: str) -> HttpResponse:
     headers: dict[str, str] = {}
-    req: HttpRequest = HttpRequest(method, target, body, headers)
+    req: HttpRequest = HttpRequest(method, target, body, headers, "")
     return aether.application.dispatch(app, req)
 
 def request_headers(
@@ -16,7 +16,18 @@ def request_headers(
     body: str,
     headers: dict[str, str]
 ) -> HttpResponse:
-    req: HttpRequest = HttpRequest(method, target, body, headers)
+    req: HttpRequest = HttpRequest(method, target, body, headers, "")
+    return aether.application.dispatch(app, req)
+
+def request_peer(
+    app: Application,
+    method: str,
+    target: str,
+    body: str,
+    headers: dict[str, str],
+    peer: str
+) -> HttpResponse:
+    req: HttpRequest = HttpRequest(method, target, body, headers, peer)
     return aether.application.dispatch(app, req)
 
 def get(app: Application, target: str) -> HttpResponse:

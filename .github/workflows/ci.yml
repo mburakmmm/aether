@@ -16,7 +16,7 @@ jobs:
 
       - name: Install Nox
         run: |
-          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.29.8 bash
+          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.142.2 bash
           echo "$HOME/.nox-lang/bin" >> "$GITHUB_PATH"
 
       - name: Check release refs (VERSION / nox.json / nox.lock)
@@ -105,7 +105,7 @@ jobs:
 
       - name: Install Nox
         run: |
-          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.29.8 bash
+          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.142.2 bash
           echo "$HOME/.nox-lang/bin" >> "$GITHUB_PATH"
 
       - name: Point package at checkout

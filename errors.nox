@@ -74,6 +74,7 @@ def error_json(err: HttpError, include_kind: bool, kind: str) -> str:
     body = body + "\"message\":" + nox.json.encode_string(err.message)
     if include_kind:
         body = body + ",\"kind\":" + nox.json.encode_string(kind)
+    body = body + ",\"line\":" + str(err.line)
     if len(err.details) > 0:
         body = body + ",\"details\":["
         i: int = 0

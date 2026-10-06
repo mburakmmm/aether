@@ -112,6 +112,10 @@ if [[ ! -f "$LIFE_DIR/stopping" ]]; then
   exit 1
 fi
 
+# Other workers cache "not stopping" for AETHER_STOP_POLL_MS (default 200).
+# Wait out that window before requiring 503.
+sleep 0.5
+
 # Drive drain: each live worker should 503 once and unregister.
 fail_503=0
 for _ in $(seq 1 200); do

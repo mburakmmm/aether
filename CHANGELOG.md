@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0 — 2026-10-06
+
+Nox floor **1.142.2**. Adopt stdlib that closed the Aether limitation list in Nox 1.125–1.142. Unpublished 0.6.6 drain and peer work ships here.
+
+- CI / release install `NOX_VERSION=v1.142.2`
+- `aether.jwt` signs and verifies with `nox.jwt` and still enforces exp, nbf, and iat
+- `aether.base64` delegates to `nox.base64`
+- `error_json` includes `Exception.line`
+- `DtoSchema` registers nested objects, typed arrays, min/max, and email/uuid format on `nox.validate.Schema`. `uri` stays in Aether
+- Query schemas accept string, number, and bool (`nox.url.query_float` / `query_bool`). Headers stay strings
+- Multi-key `encode_str_map` uses `nox.json.JsonWriter`. One key stays a concatenation
+- `run_pipes` / `run_guards` call `list[i](ctx)`. Bound methods are valid handlers (`m.get(path, ctl.show)`)
+- `is_stopping` caches the drain stat for `AETHER_STOP_POLL_MS` (default 200). `begin_shutdown` / `clear_shutdown` publish on the calling worker immediately
+- `dispatch_from_parts` takes `peer_addr`. `HttpContext.client_ip()` uses it unless trusted `X-Forwarded-For` is set
+- Bench harness adds **Axum** (`benchmarks/axum`)
+- Still open: dotted type annotations; `serve_multicore*` closures; object sharing beyond `nox.atomic`. See `docs/NOX_LIMITATIONS.md`
+
 ## 0.6.5 — 2026-08-14
 
 Serve entrypoints + coordinated graceful drain.

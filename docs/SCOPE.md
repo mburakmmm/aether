@@ -1,6 +1,6 @@
 # Aether scopes: Application / Worker / Request
 
-Proven against Nox ≥ 1.29.8 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`).
+Proven against Nox ≥ 1.142.2 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). Nox 1.93.0 pins each `--release` accept loop to its worker. Nox 1.80.4 keeps stolen tasks on the slot that initialized them.
 
 ## Scopes
 
@@ -37,8 +37,8 @@ Put process-level work in the launching shell / supervisor **before** `serve*`, 
 
 Because hooks cannot be invoked across worker slots, Aether uses a **shared filesystem drain flag** (`aether.lifecycle`):
 
-1. `begin_shutdown(port)` or `POST /__aether/shutdown` (opt-in: `AETHER_SHUTDOWN_ROUTE=1`) sets `/tmp/aether-life-<port>/stopping`.
-2. Each worker that still handles a request returns **503** and runs **its own** `on_shutdown` hooks via `shutdown_bound()`.
+1. `begin_shutdown(port)` or `POST /__aether/shutdown` (opt-in: `AETHER_SHUTDOWN_ROUTE=1`) sets `/tmp/aether-life-<port>/stopping` and publishes that fact on the calling worker immediately.
+2. Other workers notice the file within `AETHER_STOP_POLL_MS` (default **200**). Until then they may still return 200. `AETHER_STOP_POLL_MS=0` stats on every request. Each worker that has observed the flag returns **503** and runs **its own** `on_shutdown` hooks via `shutdown_bound()`.
 3. `GET /health` also returns 503 while stopping (load balancer drain).
 4. Entrypoint `finally: finalize_serve(cfg)` sets the flag and `release_bound()` after `serve*` returns.
 5. `await_workers_drained(port, timeout_ms)` polls until worker registry files are gone.

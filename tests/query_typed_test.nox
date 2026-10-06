@@ -1,0 +1,48 @@
+import nox.test
+import nox.strings
+import aether.config
+import aether.application
+import aether.testing
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder, RouteOptions
+from aether.context import HttpContext
+from aether.response import json_ok
+from aether.dto import DtoSchema
+from nox.http import HttpResponse
+
+class TypedQuery:
+    def configure(self: TypedQuery, m: ModuleBuilder) -> None:
+        q: DtoSchema = DtoSchema("PageQuery")
+        q.require("page", "number")
+        q.require("on", "bool")
+        opts: RouteOptions = RouteOptions()
+        opts.has_query = True
+        opts.query_schema = q
+        m.route("GET", "/page", self._page(), opts)
+
+    def _page(self: TypedQuery) -> (HttpContext) -> HttpResponse:
+        def page(ctx: HttpContext) -> HttpResponse:
+            return json_ok(ctx.query_json())
+        return page
+
+def build(app: Application) -> None:
+    TypedQuery().configure(app.module())
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+app: Application = aether.application.boot_with_config(cfg, build)
+
+ok: HttpResponse = aether.testing.get(app, "/page?page=3&on=true")
+nox.test.assert_eq_int(ok.status, 200, "typed query ok")
+nox.test.assert_true(nox.strings.contains(ok.body, "page"), "page key")
+nox.test.assert_true(nox.strings.contains(ok.body, "true"), "bool true")
+
+bad: HttpResponse = aether.testing.get(app, "/page?page=nope&on=true")
+nox.test.assert_eq_int(bad.status, 422, "bad number")
+
+bad_bool: HttpResponse = aether.testing.get(app, "/page?page=1&on=yes")
+nox.test.assert_eq_int(bad_bool.status, 422, "bad bool")
+
+aether.application.shutdown(app)
+print("query_typed_test ok")

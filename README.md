@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.6.5 · **License:** MIT · **Requires Nox ≥ 1.29.8**  
+**Version:** 0.7.0 · **License:** MIT · **Requires Nox ≥ 1.142.2**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.6.5"
+      "ref": "v0.7.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.6.5
+noxc install github.com/mburakmmm/aether@v0.7.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -83,7 +83,7 @@ aether.application.boot_for_serve(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
     return aether.application.dispatch_from_parts(
-        req.method, req.target, req.body, req.headers, cfg, build
+        req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build
     )
 
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
@@ -100,6 +100,12 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.7.0
+
+Nox floor **1.142.2**. JWT and base64 go through `nox.jwt` / `nox.base64` (exp, nbf, and iat stay in Aether). Query schemas accept number and bool. Error JSON includes `line`. Bound methods work as handlers: `m.get("/ping", ctl.show)`.
+
+`HttpRequest` takes `peer_addr`. `client_ip()` uses it unless trusted `X-Forwarded-For` is set. Drain checks cache the stopping file for `AETHER_STOP_POLL_MS` (default 200). `begin_shutdown` / `clear_shutdown` still publish on the calling worker immediately.
 
 ## What’s new in 0.6.5
 
@@ -170,7 +176,7 @@ parse, optional route metrics, method-indexed routes. See `docs/PERF.md`.
 ## What’s new in 0.4.0
 
 Query/header schema validation + OpenAPI params, HS256 JWT (`aether.jwt` / `jwt_bearer`),
-queue lease docs, Aether vs NestJS vs Gin benchmarks (`docs/BENCHMARKS.md`).
+queue lease docs, Aether vs NestJS vs Gin vs Axum benchmarks (`docs/BENCHMARKS.md`).
 
 ## What’s new in 0.3.0
 
@@ -251,7 +257,7 @@ Built-in routes: `GET /health`, `GET /metrics`, and when OpenAPI is on: `GET /op
 - Scopes (Application / Worker / Request): [docs/SCOPE.md](docs/SCOPE.md)
 - Nox limitations (upstream evidence): [docs/NOX_LIMITATIONS.md](docs/NOX_LIMITATIONS.md)
 - Queue leases / at-least-once: [docs/QUEUE.md](docs/QUEUE.md)
-- Benchmarks (Aether vs NestJS vs Gin): [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
+- Benchmarks (Aether vs NestJS vs Gin vs Axum): [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
 - Perf notes: [docs/PERF.md](docs/PERF.md)
 
 ## Serve note
@@ -259,12 +265,13 @@ Built-in routes: `GET /health`, `GET /metrics`, and when OpenAPI is on: `GET /op
 Nox `serve*` requires a **bare top-level** `handle` / `ws_handle` name — do not wrap `dispatch` inside `aether.server.listen(...)`.
 
 Do **not** close over `Application` in that handle (`dispatch(app, req)`). Use
-`dispatch_from_parts(method, target, body, headers, cfg, build)` so the serve
-handle does not escape `req`. Each worker slot boots its own `AppBind` via
+`dispatch_from_parts(method, target, body, headers, peer_addr, cfg, build)` so the serve
+handle does not escape `req`. Pass `""` instead of `req.peer_addr` on a throughput
+handle so Nox skips the peer-string retain. Each worker slot boots its own `AppBind` via
 `dispatch_ensure` (QBE and `--release`). See [docs/SCOPE.md](docs/SCOPE.md).
 
 Production: `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
-(Nox ≥ 1.29.8, macOS/arm64). Dev: `./run.sh`. Prefer `./run-release.sh`.
+(Nox ≥ 1.142.2, macOS/arm64). Dev: `./run.sh`. Prefer `./run-release.sh`.
 
 ## License
 

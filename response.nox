@@ -2,7 +2,7 @@
 
 from nox.http import HttpResponse
 import nox.json
-import nox.strings
+from nox.json import JsonWriter
 
 _JSON_HEADERS: dict[str, str] = {}
 _JSON_HEADERS["Content-Type"] = "application/json; charset=utf-8"
@@ -71,19 +71,16 @@ def encode_str_map(data: dict[str, str]) -> str:
     if n == 1:
         k0: str = keys[0]
         return "{" + nox.json.encode_string(k0) + ":" + nox.json.encode_string(data[k0]) + "}"
-    parts: list[str] = []
-    parts.append("{")
+    w: JsonWriter = JsonWriter()
+    w.begin_object()
     i: int = 0
     while i < n:
-        if i > 0:
-            parts.append(",")
         k: str = keys[i]
-        parts.append(nox.json.encode_string(k))
-        parts.append(":")
-        parts.append(nox.json.encode_string(data[k]))
+        w.write_key(k)
+        w.write_string(data[k])
         i = i + 1
-    parts.append("}")
-    return nox.strings.join(parts, "")
+    w.end_object()
+    return w.build()
 
 def json_ok_str(data: dict[str, str]) -> HttpResponse:
     return json_ok(encode_str_map(data))

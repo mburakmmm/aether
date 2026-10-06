@@ -37,14 +37,33 @@ class RequestState:
 
 _tl: TaskLocal[RequestState] = TaskLocal[RequestState]()
 
+# Nox TaskLocal.set is a no-op outside a fiber (top-level tests, aether.testing).
+# After the first failed publish, this slot keeps one RequestState. A serve
+# fiber publishes successfully and never uses the fallback.
+class SyncRequest:
+    ready: bool
+    state: RequestState
+
+    def __init__(self: SyncRequest) -> None:
+        self.ready = False
+        self.state = RequestState()
+
+_sync: SyncRequest = SyncRequest()
+
 def _state() -> RequestState:
     got: RequestState | None = _tl.get()
-    if got == None:
-        created: RequestState = RequestState()
-        _tl.set(created)
-        return created
-    else:
+    if got != None:
         return got
+    if _sync.ready:
+        return _sync.state
+    created: RequestState = RequestState()
+    _tl.set(created)
+    stored: RequestState | None = _tl.get()
+    if stored != None:
+        return stored
+    _sync.state = created
+    _sync.ready = True
+    return created
 
 def begin(rid: str, method: str, path: str) -> None:
     st: RequestState = _state()
@@ -242,7 +261,13 @@ class HttpContext:
         return self.request.body
 
     def client_ip(self: HttpContext) -> str:
-        return client_ip(self.request.headers, self.trust_xff)
+        # Trusted XFF wins (the TCP peer is the proxy). Otherwise the
+        # socket peer. Empty when the serve handle did not read req.peer_addr.
+        if self.trust_xff:
+            forwarded: str = client_ip(self.request.headers, True)
+            if len(forwarded) > 0:
+                return forwarded
+        return self.request.peer_addr
 
     def has_provider(self: HttpContext, name: str) -> bool:
         return self.container.has(name)

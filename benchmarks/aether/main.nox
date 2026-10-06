@@ -36,13 +36,14 @@ cfg: Config = aether.config.load()
 aether.application.boot_for_serve(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
+    # "" not req.peer_addr: reading the field makes Nox retain the peer string.
     return aether.application.dispatch_from_parts(
-        req.method, req.target, req.body, req.headers, cfg, build
+        req.method, req.target, req.body, req.headers, "", cfg, build
     )
 
 def handle_bare(req: HttpRequest) -> HttpResponse:
     return aether.application.dispatch_from_parts(
-        req.method, req.target, req.body, EMPTY_HEADERS, cfg, build
+        req.method, req.target, req.body, EMPTY_HEADERS, "", cfg, build
     )
 
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))

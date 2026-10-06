@@ -6,10 +6,10 @@
 #
 #   def handle(req: HttpRequest) -> HttpResponse:
 #       return aether.application.dispatch_from_parts(
-#           req.method, req.target, req.body, req.headers, cfg, build)
+#           req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build)
 #   def handle_bare(req: HttpRequest) -> HttpResponse:
 #       return aether.application.dispatch_from_parts(
-#           req.method, req.target, req.body, aether.application.EMPTY_HEADERS, cfg, build)
+#           req.method, req.target, req.body, aether.application.EMPTY_HEADERS, "", cfg, build)
 #   # NOX_POOL_WORKERS must be in the process environment BEFORE exec
 #   # (Nox --release $main pool). apply_pool_workers is too late for that.
 #   if aether.server.materialize_request_headers(cfg):
@@ -20,12 +20,14 @@
 # boot_with_config auto-calls bind(app). Do not close over Application in handle
 # (Nox codegen rejects that with serve*).
 #
-# Dual runtime (Nox 1.29.5+):
+# Dual runtime (Nox 1.104+):
 #   QBE (`noxc run` / `noxc test` / `noxc build`): shared-nothing workers.
 #     Module globals (AppBind) are per OS worker; dispatch_ensure boots each slot.
-#   LLVM (`noxc build --release`, macOS/arm64): shared M:N pool + steal (1.29.5+).
+#   LLVM (`noxc build --release`, macOS/arm64): shared M:N pool.
 #     Heap is shared, but module globals remain per worker slot — Application,
 #     Metrics, RateStore, and closure services are worker-local, not process-wide.
+#     Nox 1.93.0 pins each accept loop to its worker. Stolen tasks keep the
+#     slot globals that booted them (1.80.4).
 #     Size the pool with process-env NOX_POOL_WORKERS (read at $main init).
 #   See docs/SCOPE.md.
 #

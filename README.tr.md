@@ -5,7 +5,7 @@
 **[Nox](https://github.com/mburakmmm/nox-lang) için NestJS esintili API / backend framework’ü.**  
 Pythonic modüller, closure tabanlı DI, guard / pipe / interceptor, typed DTO, OpenAPI + Swagger UI, WebSocket gateway ve SQLite iş kuyrukları.
 
-**Sürüm:** 0.6.5 · **Lisans:** MIT · **Nox ≥ 1.29.8**  
+**Sürüm:** 0.7.0 · **Lisans:** MIT · **Nox ≥ 1.142.2**  
 Paket: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > [Nyx](https://github.com/mburakmmm/nyx)’ten bağımsızdır (Rails tarzı full-stack). HTTP API için **Aether**; HTML monolit için **Nyx**.
@@ -24,7 +24,7 @@ Uygulama `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.6.5"
+      "ref": "v0.7.0"
     }
   ]
 }
@@ -44,12 +44,18 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI iskelet
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.6.5
+noxc install github.com/mburakmmm/aether@v0.7.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
 
 ---
+
+## 0.7.0
+
+Nox tabanı **1.142.2**. JWT ve base64 `nox.jwt` / `nox.base64` üzerinden. Sorgu şemaları number ve bool kabul eder. Hata JSON’unda `line` vardır. Bağlı metod handler olur: `m.get("/ping", ctl.show)`.
+
+`HttpRequest` beşinci alan `peer_addr`. Drain kontrolü her istekte dosyaya bakmaz; worker başına `AETHER_STOP_POLL_MS` (varsayılan 200) önbellek. Ayrıntı `docs/SCOPE.md` ve `docs/NOX_LIMITATIONS.md`.
 
 ## 0.6.5
 
@@ -106,7 +112,7 @@ Hot-path: production CORS opt-in, tek header kopyası, lazy query, route metrics
 ## 0.4.0
 
 Query/header DTO + OpenAPI params, HS256 JWT (`jwt_bearer`), kuyruk lease dokümanı,
-Aether / NestJS / Gin benchmark (`docs/BENCHMARKS.md`).
+Aether / NestJS / Gin / Axum benchmark (`docs/BENCHMARKS.md`).
 
 ## 0.3.0
 

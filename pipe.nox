@@ -1,21 +1,20 @@
 # aether.pipe - (HttpContext) -> None transforms.
-# Note: never write pipes[i](ctx) - Nox parses that as a generic type.
-# Query/header validation schemas must use string fields only (HTTP maps are
-# dict[str,str]; number/bool kinds would never match without coercion).
+# Nox >= 1.137 allows pipes[i](ctx). Query schemas may be string, number, or bool
+# (nox.url.query_float / query_bool). Headers stay strings.
 
 import nox.json
+import nox.url
 import aether.context
 from aether.context import HttpContext
 import aether.dto
-from aether.dto import DtoSchema, parse_value_or_raise, validate_json_str
+from aether.dto import DtoSchema, Field, parse_value_or_raise, validate_json_str
 import aether.body
 from aether.errors import ValidationError
 
 def run_pipes(pipes: list[(HttpContext) -> None], ctx: HttpContext) -> None:
     i: int = 0
     while i < len(pipes):
-        fn: (HttpContext) -> None = pipes[i]
-        fn(ctx)
+        pipes[i](ctx)
         i = i + 1
 
 def validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
@@ -38,7 +37,85 @@ def _dict_to_json_object(data: dict[str, str]) -> str:
     body = body + "}"
     return body
 
-def _require_string_schema(schema: DtoSchema, where: str) -> None:
+def _require_query_schema(schema: DtoSchema) -> None:
+    i: int = 0
+    while i < len(schema.fields):
+        kind: str = schema.fields[i].kind
+        if kind != "string" and kind != "number" and kind != "bool":
+            details: list[str] = []
+            details.append(schema.fields[i].name + " kind=" + kind)
+            raise ValidationError(
+                "query schemas must use string, number, or bool fields",
+                details
+            )
+        i = i + 1
+
+def _query_has(q: dict[str, str], key: str) -> bool:
+    keys: list[str] = q.keys()
+    i: int = 0
+    while i < len(keys):
+        if keys[i] == key:
+            return True
+        i = i + 1
+    return False
+
+def _query_to_json(q: dict[str, str], schema: DtoSchema) -> str:
+    body: str = "{"
+    written: int = 0
+    i: int = 0
+    while i < len(schema.fields):
+        field: Field = schema.fields[i]
+        name: str = field.name
+        present: bool = _query_has(q, name)
+        raw: str = ""
+        if present:
+            raw = q[name]
+        if not present or len(raw) == 0:
+            if field.required:
+                details: list[str] = []
+                details.append("missing " + name)
+                raise ValidationError("query validation failed", details)
+        else:
+            if written > 0:
+                body = body + ","
+            body = body + nox.json.encode_string(name) + ":"
+            if field.kind == "string":
+                body = body + nox.json.encode_string(raw)
+            if field.kind == "number":
+                try:
+                    n: float = nox.url.query_float(q, name)
+                    body = body + str(n)
+                except ValueError as e:
+                    details2: list[str] = []
+                    details2.append(e.message)
+                    raise ValidationError("query validation failed", details2)
+            if field.kind == "bool":
+                try:
+                    b: bool = nox.url.query_bool(q, name)
+                    if b:
+                        body = body + "true"
+                    else:
+                        body = body + "false"
+                except ValueError as e2:
+                    details3: list[str] = []
+                    details3.append(e2.message)
+                    raise ValidationError("query validation failed", details3)
+            written = written + 1
+        i = i + 1
+    return body + "}"
+
+def query_validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
+    _require_query_schema(schema)
+    def transform(ctx: HttpContext) -> None:
+        ctx.ensure_query()
+        raw: str = _query_to_json(ctx.query, schema)
+        errors: list[str] = validate_json_str(raw, schema)
+        if len(errors) > 0:
+            raise ValidationError("query validation failed", errors)
+        ctx.set_request_value("aether.query_json", raw)
+    return transform
+
+def _require_string_schema(schema: DtoSchema) -> None:
     i: int = 0
     while i < len(schema.fields):
         kind: str = schema.fields[i].kind
@@ -46,24 +123,13 @@ def _require_string_schema(schema: DtoSchema, where: str) -> None:
             details: list[str] = []
             details.append(schema.fields[i].name + " kind=" + kind)
             raise ValidationError(
-                where + " schemas must use string fields only (got non-string)",
+                "header schemas must use string fields only (got non-string)",
                 details
             )
         i = i + 1
 
-def query_validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
-    _require_string_schema(schema, "query")
-    def transform(ctx: HttpContext) -> None:
-        ctx.ensure_query()
-        raw: str = _dict_to_json_object(ctx.query)
-        errors: list[str] = validate_json_str(raw, schema)
-        if len(errors) > 0:
-            raise ValidationError("query validation failed", errors)
-        ctx.set_request_value("aether.query_json", raw)
-    return transform
-
 def header_validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
-    _require_string_schema(schema, "header")
+    _require_string_schema(schema)
     def transform(ctx: HttpContext) -> None:
         # Build object from schema field names (case-insensitive header lookup).
         # Empty header value is treated as missing (required fields fail).

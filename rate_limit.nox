@@ -1,6 +1,9 @@
 # aether.rate_limit - in-process window with eviction.
 #
-# Safe default: disabled in production until peer IP or trusted XFF is available.
+# Keyed by HttpContext.client_ip() (socket peer, or XFF when trusted).
+# An empty key skips the limiter so unknown clients do not share one bucket.
+# The serve handle must pass req.peer_addr into dispatch_from_parts; bench
+# handles pass "" and therefore do not rate-limit.
 # Empty client_ip skips limiting (does NOT collapse into a shared "unknown" bucket).
 # Each interceptor captures its own RateStore (not a process-global singleton).
 #

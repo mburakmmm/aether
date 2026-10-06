@@ -1,0 +1,31 @@
+import nox.test
+import aether.config
+import aether.application
+import aether.testing
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from nox.http import HttpResponse
+
+class PingCtl:
+    def show(self: PingCtl, ctx: HttpContext) -> HttpResponse:
+        return json_ok("{\"pong\":true}")
+
+class BoundMod:
+    def configure(self: BoundMod, m: ModuleBuilder) -> None:
+        ctl: PingCtl = PingCtl()
+        m.get("/ping", ctl.show)
+
+def build(app: Application) -> None:
+    BoundMod().configure(app.module())
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+app: Application = aether.application.boot_with_config(cfg, build)
+ok: HttpResponse = aether.testing.get(app, "/ping")
+nox.test.assert_eq_int(ok.status, 200, "bound method status")
+nox.test.assert_true(ok.body == "{\"pong\":true}", "bound method body")
+aether.application.shutdown(app)
+print("bound_method_test ok")

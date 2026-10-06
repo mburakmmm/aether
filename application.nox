@@ -531,10 +531,11 @@ def dispatch_from_parts(
     target: str,
     body: str,
     headers: dict[str, str],
+    peer_addr: str,
     cfg: Config,
     build: (Application) -> None
 ) -> HttpResponse:
-    req: HttpRequest = HttpRequest(method, target, body, headers)
+    req: HttpRequest = HttpRequest(method, target, body, headers, peer_addr)
     return dispatch_ensure(req, cfg, build)
 
 def shutdown(app: Application) -> None:

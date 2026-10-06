@@ -1,4 +1,4 @@
-# Benchmarks: Aether vs NestJS vs Gin
+# Benchmarks: Aether vs NestJS vs Gin vs Axum
 
 Same workload, same machine, `wrk` load generator.
 
@@ -12,9 +12,10 @@ Same workload, same machine, `wrk` load generator.
 Implementations:
 
 - **Aether QBE** — `noxc run benchmarks/aether/main.nox` (`dispatch_from_parts` / `handle_bare`; `AETHER_WORKERS=1`, `NOX_POOL_WORKERS=1`)
-- **Aether `--release`** — `noxc build --release` (Nox 1.29.8 LLVM M:N, macOS/arm64; process-env `NOX_POOL_WORKERS`)
+- **Aether `--release`** — `noxc build --release` (Nox 1.104.0 LLVM M:N, macOS/arm64; process-env `NOX_POOL_WORKERS`)
 - **NestJS** — `@nestjs/platform-express` (`benchmarks/nestjs`)
 - **Gin** — `github.com/gin-gonic/gin` release mode (`benchmarks/gin`)
+- **Axum** — `axum` + Tokio multi-thread, `cargo build --release` (`benchmarks/axum`)
 
 ## How to run
 
@@ -24,13 +25,16 @@ chmod +x benchmarks/run.sh
 ./benchmarks/run.sh
 ```
 
-Requires: `wrk`, `curl`, `noxc`, Go, Node/npm.
+Requires: `wrk`, `curl`, `noxc`, Go, Node/npm, Rust (`cargo`).
 
 Raw wrk logs land in `benchmarks/results/*.txt` (gitignored).
 
 ## Fairness notes
 
 - Nest uses the default Express adapter (common Nest production path).
+- Gin uses the Go scheduler (all cores). Axum uses Tokio’s default multi-thread runtime (all cores). Aether stays at `AETHER_WORKERS=1` unless you set it. That matches the existing Gin comparison: default production shape of each stack, not a pinned core count.
+- Axum `POST /echo` uses the `Json` extractor. A missing `msg` is **422**, same class as Gin’s `binding:"required"`.
+- Historical result tables below do not include Axum until a same-session run.
 - Aether runs with `AETHER_OPENAPI=0`, `AETHER_LOG_REQUESTS=0`, production CORS default off, route metrics off.
 - Default `AETHER_WORKERS=1` for fair single-process comparison. See `docs/PERF.md` for QBE vs `--release`.
 - Query/header validation and JWT are **not** on the ping/echo hot path.
@@ -38,7 +42,31 @@ Raw wrk logs land in `benchmarks/results/*.txt` (gitignored).
 
 ## Results
 
-### 0.6.3 + Nox 1.29.8 + G2 + A1–A7 (`wrk -t4 -c40 -d8s`, darwin arm64)
+### 2026-10-04 same-session (`wrk -t4 -c40 -d8s`, darwin arm64, noxc 1.126.0)
+
+All four servers ran together. Aether is QBE, `AETHER_WORKERS=1`. Gin and Axum use every core. `--release` did not run: `noxc build --release` exits with the generic unsupported-structure codegen error on this compiler.
+
+| Target | GET /ping req/s | POST /echo req/s |
+|--------|----------------:|-----------------:|
+| Axum (Tokio multi-thread) | **206 452** | **203 188** |
+| Gin | 193 169 | 184 062 |
+| Aether QBE (`workers=1`) | 155 267 | 116 402 |
+| NestJS Express | 64 417 | 50 442 |
+
+Aether still reports `wrk` socket read errors (ping 1237, echo 921). The other three stacks report none. Echo/ping: Axum **0.98×**, Gin **0.95×**, Aether **0.75×**, Nest **0.78×**.
+
+### 0.6.6 + Nox 1.104.0 (`wrk -t4 -c40 -d8s`, darwin arm64)
+
+Isolated Aether (Nest/Gin not running). Fair flags: `NOX_POOL_WORKERS=1`, `AETHER_REQUEST_ID=0`, `AETHER_REQUEST_HEADERS=0`, `AETHER_METRICS=0`, `AETHER_METRICS_ROUTES=0`. Measured 2026-09-27 on the same class of machine as the 0.6.3 tables.
+
+| Target | GET /ping req/s | POST /echo req/s |
+|--------|----------------:|-----------------:|
+| Aether QBE (`workers=1`) | **156 305** | **130 595** |
+| **Aether `--release` (`workers=1`)** | **158 667** | **132 863** |
+
+QBE and `--release` stay within ~2%. Versus the isolated 0.6.3 / Nox 1.29.8 row (ping ~224k, echo ~177k) this session is lower on both routes. Aether hot-path code did not change in 0.6.6; the delta is the Nox 1.104.0 runtime plus this machine’s load. `wrk` socket read errors are still present (~1.0k–1.3k per 8s). Nest/Gin were not remeasured.
+
+### 0.6.3 + Nox 1.29.8 + G2 + A1–A7 (`wrk -t4 -c40 -d8s`, darwin arm64) — historical
 
 Isolated Aether (Nest/Gin stopped). Fair flags: `NOX_POOL_WORKERS=1`, `AETHER_REQUEST_ID=0`, `AETHER_REQUEST_HEADERS=0`, `AETHER_METRICS=0`, `AETHER_METRICS_ROUTES=0`.
 

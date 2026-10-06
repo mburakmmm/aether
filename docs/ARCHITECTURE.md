@@ -1,6 +1,6 @@
 # Aether Architecture
 
-Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 1.29.8).
+Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 1.142.2).
 It is independent of Nyx (the Rails-style full-stack framework).
 
 ## Design
@@ -13,7 +13,7 @@ It is independent of Nyx (the Rails-style full-stack framework).
 
 ## Request flow
 
-1. Bare `handle` reads `req.method/target/body[/headers]` then `dispatch_from_parts` (Nox `serve*` requirement; do not pass `req` through)
+1. Bare `handle` reads `req.method/target/body[/headers]` and optionally `req.peer_addr`, then `dispatch_from_parts` (Nox `serve*` requirement; do not pass `req` through). Omit `peer_addr` (pass `""`) when the handler must not retain the peer string.
 2. `application.dispatch` → normalize path → body limit / CORS OPTIONS / 405 → match → `HttpContext` + `TaskLocal`
 3. Global + route guards
 4. Input pipes / DTO validation (including format checks)

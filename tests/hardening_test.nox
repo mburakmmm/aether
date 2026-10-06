@@ -70,7 +70,7 @@ def build0(app: Application) -> None:
 
 app0: Application = aether.application.boot_with_config(cfg0, build0)
 headers0: dict[str, str] = {}
-req: HttpRequest = HttpRequest("GET", "/x", "", headers0)
+req: HttpRequest = HttpRequest("GET", "/x", "", headers0, "")
 params: dict[str, str] = {}
 begin("i1", "GET", "/x")
 ctx: HttpContext = HttpContext(req, params, app0.container, "i1", "", False, "/x")

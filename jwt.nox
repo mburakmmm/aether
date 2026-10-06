@@ -1,22 +1,17 @@
-# aether.jwt - HS256 JWT (RFC 7519 subset).
+# aether.jwt - HS256 JWT with exp / nbf / iat policy.
 #
-# import aether.jwt
-#
-# Signature: nox.crypto.hmac_sha256 (hex) -> aether.base64.encode_hex_url.
-# Nox has no stdlib base64/JWT; Aether ships both (independent of Nyx).
+# Signing and signature checks go through nox.jwt (Nox >= 1.126).
+# Aether still injects exp and rejects expired, early, or future-iat tokens.
+# nox.jwt.sign/verify do not apply that policy.
 
-import nox.crypto
 import nox.json
+import nox.jwt
+from nox.jwt import JwtError as NoxJwtError
 import nox.time
-import nox.strings
-import aether.base64
 
 class JwtError(Exception):
     def __init__(self: JwtError, message: str) -> None:
         self.message = message
-
-def _header_json() -> str:
-    return "{\"alg\":\"HS256\",\"typ\":\"JWT\"}"
 
 def _now_unix() -> int:
     return nox.time.now_ms() // 1000
@@ -44,27 +39,16 @@ def _with_exp(payload_json: str, exp_unix: int) -> str:
         i = i + 1
     return out + "}"
 
-def _sign(secret: str, signing_input: str) -> str:
-    mac_hex: str = nox.crypto.hmac_sha256(secret, signing_input)
-    return aether.base64.encode_hex_url(mac_hex)
-
 def encode(secret: str, payload_json: str, exp_unix: int) -> str:
     if len(secret) == 0:
         raise JwtError("secret must not be empty")
     if exp_unix <= _now_unix():
         raise JwtError("exp_unix must be in the future")
     payload: str = _with_exp(payload_json, exp_unix)
-    h_b64: str = aether.base64.encode_url(_header_json())
-    p_b64: str = aether.base64.encode_url(payload)
-    signing_input: str = h_b64 + "." + p_b64
-    sig: str = _sign(secret, signing_input)
-    return signing_input + "." + sig
-
-def _split_token(token: str) -> list[str]:
-    parts: list[str] = nox.strings.split(token, ".")
-    if len(parts) != 3:
-        raise JwtError("token must have three parts")
-    return parts
+    try:
+        return nox.jwt.sign(payload, secret)
+    except NoxJwtError as e:
+        raise JwtError(e.message)
 
 def _check_time_claims(payload: JsonValue) -> None:
     now: int = _now_unix()
@@ -98,26 +82,11 @@ def _check_time_claims(payload: JsonValue) -> None:
 def decode(secret: str, token: str) -> str:
     if len(secret) == 0:
         raise JwtError("secret must not be empty")
-    parts: list[str] = _split_token(token)
-    h_b64: str = parts[0]
-    p_b64: str = parts[1]
-    sig: str = parts[2]
-    signing_input: str = h_b64 + "." + p_b64
-    expected: str = _sign(secret, signing_input)
-    if not nox.crypto.constant_time_eq(sig, expected):
-        raise JwtError("invalid signature")
-    header_json: str = aether.base64.decode_url(h_b64)
-    header: JsonValue = nox.json.decode(header_json)
-    alg_v: JsonValue | None = _find_object_field(header, "alg")
-    if alg_v == None:
-        raise JwtError("alg claim missing")
-    else:
-        if not nox.json.is_string(alg_v):
-            raise JwtError("alg must be a string")
-        else:
-            if nox.json.as_string(alg_v) != "HS256":
-                raise JwtError("only HS256 is supported")
-    payload_json: str = aether.base64.decode_url(p_b64)
+    payload_json: str = ""
+    try:
+        payload_json = nox.jwt.verify(token, secret)
+    except NoxJwtError as e:
+        raise JwtError(e.message)
     payload: JsonValue = nox.json.decode(payload_json)
     if not nox.json.is_object(payload):
         raise JwtError("payload must be an object")

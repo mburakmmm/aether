@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Cross-framework HTTP microbenchmark: Aether (Nox) vs NestJS vs Gin.
-# Requires: wrk, curl, noxc, go, node/npm
+# Cross-framework HTTP microbenchmark: Aether (Nox) vs NestJS vs Gin vs Axum.
+# Requires: wrk, curl, noxc, go, node/npm, cargo
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,6 +15,7 @@ AETHER_PORT="${AETHER_PORT:-3001}"
 AETHER_RELEASE_PORT="${AETHER_RELEASE_PORT:-3004}"
 NEST_PORT="${NEST_PORT:-3002}"
 GIN_PORT="${GIN_PORT:-3003}"
+AXUM_PORT="${AXUM_PORT:-3005}"
 AETHER_WORKERS="${AETHER_WORKERS:-1}"
 # shellcheck source=../scripts/aether_env.sh
 source "$ROOT/scripts/aether_env.sh"
@@ -66,8 +67,19 @@ echo "Building Gin..."
   go build -o "$OUT/gin-bench" .
 )
 
+echo "Building Axum..."
+(
+  cd "$BENCH/axum"
+  cargo build --release --quiet
+  cp -f target/release/axum-bench "$OUT/axum-bench"
+)
+
 echo "Starting Gin on :$GIN_PORT"
 PORT="$GIN_PORT" "$OUT/gin-bench" >/tmp/gin-bench-server.log 2>&1 &
+PIDS+=($!)
+
+echo "Starting Axum on :$AXUM_PORT"
+PORT="$AXUM_PORT" "$OUT/axum-bench" >/tmp/axum-bench-server.log 2>&1 &
 PIDS+=($!)
 
 echo "Starting NestJS on :$NEST_PORT"
@@ -110,16 +122,19 @@ fi
 
 wait_http "http://127.0.0.1:$GIN_PORT/ping"
 wait_http "http://127.0.0.1:$NEST_PORT/ping"
+wait_http "http://127.0.0.1:$AXUM_PORT/ping"
 wait_http "http://127.0.0.1:$AETHER_PORT/ping"
 
 echo "Warmup..."
 curl -fsS "http://127.0.0.1:$AETHER_PORT/ping" >/dev/null
 curl -fsS "http://127.0.0.1:$NEST_PORT/ping" >/dev/null
 curl -fsS "http://127.0.0.1:$GIN_PORT/ping" >/dev/null
+curl -fsS "http://127.0.0.1:$AXUM_PORT/ping" >/dev/null
 
 run_wrk "aether_ping" "http://127.0.0.1:$AETHER_PORT/ping"
 run_wrk "nestjs_ping" "http://127.0.0.1:$NEST_PORT/ping"
 run_wrk "gin_ping" "http://127.0.0.1:$GIN_PORT/ping"
+run_wrk "axum_ping" "http://127.0.0.1:$AXUM_PORT/ping"
 
 LUA="$OUT/echo.lua"
 cat >"$LUA" <<'EOF'
@@ -131,6 +146,7 @@ EOF
 run_wrk "aether_echo" "http://127.0.0.1:$AETHER_PORT/echo" "-s $LUA"
 run_wrk "nestjs_echo" "http://127.0.0.1:$NEST_PORT/echo" "-s $LUA"
 run_wrk "gin_echo" "http://127.0.0.1:$GIN_PORT/echo" "-s $LUA"
+run_wrk "axum_echo" "http://127.0.0.1:$AXUM_PORT/echo" "-s $LUA"
 
 if [[ "${AETHER_SKIP_RELEASE:-0}" != "1" ]]; then
   echo "Stopping Aether QBE; starting --release on :$AETHER_RELEASE_PORT"

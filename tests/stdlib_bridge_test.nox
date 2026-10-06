@@ -1,0 +1,22 @@
+import nox.test
+import nox.strings
+import aether.base64
+import aether.errors
+from aether.errors import BadRequestError, error_json
+
+enc: str = aether.base64.encode("hi")
+nox.test.assert_true(aether.base64.decode(enc) == "hi", "std base64 roundtrip")
+url: str = aether.base64.encode_url("hi")
+nox.test.assert_true(aether.base64.decode_url(url) == "hi", "std base64url roundtrip")
+
+def boom() -> None:
+    raise BadRequestError("nope")
+
+try:
+    boom()
+except BadRequestError as e:
+    body: str = error_json(e, False, "")
+    nox.test.assert_true(nox.strings.contains(body, "\"line\":"), "error line field")
+    nox.test.assert_true(e.line > 0, "raise line recorded")
+
+print("stdlib_bridge_test ok")

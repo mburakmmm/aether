@@ -4,7 +4,7 @@
 
 - Development / test: `AETHER_WORKERS=1` (single `nox.http.serve`), `noxc run` (QBE)
 - Production: `AETHER_WORKERS` defaults to **1**. Set `AETHER_WORKERS>1` for multicore.
-- Production binary (Nox 1.29.8+, macOS/arm64): `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
+- Production binary (Nox 1.142.2+, macOS/arm64): `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
 - Prefer `handle` that reads `req.method/target/body/headers` and calls `dispatch_from_parts` (do not pass `req` — that disables Nox header-skip)
 - Export `NOX_POOL_WORKERS` **before** exec (`scripts/aether_env.sh`, `./run.sh`). `apply_pool_workers` cannot resize the `--release` `$main` pool.
 - Production CORS is **off** unless `AETHER_CORS_ORIGINS` is set (largest hot-path win)
@@ -22,10 +22,14 @@ See [SCOPE.md](SCOPE.md). Parent `boot_with_config` does not fill sibling slots;
 `--release` is comprehensively supported on **macOS/arm64**. Linux/Windows LLVM is not a production claim.
 
 Under `--release`, `serve_multicore(port, handle, N)` flattens into `$nox_pool_serve`.
-Nox **1.29.5+** pushes accepted connection fibers onto the work-stealing deque
-(SO_REUSEPORT imbalance can be corrected by steal). Size the pool with process-env
+Nox **1.93.0+** pins each `serve_multicore` accept loop to its worker (`spawnPinned`).
+Connection fibers may still be stolen; module globals stay on the slot that
+booted them (Nox 1.80.4). Size the pool with process-env
 `NOX_POOL_WORKERS=$AETHER_WORKERS`. QBE and `--release` both use
 `aether.server.use_os_workers` → `serve_multicore` when `workers>1`.
+
+`nox.json.decode` rejects documents nested deeper than **32** (`JsonError`).
+`nox.sqlite.Statement` is the `nox.db.Statement` re-export (bind/execute/query unchanged).
 
 ## Hot path (0.6.3+)
 
@@ -46,7 +50,7 @@ Nox **1.29.5+** pushes accepted connection fibers onto the work-stealing deque
 ```nox
 def handle(req: HttpRequest) -> HttpResponse:
     return aether.application.dispatch_from_parts(
-        req.method, req.target, req.body, req.headers, cfg, build
+        req.method, req.target, req.body, req.headers, "", cfg, build
     )
 
 workers: int = aether.server.effective_workers(cfg)
@@ -63,7 +67,7 @@ Default remains `AETHER_WORKERS=1`.
 
 ## Bench
 
-See [BENCHMARKS.md](BENCHMARKS.md) for Aether vs NestJS vs Gin (`benchmarks/run.sh`).
+See [BENCHMARKS.md](BENCHMARKS.md) for Aether vs NestJS vs Gin vs Axum (`benchmarks/run.sh`).
 
 ```sh
 # QBE (dev / CI) — pool env required for apples-to-apples --release later

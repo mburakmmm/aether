@@ -1,6 +1,8 @@
-# Aether throughput gaps — teknik rapor (0.6.3)
+# Aether throughput gaps — teknik rapor
 
-Kaynak ölçüm: `wrk -t4 -c40 -d8s`, darwin arm64, Nox **1.29.8**, Aether **0.6.3**,
+**Güncel floor:** Nox **1.142.2**, Aether **0.7.0**. 2026-09-27 satırı Nox 1.104.0 ölçümüdür (QBE ping 156 305 / echo 130 595). 1.29.8 tabloları tarihseldir.
+
+Kaynak ölçüm (tarihsel): `wrk -t4 -c40 -d8s`, darwin arm64, Nox **1.29.8**, Aether **0.6.3**,
 `AETHER_WORKERS=1`, `NOX_POOL_WORKERS=1`, `AETHER_REQUEST_ID=0`,
 `AETHER_REQUEST_HEADERS=0`, production CORS/metrics/openapi/log kapalı.
 Ham log: `benchmarks/results/*.txt`.
@@ -10,7 +12,7 @@ ayırmak. Mutlak RPS makineye bağlıdır; oranlar ve hot-path kanıtı asıl te
 
 ## 1. Ölçülen matris
 
-### 0.6.3 + Nox 1.29.8 + Aether G2 path (güncel)
+### 0.6.3 + Nox 1.29.8 + Aether G2 path (tarihsel)
 
 İzole Aether (Nest/Gin kapalı):
 
@@ -96,7 +98,7 @@ passthrough’a yakınlık %57→**%94**.
 Kalan G2: Aether DTO validate + `encode_str_map` / `json_ok_str` (ve Nox
 `std.json` / `dupeToNoxStr` artığı). G4 açık.
 
-**Aether kodu:** gerekmez (zaten tek decode). Floor pin **1.29.8**.
+**Aether kodu:** gerekmez (zaten tek decode). Bu turun floor’u **1.29.8** idi; güncel floor **1.104.0**.
 
 ## Nox 1.29.5 / 1.29.6 — steal + TLS (2026-08-14)
 

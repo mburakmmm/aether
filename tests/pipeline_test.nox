@@ -122,6 +122,20 @@ nox.test.assert_true(nox.strings.contains(r10.body, "203.0.113.9"), "xff ip")
 nox.test.assert_true(nox.strings.contains(r10.body, "\"q\":\"1\""), "query")
 nox.test.assert_true(nox.strings.contains(r10.body, "\"h\":\"hello\""), "header")
 
+r_xff: HttpResponse = aether.testing.request_peer(app2, "GET", "/ip", "", headers2, "198.51.100.10")
+nox.test.assert_true(nox.strings.contains(r_xff.body, "203.0.113.9"), "xff beats peer")
+
+cfg3: Config = aether.config.defaults("test")
+cfg3.log_requests = False
+cfg3.trust_x_forwarded_for = False
+app3: Application = aether.application.boot_with_config(cfg3, build2)
+spoof: dict[str, str] = {}
+spoof["X-Forwarded-For"] = "203.0.113.9"
+r_peer: HttpResponse = aether.testing.request_peer(app3, "GET", "/ip", "", spoof, "198.51.100.10")
+nox.test.assert_true(nox.strings.contains(r_peer.body, "198.51.100.10"), "peer ip")
+nox.test.assert_true(nox.strings.contains(r_peer.body, "203.0.113.9") == False, "untrusted xff ignored")
+
 aether.application.shutdown(app)
 aether.application.shutdown(app2)
+aether.application.shutdown(app3)
 print("pipeline_test ok")

@@ -1,16 +1,34 @@
 # Nox limitations (Aether evidence)
 
-Aether targets **Nox ≥ 1.29.8**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
+Aether targets **Nox ≥ 1.142.2**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
 
-Status legend: `blocked` | `workaround` | `resolved in nox X.Y`
+Rechecked **2026-10-06** against local nox-lang **1.142.3** and installed **noxc 1.142.2**. Items closed in Nox 1.125–1.142 are marked below. Aether 0.7.0 calls the new stdlib where the public API can stay stable.
 
-Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and https://github.com/mburakmmm/nox-lang).
+Still open in Nox: qualified type names in annotations (item 11). Partial: `serve_multicore*` still rejects closures (items 4 and 19); `nox.atomic` is int/bool only (item 12); `self.field.append` is one field deep (item 15); `decorator_handler` still only returns top-level `(Context) -> HttpResponse` (item 3).
+
+Status legend: `blocked` | `workaround` | `partial` | `closed`
+
+Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (https://github.com/mburakmmm/nox-lang).
+
+## Runtime contracts (not open asks)
+
+These landed after 1.29.8. Aether code already matches them.
+
+| Contract | Since | Aether |
+|---|---|---|
+| `nox.json.decode` nesting deeper than **32** raises `JsonError` | 1.47.0 | One decode per body; API payloads stay under the limit |
+| `from nox.sqlite import Statement` is the `nox.db.Statement` re-export; `bind_*` / `execute() -> int` / `query() -> list[Row]` unchanged | 1.89.1 (chain fix) | `aether.queue` only calls `Connection.prepare` |
+| `--release` accept loops are pinned to the worker that owns them | 1.93.0 | `workers>1` still boots via `dispatch_ensure`; probe in CI |
+| Stolen tasks read the globals block of the slot that started them | 1.80.4 | Worker-local `AppBind` (`docs/SCOPE.md`) |
+| Linux aarch64 `serve_multicore` N=2 stack pointer (Nox 1.142.3) | 1.142.3 | Production claim stays **macOS/arm64**. Floor compile is 1.142.2; 1.142.3 is the SEGV fix with no API change |
+
+`spawn` of a function that mutates a shared `list` / `dict` / `class` is a compile error on `--release` (1.30.0, deepened through 1.46.0). Aether does not call `spawn`. HTTP handlers are not spawn targets.
 
 ---
 
 ## 1. Class and method decorators
 
-**Status:** `workaround`
+**Status:** `closed` (Nox 1.138 decorators, 1.139 bound methods). `mount_decorators` still mounts only top-level functions. Register methods with `m.get("/ping", ctl.show)`.
 
 **Impact:** Nest-style `@Controller` / method `@Get` on class methods cannot compile. Forces module `configure` + top-level function decorators.
 
@@ -30,7 +48,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 2. Decorator arguments are string literals only
 
-**Status:** `workaround`
+**Status:** `closed` (Nox 1.130: string, int, bool, string list via `decorator_arg_kind` / `decorator_arg_int` / `decorator_arg_bool` / `decorator_arg_list_*`). Aether route decorators still pass a string path.
 
 **Impact:** Cannot write `@get(status=201)` or `@http(methods=["GET","HEAD"])`. Path/prefix must be string literals for reflect metadata.
 
@@ -46,7 +64,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 3. `decorator_handler` only for `(Context) -> HttpResponse`
 
-**Status:** `workaround`
+**Status:** `partial` (Nox 1.134 adds param/return metadata; `decorator_handler` is still kind 0 only). Method routes use bound methods, not `decorator_handler`.
 
 **Impact:** No param decorators (`@Body()`, `@Param()`). Reflect cannot expose handlers with custom signatures for DI.
 
@@ -62,7 +80,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 4. `serve*` requires bare top-level function names
 
-**Status:** `workaround`
+**Status:** `partial` (Nox 1.133: `serve` / `serve_fd` accept closures, including closures over class instances. `serve_multicore*` still rejects closures at compile time). Templates keep a top-level `handle`.
 
 **Impact:** Cannot pass `app.dispatch` method or lambda to `nox.http.serve`. Templates must define `def handle(req): ...`.
 
@@ -79,7 +97,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 5. No constructor / parameter type reflection
 
-**Status:** `workaround`
+**Status:** `closed` in Nox 1.134 (`class_init_param_*`, `decorator_param_*`). Aether `Container` is still a name registry; wiring stays in `configure` because annotations cannot name imported types (item 11).
 
 **Impact:** Automatic constructor DI (`__init__(self, svc: UserService)`) cannot be inferred by the framework.
 
@@ -95,7 +113,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 6. Generic methods on classes are rejected
 
-**Status:** `workaround`
+**Status:** `closed` (Nox 1.140: one type parameter, `obj.method[int](x)` or inferred). Aether does not expose a generic container method; providers are names.
 
 **Impact:** Cannot implement `Container.get[T](name) -> T`.
 
@@ -112,7 +130,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 7. `nox.validate` is flat object-only (no nested/format API)
 
-**Status:** `workaround`
+**Status:** `closed` (Nox 1.135). `DtoSchema` writes nested objects, typed arrays, `min`/`max`, and email/uuid `format` onto `Schema`. `uri` stays in Aether.
 
 **Impact:** Nested DTO and format/min/max/pattern need framework code.
 
@@ -128,7 +146,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 8. Router has no `next()` middleware chain
 
-**Status:** `workaround`
+**Status:** `closed` in Nox 1.136 (`Router.use`). Aether keeps Guard / Pipe / Interceptor on `Application.dispatch`.
 
 **Impact:** Nest-style interceptor onion cannot be built on `Router.use_before/after` alone.
 
@@ -143,7 +161,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 9. Caught `Exception` has no source line field
 
-**Status:** `blocked` (partial)
+**Status:** `closed` (Nox 1.126 `Exception.line`). `error_json` includes `"line"`.
 
 **Impact:** Structured 500 responses cannot include file:line for caught errors in production debugging.
 
@@ -159,23 +177,19 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 10. `HttpRequest` has no peer / remote address
 
-**Status:** `blocked`
+**Status:** `closed` (Nox 1.127.0)
 
-**Impact:** Trusted-proxy and IP rate limiting cannot verify connecting peer.
+**Impact:** Was: trusted-proxy and IP rate limiting could not see the connecting peer.
 
-**Evidence:**
-- `stdlib/nox/http.nox` — `HttpRequest` fields: `method`, `target`, `body`, `headers` only
-- Nyx `docs/NOX_REQUESTS.md` — peer IP still open
+**Evidence:** `stdlib/nox/http.nox` — `HttpRequest.__init__(method, target, body, headers, peer_addr)`. The serve wrapper retains the peer string only when the handle reads `req.peer_addr`.
 
-**Desired Nox change:** `HttpRequest.peer_addr` (or similar) populated by serve runtime.
-
-**Aether workaround:** Optional `X-Forwarded-For` / `X-Real-IP` helpers with explicit trust flag (`AETHER_TRUST_X_FORWARDED_FOR`); document insecurity without peer IP.
+**Aether:** `dispatch_from_parts(..., peer_addr, ...)`. `client_ip()` returns `peer_addr` unless `AETHER_TRUST_X_FORWARDED_FOR` yields an `X-Forwarded-For` / `X-Real-IP`. Bench handles pass `""` and do not read the field.
 
 ---
 
 ## 11. Qualified type names not allowed in annotations
 
-**Status:** `workaround`
+**Status:** `workaround` (still open on 1.142.2). Annotations stay unqualified (`HttpContext`, `HttpResponse`).
 
 **Impact:** Must `from aether.context import HttpContext` instead of annotating `aether.context.HttpContext`.
 
@@ -191,7 +205,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 12. Multicore workers do not share in-memory singletons
 
-**Status:** `workaround` (documented; probe-proven on Nox ≥ 1.29.8)
+**Status:** `partial` (Nox 1.131 `nox.atomic` `AtomicInt` / `AtomicBool` only). Application, route tables, and closures stay slot-local. Metrics stay worker-local.
 
 **Impact:** Both QBE `serve_multicore` and `--release` M:N keep **module globals per worker slot** (`RuntimeState.globals_blocks[g_worker_slot]`). Aether `AppBind` / `Application` / closure services / `Metrics` / `RateStore` are **worker-local**. Shared heap under `--release` does **not** imply a shared Application. Parent `boot_with_config` before serve does not populate sibling slots; `dispatch_ensure` boots each empty slot on first request.
 
@@ -208,7 +222,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 13. Cross-module class inheritance
 
-**Status:** `workaround`
+**Status:** `closed` (Nox 1.125). Aether modules still use `configure` closures and bound methods.
 
 **Impact:** User app classes cannot subclass framework bases (`Injectable`, `Guard`, `ModuleBase`, …) defined in the `aether` package. Nest-style `class X(Injectable)` across package boundaries fails typecheck (`UndefinedClass` base).
 
@@ -222,7 +236,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 14. `name[i](...)` parsed as generic type
 
-**Status:** `workaround`
+**Status:** `closed` (Nox 1.137). `run_pipes` and `run_guards` call `pipes[i](ctx)` / `guards[i](ctx)`. `Box[int](3)` stays a generic constructor.
 
 **Impact:** Calling a function stored in a list via `guards[i](ctx)` fails typecheck (`bilinmeyen generic kurucu: guards`). Subscript+call on a bare name is parsed as `Type[Args]`.
 
@@ -238,7 +252,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 15. List assignment copies; class fields required for empty `[]`
 
-**Status:** `workaround`
+**Status:** `partial` (Nox 1.132: `self.field.append` and `name.field.append`, one level). `app.route_table.routes.append` is still a chain. Aether keeps the local-copy write-back where the chain is deeper than one field.
 
 **Impact:**
 - `xs: list[T] = []; self.xs = xs` without a class-level `xs: list[T]` field → codegen rejects the program
@@ -258,7 +272,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 16. No stdlib base64 / JWT
 
-**Status:** `workaround`
+**Status:** `closed` (Nox 1.126). `aether.base64` calls `nox.base64`. `aether.jwt.encode` / `decode` call `nox.jwt.sign` / `verify` and still enforce exp, nbf, and iat.
 
 **Impact:** Frameworks cannot verify Bearer JWTs or emit OpenAPI security without shipping codecs. Nest/Go ecosystems rely on mature std/third-party JWT stacks.
 
@@ -274,7 +288,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 17. Query / header maps are string-only
 
-**Status:** `workaround`
+**Status:** `closed` for query coercion (Nox 1.129 `query_int` / `query_float` / `query_bool`). Query schemas accept string, number, and bool. Header schemas stay strings. The map type is still `dict[str, str]`.
 
 **Impact:** Typed query/header validation cannot coerce `?page=2` to number without framework encoding round-trips. Nest pipes / Gin binders coerce natively.
 
@@ -290,7 +304,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 18. Hot-path string building (JSON responses)
 
-**Status:** `workaround` (perf)
+**Status:** `closed` in the stdlib (Nox 1.128 `JsonWriter`, 1.142.1 `dump_string` in Zig). Single-field `encode_str_map` stays a concatenation. Two or more keys use `JsonWriter`. Nox 1.142.0 skips the cycle detector for acyclic trees such as `ValidatedBody`.
 
 **Impact:** Handlers and OpenAPI builders concatenate JSON with `+` / `encode_string`. Under wrk this shows as CPU in string alloc vs Gin’s `encoding/json` / Nest buffers — see `docs/BENCHMARKS.md`.
 
@@ -306,7 +320,7 @@ Nox tree referenced: local `/Users/melihburakmemis/Documents/nox-lang` (and http
 
 ## 19. `serve*` handlers cannot close over `Application`
 
-**Status:** `workaround`
+**Status:** `partial` (Nox 1.133 closures work for `serve` / `serve_fd`, not `serve_multicore*`). Multicore entrypoints still use a top-level `handle` and `boot_for_serve`.
 
 **Impact:** The idiomatic Nest/Express pattern `def handle(req): return dispatch(app, req)` fails codegen when `app: Application` is a free variable of the serve handler (`desteklenmeyen yapı`). Config and simple values are fine; capturing the framework Application graph is not.
 
@@ -327,22 +341,10 @@ See `docs/SCOPE.md`.
 
 ---
 
-## Priority asks for Nox (Aether ranking)
+## Still open
 
-0. Cross-module class inheritance
-0b. List reference sharing / empty-list codegen
-1. Class + method decorators + bound methods
-2. Constructor/param type metadata (real DI)
-3. Generic methods or safe downcast
-4. Caught Exception source span
-5. `HttpRequest` peer address
-6. Richer `nox.validate` / nested schemas
-7. Non-string decorator literal args
-8. First-class serve handlers
-9. Disambiguate `name[i](...)` from generics
-10. Stdlib base64 (+ JWT HS256)
-11. Typed / coercing query values
-12. Hot-path JSON / response buffers
-13. Serve-handler free vars over complex package objects
-
-When an item is fixed upstream, update its **Status** to `resolved in nox X.Y` and tighten Aether APIs accordingly.
+1. Qualified / dotted type annotations (item 11). Blocks a reflect-driven DI container that names imported classes.
+2. `serve_multicore*` closure handlers (items 4 and 19).
+3. Shared objects across workers beyond `AtomicInt` / `AtomicBool` (item 12).
+4. `obj.field.child.append` (item 15) and list-assignment copy semantics.
+5. LLVM `--release` still needs a fresh `noxc build --release` check when decorators are in the program (`@capability.requires` on `nox.time` / `nox.crypto`). Do not treat `--release` as proven on 1.142 until that build succeeds.
