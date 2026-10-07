@@ -1,10 +1,10 @@
 # Nox limitations (Aether evidence)
 
-Aether targets **Nox ≥ 1.142.2**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
+Aether targets **Nox ≥ 1.142.24**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
 
-Rechecked **2026-10-06** against local nox-lang **1.142.3** and installed **noxc 1.142.2**. Items closed in Nox 1.125–1.142 are marked below. Aether 0.7.0 calls the new stdlib where the public API can stay stable.
+Rechecked **2026-10-07** against local nox-lang **1.142.24** and installed **noxc 1.142.24**. Nox 1.142.3–1.142.24 is mostly compiler speed and correctness. The API surface Aether calls is `listen_v6`, deep `list.append`, and `--release` decorator metadata.
 
-Still open in Nox: qualified type names in annotations (item 11). Partial: `serve_multicore*` still rejects closures (items 4 and 19); `nox.atomic` is int/bool only (item 12); `self.field.append` is one field deep (item 15); `decorator_handler` still only returns top-level `(Context) -> HttpResponse` (item 3).
+Still open in Nox: qualified type names in annotations (item 11). Partial: `serve_multicore*` still rejects closures and still binds IPv4 itself (items 4 and 19); `nox.atomic` is int/bool only (item 12); `decorator_handler` still only returns top-level `(Context) -> HttpResponse` (item 3). List assignment still copies (item 15); chained `append` does not.
 
 Status legend: `blocked` | `workaround` | `partial` | `closed`
 
@@ -20,7 +20,11 @@ These landed after 1.29.8. Aether code already matches them.
 | `from nox.sqlite import Statement` is the `nox.db.Statement` re-export; `bind_*` / `execute() -> int` / `query() -> list[Row]` unchanged | 1.89.1 (chain fix) | `aether.queue` only calls `Connection.prepare` |
 | `--release` accept loops are pinned to the worker that owns them | 1.93.0 | `workers>1` still boots via `dispatch_ensure`; probe in CI |
 | Stolen tasks read the globals block of the slot that started them | 1.80.4 | Worker-local `AppBind` (`docs/SCOPE.md`) |
-| Linux aarch64 `serve_multicore` N=2 stack pointer (Nox 1.142.3) | 1.142.3 | Production claim stays **macOS/arm64**. Floor compile is 1.142.2; 1.142.3 is the SEGV fix with no API change |
+| `serveImpl` stack-local connection counter (Linux `serve_multicore` SEGV) | 1.142.3 | Floor is 1.142.24, which includes this fix. Nox CI dropped aarch64 `allow_failure` in 1.142.21 |
+| `@capability.requires` and `nox.reflect` tables compile under `--release` | 1.142.7 / 1.142.9 | `import nox.time` no longer rejects LLVM decorator metadata |
+| `a.b.c.xs.append` mutates a nested list field | 1.142.8 | `app.route_table.routes.append` and `route.guards.append` |
+| `nox.http.listen_v6(port, v6_only)` + bracketed IPv6 `peer_addr` | 1.142.10 | `AETHER_IPV6=1` uses `serve_fd`. `serve_multicore` stays IPv4. `client_ip()` strips the port |
+| `s = s + x` grows in place | 1.142.17 | JSON and error builders benefit without an API change |
 
 `spawn` of a function that mutates a shared `list` / `dict` / `class` is a compile error on `--release` (1.30.0, deepened through 1.46.0). Aether does not call `spawn`. HTTP handlers are not spawn targets.
 
@@ -171,7 +175,7 @@ These landed after 1.29.8. Aether code already matches them.
 
 **Desired Nox change:** `Exception.line` / span on caught instances.
 
-**Aether workaround:** Error JSON includes `code`, `message`, `details`, and in development `kind` (exception class name via our hierarchy); no source line until Nox provides it.
+**Aether:** `error_json` includes `"line"` from `Exception.line`.
 
 ---
 
@@ -183,7 +187,7 @@ These landed after 1.29.8. Aether code already matches them.
 
 **Evidence:** `stdlib/nox/http.nox` — `HttpRequest.__init__(method, target, body, headers, peer_addr)`. The serve wrapper retains the peer string only when the handle reads `req.peer_addr`.
 
-**Aether:** `dispatch_from_parts(..., peer_addr, ...)`. `client_ip()` returns `peer_addr` unless `AETHER_TRUST_X_FORWARDED_FOR` yields an `X-Forwarded-For` / `X-Real-IP`. Bench handles pass `""` and do not read the field.
+**Aether:** `dispatch_from_parts(..., peer_addr, ...)`. `client_ip()` returns `peer_host(peer_addr)` (strips `:port` and `[ipv6]:port`) unless trusted `X-Forwarded-For` is set. `AETHER_IPV6=1` listens with `listen_v6` and `serve_fd` (`AETHER_IPV6_ONLY=1` sets `v6_only`). Bench handles pass `""` and do not read the field.
 
 ---
 
@@ -252,7 +256,7 @@ These landed after 1.29.8. Aether code already matches them.
 
 ## 15. List assignment copies; class fields required for empty `[]`
 
-**Status:** `partial` (Nox 1.132: `self.field.append` and `name.field.append`, one level). `app.route_table.routes.append` is still a chain. Aether keeps the local-copy write-back where the chain is deeper than one field.
+**Status:** `partial` (Nox 1.132 one field, 1.142.8 any `a.b.c.xs.append` chain). Aether route registration uses that. Assigning a list still copies, so shared tables stay objects, not copied lists.
 
 **Impact:**
 - `xs: list[T] = []; self.xs = xs` without a class-level `xs: list[T]` field → codegen rejects the program
@@ -344,7 +348,8 @@ See `docs/SCOPE.md`.
 ## Still open
 
 1. Qualified / dotted type annotations (item 11). Blocks a reflect-driven DI container that names imported classes.
-2. `serve_multicore*` closure handlers (items 4 and 19).
+2. `serve_multicore*` closure handlers, and multicore listen is still IPv4-only (items 4 and 19). IPv6 is single-worker `serve_fd`.
 3. Shared objects across workers beyond `AtomicInt` / `AtomicBool` (item 12).
-4. `obj.field.child.append` (item 15) and list-assignment copy semantics.
-5. LLVM `--release` still needs a fresh `noxc build --release` check when decorators are in the program (`@capability.requires` on `nox.time` / `nox.crypto`). Do not treat `--release` as proven on 1.142 until that build succeeds.
+4. List-assignment copy semantics (item 15). Chained `append` is closed.
+
+Nox 1.142.5–1.142.6, 1.142.12–1.142.16, and 1.142.18–1.142.24 do not add a stdlib call Aether should switch to. They change codegen speed, packed `list[bool]` / `list[u8]`, dict and `Set` lookup, and string indexing. Aether picks those up by raising the compiler floor.

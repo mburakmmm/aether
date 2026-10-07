@@ -5,7 +5,7 @@
 **[Nox](https://github.com/mburakmmm/nox-lang) için NestJS esintili API / backend framework’ü.**  
 Pythonic modüller, closure tabanlı DI, guard / pipe / interceptor, typed DTO, OpenAPI + Swagger UI, WebSocket gateway ve SQLite iş kuyrukları.
 
-**Sürüm:** 0.7.0 · **Lisans:** MIT · **Nox ≥ 1.142.2**  
+**Sürüm:** 0.7.1 · **Lisans:** MIT · **Nox ≥ 1.142.24**  
 Paket: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > [Nyx](https://github.com/mburakmmm/nyx)’ten bağımsızdır (Rails tarzı full-stack). HTTP API için **Aether**; HTML monolit için **Nyx**.
@@ -24,7 +24,7 @@ Uygulama `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.7.0"
+      "ref": "v0.7.1"
     }
   ]
 }
@@ -44,12 +44,16 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI iskelet
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.7.0
+noxc install github.com/mburakmmm/aether@v0.7.1
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
 
 ---
+
+## 0.7.1
+
+Nox tabanı **1.142.24**. `AETHER_IPV6=1` tek worker ile `listen_v6` + `serve_fd`. `serve_multicore` IPv4 kalır. `client_ip()` `peer_addr` içinden portu ayırır.
 
 ## 0.7.0
 

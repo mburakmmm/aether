@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.7.0 · **License:** MIT · **Requires Nox ≥ 1.142.2**  
+**Version:** 0.7.1 · **License:** MIT · **Requires Nox ≥ 1.142.24**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.7.0"
+      "ref": "v0.7.1"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.7.0
+noxc install github.com/mburakmmm/aether@v0.7.1
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -100,6 +100,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.7.1
+
+Nox floor **1.142.24**. `AETHER_IPV6=1` listens with `listen_v6` and `serve_fd` (single worker; `serve_multicore` stays IPv4). `client_ip()` strips the port from `peer_addr`, including `[ipv6]:port`.
 
 ## What’s new in 0.7.0
 
@@ -271,7 +275,7 @@ handle so Nox skips the peer-string retain. Each worker slot boots its own `AppB
 `dispatch_ensure` (QBE and `--release`). See [docs/SCOPE.md](docs/SCOPE.md).
 
 Production: `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
-(Nox ≥ 1.142.2, macOS/arm64). Dev: `./run.sh`. Prefer `./run-release.sh`.
+(Nox ≥ 1.142.24, macOS/arm64). Dev: `./run.sh`. Prefer `./run-release.sh`. `AETHER_IPV6=1` is single-worker.
 
 ## License
 

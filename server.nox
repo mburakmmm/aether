@@ -46,6 +46,7 @@
 #   nox.http.serve_ws(app.config.port, handle, ws_handle)
 
 import nox.fs
+import nox.http
 import nox.os
 from nox.os import OsError
 import aether.config
@@ -126,10 +127,26 @@ def serve_mode(cfg: Config, want_ws: bool) -> str:
         return "ws"
     return "plain"
 
+# serve_multicore opens its own IPv4 sockets. IPv6 is listen_v6 + serve_fd
+# (Nox 1.142.10) and only when this process has a single worker.
+def require_ipv6_listen(cfg: Config) -> None:
+    if not cfg.ipv6:
+        return
+    if use_os_workers(cfg):
+        raise ServerError("AETHER_IPV6 requires AETHER_WORKERS=1; serve_multicore listens on IPv4")
+    if cfg.ws_enabled:
+        raise ServerError("AETHER_IPV6 does not combine with AETHER_WS")
+
+def listen_v6_fd(cfg: Config) -> int:
+    require_ipv6_listen(cfg)
+    return nox.http.listen_v6(cfg.port, cfg.ipv6_only)
+
 def print_listen(cfg: Config, mode: str) -> None:
     workers: int = effective_workers(cfg)
     warn_pool_env(cfg)
     listen: str = "serve"
+    if cfg.ipv6:
+        listen = "v6"
     if use_os_workers(cfg):
         listen = "multicore"
     print(

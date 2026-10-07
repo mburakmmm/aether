@@ -42,15 +42,22 @@ try:
     workers: int = aether.server.effective_workers(cfg)
     aether.server.apply_pool_workers(cfg)
     want_headers: bool = aether.server.materialize_request_headers(cfg)
-    if aether.server.use_os_workers(cfg):
+    if cfg.ipv6:
+        fd: int = aether.server.listen_v6_fd(cfg)
         if want_headers:
-            nox.http.serve_multicore(cfg.port, handle, workers)
+            nox.http.serve_fd(fd, handle)
         else:
-            nox.http.serve_multicore(cfg.port, handle_bare, workers)
+            nox.http.serve_fd(fd, handle_bare)
     else:
-        if want_headers:
-            nox.http.serve(cfg.port, handle)
+        if aether.server.use_os_workers(cfg):
+            if want_headers:
+                nox.http.serve_multicore(cfg.port, handle, workers)
+            else:
+                nox.http.serve_multicore(cfg.port, handle_bare, workers)
         else:
-            nox.http.serve(cfg.port, handle_bare)
+            if want_headers:
+                nox.http.serve(cfg.port, handle)
+            else:
+                nox.http.serve(cfg.port, handle_bare)
 finally:
     aether.application.finalize_serve(cfg)

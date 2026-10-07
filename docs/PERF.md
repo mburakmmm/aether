@@ -4,7 +4,7 @@
 
 - Development / test: `AETHER_WORKERS=1` (single `nox.http.serve`), `noxc run` (QBE)
 - Production: `AETHER_WORKERS` defaults to **1**. Set `AETHER_WORKERS>1` for multicore.
-- Production binary (Nox 1.142.2+, macOS/arm64): `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
+- Production binary (Nox 1.142.24+, macOS/arm64): `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
 - Prefer `handle` that reads `req.method/target/body/headers` and calls `dispatch_from_parts` (do not pass `req` — that disables Nox header-skip)
 - Export `NOX_POOL_WORKERS` **before** exec (`scripts/aether_env.sh`, `./run.sh`). `apply_pool_workers` cannot resize the `--release` `$main` pool.
 - Production CORS is **off** unless `AETHER_CORS_ORIGINS` is set (largest hot-path win)

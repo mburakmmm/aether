@@ -108,11 +108,10 @@ def _mount_framework_routes(app: Application) -> None:
         return aether.response.json_ok("{\"stopping\":true}")
 
     table: RouteTable = app.route_table
-    routes: list[RouteDef] = table.routes
-    routes.append(RouteDef("GET", "/health", health, "Health check", "system", False, empty, False, empty, 200))
-    routes.append(RouteDef("GET", "/metrics", metrics_handler, "Metrics", "system", False, empty, False, empty, 200))
+    table.routes.append(RouteDef("GET", "/health", health, "Health check", "system", False, empty, False, empty, 200))
+    table.routes.append(RouteDef("GET", "/metrics", metrics_handler, "Metrics", "system", False, empty, False, empty, 200))
     if aether.lifecycle.shutdown_route_enabled():
-        routes.append(
+        table.routes.append(
             RouteDef(
                 "POST",
                 "/__aether/shutdown",
@@ -127,13 +126,12 @@ def _mount_framework_routes(app: Application) -> None:
             )
         )
     if app.config.openapi_enabled:
-        routes.append(
+        table.routes.append(
             RouteDef("GET", "/openapi.json", openapi_handler, "OpenAPI document", "system", False, empty, False, empty, 200)
         )
-        routes.append(
+        table.routes.append(
             RouteDef("GET", "/docs", docs_handler, "Swagger UI", "system", False, empty, False, empty, 200)
         )
-    table.routes = routes
 
 def _route_key(method: str, pattern: str) -> str:
     return method + " " + pattern

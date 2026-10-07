@@ -1,0 +1,23 @@
+import nox.test
+import aether.config
+import aether.server
+from aether.config import Config
+from aether.context import peer_host
+from aether.server import ServerError
+
+nox.test.assert_eq_str(peer_host("198.51.100.10:4000"), "198.51.100.10", "ipv4 port stripped")
+nox.test.assert_eq_str(peer_host("198.51.100.10"), "198.51.100.10", "bare host")
+nox.test.assert_eq_str(peer_host("[2001:db8::1]:443"), "2001:db8::1", "ipv6 brackets")
+nox.test.assert_eq_str(peer_host(""), "", "empty peer")
+
+cfg: Config = aether.config.defaults("test")
+cfg.ipv6 = True
+cfg.workers = 4
+rejected: bool = False
+try:
+    aether.server.require_ipv6_listen(cfg)
+except ServerError as e:
+    rejected = len(e.message) > 0
+nox.test.assert_true(rejected, "ipv6 rejects multicore")
+
+print("net_test ok")

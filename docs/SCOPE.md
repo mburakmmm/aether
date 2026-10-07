@@ -1,6 +1,6 @@
 # Aether scopes: Application / Worker / Request
 
-Proven against Nox ≥ 1.142.2 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). Nox 1.93.0 pins each `--release` accept loop to its worker. Nox 1.80.4 keeps stolen tasks on the slot that initialized them.
+Proven against Nox ≥ 1.142.24 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). Nox 1.93.0 pins each `--release` accept loop to its worker. Nox 1.80.4 keeps stolen tasks on the slot that initialized them.
 
 ## Scopes
 

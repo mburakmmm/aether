@@ -289,34 +289,26 @@ class ModuleBuilder:
         route.query_schema = query_schema
         route.has_headers = has_headers
         route.header_schema = header_schema
-        rg: list[(HttpContext) -> bool] = route.guards
         i: int = 0
         while i < len(self._route_guards):
-            rg.append(self._route_guards[i])
+            route.guards.append(self._route_guards[i])
             i = i + 1
-        route.guards = rg
-        rp: list[(HttpContext) -> None] = route.pipes
         i = 0
         while i < len(self._route_pipes):
-            rp.append(self._route_pipes[i])
+            route.pipes.append(self._route_pipes[i])
             i = i + 1
         if has_query:
-            rp.append(query_validation_pipe(query_schema))
+            route.pipes.append(query_validation_pipe(query_schema))
         if has_headers:
-            rp.append(header_validation_pipe(header_schema))
+            route.pipes.append(header_validation_pipe(header_schema))
         if has_input:
-            rp.append(validation_pipe(input_schema))
-        route.pipes = rp
-        ri: list[InterceptorFns] = route.interceptors
+            route.pipes.append(validation_pipe(input_schema))
         i = 0
         while i < len(self._route_interceptors):
-            ri.append(self._route_interceptors[i])
+            route.interceptors.append(self._route_interceptors[i])
             i = i + 1
-        route.interceptors = ri
         table: RouteTable = self._table
-        routes: list[RouteDef] = table.routes
-        routes.append(route)
-        table.routes = routes
+        table.routes.append(route)
         self.clear_route_meta()
 
     def get(self: ModuleBuilder, pattern: str, handler: (HttpContext) -> HttpResponse) -> None:

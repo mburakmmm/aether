@@ -31,6 +31,8 @@ class Config:
     metrics_routes: bool
     request_id: bool
     request_headers: bool
+    ipv6: bool
+    ipv6_only: bool
 
     def __init__(
         self: Config,
@@ -56,7 +58,9 @@ class Config:
         metrics: bool,
         metrics_routes: bool,
         request_id: bool,
-        request_headers: bool
+        request_headers: bool,
+        ipv6: bool,
+        ipv6_only: bool
     ) -> None:
         self.env = env
         self.host = host
@@ -81,6 +85,8 @@ class Config:
         self.metrics_routes = metrics_routes
         self.request_id = request_id
         self.request_headers = request_headers
+        self.ipv6 = ipv6
+        self.ipv6_only = ipv6_only
 
     def is_development(self: Config) -> bool:
         return self.env == "development"
@@ -164,7 +170,9 @@ def defaults(env: str) -> Config:
         metrics_on,
         metrics_routes,
         True,
-        True
+        True,
+        False,
+        False
     )
 
 def from_env() -> Config:
@@ -192,6 +200,8 @@ def from_env() -> Config:
     cfg.metrics_routes = _env_bool("AETHER_METRICS_ROUTES", cfg.metrics_routes)
     cfg.request_id = _env_bool("AETHER_REQUEST_ID", cfg.request_id)
     cfg.request_headers = _env_bool("AETHER_REQUEST_HEADERS", cfg.request_headers)
+    cfg.ipv6 = _env_bool("AETHER_IPV6", cfg.ipv6)
+    cfg.ipv6_only = _env_bool("AETHER_IPV6_ONLY", cfg.ipv6_only)
     return cfg
 
 def load() -> Config:

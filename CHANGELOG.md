@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1 — 2026-10-07
+
+Nox floor **1.142.24**.
+
+- `AETHER_IPV6=1` listens with `nox.http.listen_v6` and `serve_fd` (`AETHER_IPV6_ONLY` sets `v6_only`). `AETHER_WORKERS>1` and `AETHER_WS` reject that mode because `serve_multicore` still binds IPv4
+- `client_ip()` returns the host from `peer_addr` (`a.b.c.d:port` and `[ipv6]:port`)
+- Route lists use chained `append` (`table.routes.append`, `app.route_table.routes.append`)
+- `--release` decorator metadata is available from Nox 1.142.7. No Aether API change
+
 ## 0.7.0 — 2026-10-06
 
 Nox floor **1.142.2**. Adopt stdlib that closed the Aether limitation list in Nox 1.125–1.142. Unpublished 0.6.6 drain and peer work ships here.

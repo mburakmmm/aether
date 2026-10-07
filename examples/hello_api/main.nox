@@ -168,28 +168,42 @@ try:
     workers: int = aether.server.effective_workers(cfg)
     aether.server.apply_pool_workers(cfg)
     want_headers: bool = aether.server.materialize_request_headers(cfg)
-    if aether.server.has_tls(cfg):
-        aether.server.require_tls_files(cfg)
-        if aether.server.use_os_workers(cfg):
+    if cfg.ipv6:
+        fd: int = aether.server.listen_v6_fd(cfg)
+        if aether.server.has_tls(cfg):
+            aether.server.require_tls_files(cfg)
             if want_headers:
-                nox.http.serve_multicore_tls(cfg.port, handle, workers, cfg.tls_cert_path, cfg.tls_key_path)
+                nox.http.serve_fd_tls(fd, handle, cfg.tls_cert_path, cfg.tls_key_path)
             else:
-                nox.http.serve_multicore_tls(cfg.port, handle_bare, workers, cfg.tls_cert_path, cfg.tls_key_path)
+                nox.http.serve_fd_tls(fd, handle_bare, cfg.tls_cert_path, cfg.tls_key_path)
         else:
             if want_headers:
-                nox.http.serve_tls(cfg.port, handle, cfg.tls_cert_path, cfg.tls_key_path)
+                nox.http.serve_fd(fd, handle)
             else:
-                nox.http.serve_tls(cfg.port, handle_bare, cfg.tls_cert_path, cfg.tls_key_path)
+                nox.http.serve_fd(fd, handle_bare)
     else:
-        if aether.server.use_os_workers(cfg):
-            if want_headers:
-                nox.http.serve_multicore(cfg.port, handle, workers)
+        if aether.server.has_tls(cfg):
+            aether.server.require_tls_files(cfg)
+            if aether.server.use_os_workers(cfg):
+                if want_headers:
+                    nox.http.serve_multicore_tls(cfg.port, handle, workers, cfg.tls_cert_path, cfg.tls_key_path)
+                else:
+                    nox.http.serve_multicore_tls(cfg.port, handle_bare, workers, cfg.tls_cert_path, cfg.tls_key_path)
             else:
-                nox.http.serve_multicore(cfg.port, handle_bare, workers)
+                if want_headers:
+                    nox.http.serve_tls(cfg.port, handle, cfg.tls_cert_path, cfg.tls_key_path)
+                else:
+                    nox.http.serve_tls(cfg.port, handle_bare, cfg.tls_cert_path, cfg.tls_key_path)
         else:
-            if want_headers:
-                nox.http.serve(cfg.port, handle)
+            if aether.server.use_os_workers(cfg):
+                if want_headers:
+                    nox.http.serve_multicore(cfg.port, handle, workers)
+                else:
+                    nox.http.serve_multicore(cfg.port, handle_bare, workers)
             else:
-                nox.http.serve(cfg.port, handle_bare)
+                if want_headers:
+                    nox.http.serve(cfg.port, handle)
+                else:
+                    nox.http.serve(cfg.port, handle_bare)
 finally:
     aether.application.finalize_serve(cfg)
