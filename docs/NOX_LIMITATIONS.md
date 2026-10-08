@@ -1,8 +1,8 @@
 # Nox limitations (Aether evidence)
 
-Aether targets **Nox ≥ 1.142.24**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
+Aether targets **Nox ≥ 1.171.2**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
 
-Rechecked **2026-10-07** against local nox-lang **1.142.24** and installed **noxc 1.142.24**. Nox 1.142.3–1.142.24 is mostly compiler speed and correctness. The API surface Aether calls is `listen_v6`, deep `list.append`, and `--release` decorator metadata.
+Rechecked **2026-10-08** against nox-lang **1.171.2**. Nox 1.143–1.170 added language features (`in`, `break`, comprehensions, `set`, f-strings, dunder methods, NNI). Aether does not rewrite onto them. The required change is Nox **1.171.0**: `nox.json` dropped `decode`/`encode`/`encode_string` in favor of `parse`/`dump`/`dump_string`. `HttpRequest.peer_addr` now defaults to `""`.
 
 Still open in Nox: qualified type names in annotations (item 11). Partial: `serve_multicore*` still rejects closures and still binds IPv4 itself (items 4 and 19); `nox.atomic` is int/bool only (item 12); `decorator_handler` still only returns top-level `(Context) -> HttpResponse` (item 3). List assignment still copies (item 15); chained `append` does not.
 
@@ -16,7 +16,7 @@ These landed after 1.29.8. Aether code already matches them.
 
 | Contract | Since | Aether |
 |---|---|---|
-| `nox.json.decode` nesting deeper than **32** raises `JsonError` | 1.47.0 | One decode per body; API payloads stay under the limit |
+| `nox.json.parse` nesting deeper than **32** raises `JsonError` | 1.47.0 | One parse per body; API payloads stay under the limit. Nox 1.171 removed the `decode`/`encode`/`encode_string` aliases; Aether calls `parse`/`dump`/`dump_string` |
 | `from nox.sqlite import Statement` is the `nox.db.Statement` re-export; `bind_*` / `execute() -> int` / `query() -> list[Row]` unchanged | 1.89.1 (chain fix) | `aether.queue` only calls `Connection.prepare` |
 | `--release` accept loops are pinned to the worker that owns them | 1.93.0 | `workers>1` still boots via `dispatch_ensure`; probe in CI |
 | Stolen tasks read the globals block of the slot that started them | 1.80.4 | Worker-local `AppBind` (`docs/SCOPE.md`) |
@@ -352,4 +352,4 @@ See `docs/SCOPE.md`.
 3. Shared objects across workers beyond `AtomicInt` / `AtomicBool` (item 12).
 4. List-assignment copy semantics (item 15). Chained `append` is closed.
 
-Nox 1.142.5–1.142.6, 1.142.12–1.142.16, and 1.142.18–1.142.24 do not add a stdlib call Aether should switch to. They change codegen speed, packed `list[bool]` / `list[u8]`, dict and `Set` lookup, and string indexing. Aether picks those up by raising the compiler floor.
+Nox 1.143–1.170 (syntax, `set`, f-strings, dunder methods, NNI) and 1.142.25–1.142.26 (string primitives, error-block layout) do not add a stdlib call Aether should switch to. Nox **1.171.0** removed the old `nox.json` names; Aether now calls `parse` / `dump` / `dump_string`.

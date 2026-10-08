@@ -22,7 +22,7 @@ class ValidatedBody:
         if len(self._jsons) > 0:
             return
         try:
-            v: JsonValue = nox.json.decode(self._raw)
+            v: JsonValue = nox.json.parse(self._raw)
         except JsonError as e:
             raise BadRequestError("invalid json body: " + e.message)
         if not nox.json.is_object(v):

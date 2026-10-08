@@ -5,7 +5,7 @@
 **[Nox](https://github.com/mburakmmm/nox-lang) için NestJS esintili API / backend framework’ü.**  
 Pythonic modüller, closure tabanlı DI, guard / pipe / interceptor, typed DTO, OpenAPI + Swagger UI, WebSocket gateway ve SQLite iş kuyrukları.
 
-**Sürüm:** 0.7.1 · **Lisans:** MIT · **Nox ≥ 1.142.24**  
+**Sürüm:** 0.7.2 · **Lisans:** MIT · **Nox ≥ 1.171.2**  
 Paket: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > [Nyx](https://github.com/mburakmmm/nyx)’ten bağımsızdır (Rails tarzı full-stack). HTTP API için **Aether**; HTML monolit için **Nyx**.
@@ -24,7 +24,7 @@ Uygulama `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.7.1"
+      "ref": "v0.7.2"
     }
   ]
 }
@@ -44,12 +44,16 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI iskelet
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.7.1
+noxc install github.com/mburakmmm/aether@v0.7.2
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
 
 ---
+
+## 0.7.2
+
+Nox tabanı **1.171.2**. `nox.json` eski adları kalktı. Aether `parse`, `dump` ve `dump_string` kullanır.
 
 ## 0.7.1
 

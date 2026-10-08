@@ -4,7 +4,7 @@
 
 - Development / test: `AETHER_WORKERS=1` (single `nox.http.serve`), `noxc run` (QBE)
 - Production: `AETHER_WORKERS` defaults to **1**. Set `AETHER_WORKERS>1` for multicore.
-- Production binary (Nox 1.142.24+, macOS/arm64): `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
+- Production binary (Nox 1.171.2+, macOS/arm64): `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
 - Prefer `handle` that reads `req.method/target/body/headers` and calls `dispatch_from_parts` (do not pass `req` — that disables Nox header-skip)
 - Export `NOX_POOL_WORKERS` **before** exec (`scripts/aether_env.sh`, `./run.sh`). `apply_pool_workers` cannot resize the `--release` `$main` pool.
 - Production CORS is **off** unless `AETHER_CORS_ORIGINS` is set (largest hot-path win)
@@ -28,7 +28,7 @@ booted them (Nox 1.80.4). Size the pool with process-env
 `NOX_POOL_WORKERS=$AETHER_WORKERS`. QBE and `--release` both use
 `aether.server.use_os_workers` → `serve_multicore` when `workers>1`.
 
-`nox.json.decode` rejects documents nested deeper than **32** (`JsonError`).
+`nox.json.parse` rejects documents nested deeper than **32** (`JsonError`).
 `nox.sqlite.Statement` is the `nox.db.Statement` re-export (bind/execute/query unchanged).
 
 ## Hot path (0.6.3+)
@@ -39,7 +39,7 @@ booted them (Nox 1.80.4). Size the pool with process-env
 - Empty guard/pipe/interceptor lists short-circuit
 - Query string parsed lazily (`ensure_query` / first `query_param`)
 - Shared JSON `Content-Type` map; `apply_headers` copy-on-writes (A7); `AETHER_REQUEST_ID=0` skips uuid
-- Validated body: lazy until first use; one `nox.json.decode` when pipe hands `JsonValue` (A3/G2)
+- Validated body: lazy until first use; one `nox.json.parse` when pipe hands `JsonValue` (A3/G2)
 - TaskLocal `begin`/`finish` only when request-id or access log is on (A4)
 - `json_ok_str` / `encode_str_map` via `nox.strings.join` (+ single-field fast path)
 - `cors_origins=*` does not read the `Origin` request header

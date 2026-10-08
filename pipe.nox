@@ -32,7 +32,7 @@ def _dict_to_json_object(data: dict[str, str]) -> str:
         if i > 0:
             body = body + ","
         k: str = keys[i]
-        body = body + nox.json.encode_string(k) + ":" + nox.json.encode_string(data[k])
+        body = body + nox.json.dump_string(k) + ":" + nox.json.dump_string(data[k])
         i = i + 1
     body = body + "}"
     return body
@@ -78,9 +78,9 @@ def _query_to_json(q: dict[str, str], schema: DtoSchema) -> str:
         else:
             if written > 0:
                 body = body + ","
-            body = body + nox.json.encode_string(name) + ":"
+            body = body + nox.json.dump_string(name) + ":"
             if field.kind == "string":
-                body = body + nox.json.encode_string(raw)
+                body = body + nox.json.dump_string(raw)
             if field.kind == "number":
                 try:
                     n: float = nox.url.query_float(q, name)

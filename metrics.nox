@@ -58,7 +58,7 @@ class Metrics:
         while i < len(self.route_keys):
             if i > 0:
                 routes = routes + ","
-            routes = routes + nox.json.encode_string(self.route_keys[i]) + ":" + str(self.route_hits[i])
+            routes = routes + nox.json.dump_string(self.route_keys[i]) + ":" + str(self.route_hits[i])
             i = i + 1
         routes = routes + "}"
         return (

@@ -70,7 +70,7 @@ def encode_str_map(data: dict[str, str]) -> str:
         return "{}"
     if n == 1:
         k0: str = keys[0]
-        return "{" + nox.json.encode_string(k0) + ":" + nox.json.encode_string(data[k0]) + "}"
+        return "{" + nox.json.dump_string(k0) + ":" + nox.json.dump_string(data[k0]) + "}"
     w: JsonWriter = JsonWriter()
     w.begin_object()
     i: int = 0

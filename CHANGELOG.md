@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2 — 2026-10-08
+
+Nox floor **1.171.2**. Nox 1.171 removed the old `nox.json` names. Aether calls `parse`, `dump`, and `dump_string`.
+
 ## 0.7.1 — 2026-10-07
 
 Nox floor **1.142.24**.

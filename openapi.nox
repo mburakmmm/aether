@@ -12,16 +12,16 @@ from aether.config import Config
 def _field_schema_json(field: Field, nested_ref: bool) -> str:
     if field.kind == "object" and len(field.description) > 0 and nested_ref:
         return "{\"$ref\":\"#/components/schemas/" + field.description + "\"}"
-    body: str = "{\"type\":" + nox.json.encode_string(field.kind)
+    body: str = "{\"type\":" + nox.json.dump_string(field.kind)
     if len(field.format_name) > 0:
-        body = body + ",\"format\":" + nox.json.encode_string(field.format_name)
+        body = body + ",\"format\":" + nox.json.dump_string(field.format_name)
     if field.kind == "number":
         if field.has_min:
             body = body + ",\"minimum\":" + str(field.minimum)
         if field.has_max:
             body = body + ",\"maximum\":" + str(field.maximum)
     if field.kind == "array" and len(field.item_kind) > 0:
-        body = body + ",\"items\":{\"type\":" + nox.json.encode_string(field.item_kind) + "}"
+        body = body + ",\"items\":{\"type\":" + nox.json.dump_string(field.item_kind) + "}"
     body = body + "}"
     return body
 
@@ -33,7 +33,7 @@ def _dto_schema_json(schema: DtoSchema) -> str:
         field: Field = schema.fields[i]
         if i > 0:
             props = props + ","
-        props = props + nox.json.encode_string(field.name) + ":" + _field_schema_json(field, True)
+        props = props + nox.json.dump_string(field.name) + ":" + _field_schema_json(field, True)
         if field.required:
             required.append(field.name)
         i = i + 1
@@ -45,7 +45,7 @@ def _dto_schema_json(schema: DtoSchema) -> str:
         while j < len(required):
             if j > 0:
                 body = body + ","
-            body = body + nox.json.encode_string(required[j])
+            body = body + nox.json.dump_string(required[j])
             j = j + 1
         body = body + "]"
     body = body + "}"
@@ -99,7 +99,7 @@ def _components_json(schemas: list[DtoSchema]) -> str:
         if i > 0:
             body = body + ","
         s: DtoSchema = schemas[i]
-        body = body + nox.json.encode_string(s.name) + ":" + _dto_schema_json(s)
+        body = body + nox.json.dump_string(s.name) + ":" + _dto_schema_json(s)
         i = i + 1
     body = body + "}"
     body = body + ",\"securitySchemes\":{"
@@ -124,7 +124,7 @@ def _parameters_json(route: RouteDef) -> str:
             if not first:
                 out = out + ","
             first = False
-            out = out + "{\"name\":" + nox.json.encode_string(name)
+            out = out + "{\"name\":" + nox.json.dump_string(name)
             out = out + ",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}"
         pi = pi + 1
     if route.has_query:
@@ -134,7 +134,7 @@ def _parameters_json(route: RouteDef) -> str:
             if not first:
                 out = out + ","
             first = False
-            out = out + "{\"name\":" + nox.json.encode_string(field.name)
+            out = out + "{\"name\":" + nox.json.dump_string(field.name)
             out = out + ",\"in\":\"query\""
             if field.required:
                 out = out + ",\"required\":true"
@@ -149,7 +149,7 @@ def _parameters_json(route: RouteDef) -> str:
             if not first:
                 out = out + ","
             first = False
-            out = out + "{\"name\":" + nox.json.encode_string(hfield.name)
+            out = out + "{\"name\":" + nox.json.dump_string(hfield.name)
             out = out + ",\"in\":\"header\""
             if hfield.required:
                 out = out + ",\"required\":true"
@@ -179,9 +179,9 @@ def _method_key(method: str) -> str:
 def _operation_json(route: RouteDef) -> str:
     body: str = "{"
     if len(route.summary) > 0:
-        body = body + "\"summary\":" + nox.json.encode_string(route.summary) + ","
+        body = body + "\"summary\":" + nox.json.dump_string(route.summary) + ","
     if len(route.tag) > 0:
-        body = body + "\"tags\":[" + nox.json.encode_string(route.tag) + "],"
+        body = body + "\"tags\":[" + nox.json.dump_string(route.tag) + "],"
     params: str = _parameters_json(route)
     if params != "[]":
         body = body + "\"parameters\":" + params + ","
@@ -190,7 +190,7 @@ def _operation_json(route: RouteDef) -> str:
         body = body + _schema_ref_or_inline(route.input_schema) + "}}},"
     status_key: str = str(route.success_status)
     body = body + "\"responses\":{"
-    body = body + nox.json.encode_string(status_key) + ":{\"description\":\"OK\""
+    body = body + nox.json.dump_string(status_key) + ":{\"description\":\"OK\""
     if route.has_output:
         body = body + ",\"content\":{\"application/json\":{\"schema\":" + _schema_ref_or_inline(route.output_schema) + "}}"
     body = body + "}"
@@ -245,7 +245,7 @@ def build_document(cfg: Config, routes: list[RouteDef]) -> str:
             if not first_path:
                 paths_json = paths_json + ","
             first_path = False
-            paths_json = paths_json + nox.json.encode_string(opath) + ":{"
+            paths_json = paths_json + nox.json.dump_string(opath) + ":{"
             first_op: bool = True
             rj: int = 0
             while rj < len(routes):
@@ -254,7 +254,7 @@ def build_document(cfg: Config, routes: list[RouteDef]) -> str:
                     if not first_op:
                         paths_json = paths_json + ","
                     first_op = False
-                    paths_json = paths_json + nox.json.encode_string(_method_key(r2.method)) + ":" + _operation_json(r2)
+                    paths_json = paths_json + nox.json.dump_string(_method_key(r2.method)) + ":" + _operation_json(r2)
                 rj = rj + 1
             paths_json = paths_json + "}"
             emitted.append(opath)
@@ -262,8 +262,8 @@ def build_document(cfg: Config, routes: list[RouteDef]) -> str:
     paths_json = paths_json + "}"
     doc: str = "{"
     doc = doc + "\"openapi\":\"3.0.3\","
-    doc = doc + "\"info\":{\"title\":" + nox.json.encode_string(cfg.openapi_title)
-    doc = doc + ",\"version\":" + nox.json.encode_string(cfg.openapi_version) + "},"
+    doc = doc + "\"info\":{\"title\":" + nox.json.dump_string(cfg.openapi_title)
+    doc = doc + ",\"version\":" + nox.json.dump_string(cfg.openapi_version) + "},"
     doc = doc + "\"paths\":" + paths_json + ","
     doc = doc + "\"components\":" + _components_json(schemas)
     doc = doc + "}"

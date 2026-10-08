@@ -74,7 +74,7 @@ def ensure_schema(db: Connection) -> None:
 def enqueue(db: Connection, job_name: str, payload_json: str, run_at_ms: int) -> int:
     if len(job_name) == 0:
         raise QueueError("job_name empty")
-    nox.json.decode(payload_json)
+    nox.json.parse(payload_json)
     now: int = nox.time.now_ms()
     stmt: Statement = db.prepare(
         "INSERT INTO aether_jobs (job_name, payload, status, run_at_ms, attempts, lease_failures, lease_token, last_error, created_at_ms, updated_at_ms) " +
@@ -99,23 +99,23 @@ def _job_json(
 ) -> str:
     return (
         "{\"id\":" + str(id) +
-        ",\"job_name\":" + nox.json.encode_string(job_name) +
+        ",\"job_name\":" + nox.json.dump_string(job_name) +
         ",\"payload\":" + payload_json +
-        ",\"status\":" + nox.json.encode_string(status) +
+        ",\"status\":" + nox.json.dump_string(status) +
         ",\"attempts\":" + str(attempts) +
         ",\"run_at_ms\":" + str(run_at_ms) +
-        ",\"lease_token\":" + nox.json.encode_string(lease_token) + "}"
+        ",\"lease_token\":" + nox.json.dump_string(lease_token) + "}"
     )
 
 def _job_row_json(row: Row) -> str:
     return (
         "{\"id\":" + str(row.get_int(0)) +
-        ",\"job_name\":" + nox.json.encode_string(row.get_str(1)) +
+        ",\"job_name\":" + nox.json.dump_string(row.get_str(1)) +
         ",\"payload\":" + row.get_str(2) +
-        ",\"status\":" + nox.json.encode_string(row.get_str(3)) +
+        ",\"status\":" + nox.json.dump_string(row.get_str(3)) +
         ",\"attempts\":" + str(row.get_int(4)) +
         ",\"run_at_ms\":" + str(row.get_int(5)) +
-        ",\"last_error\":" + nox.json.encode_string(row.get_str(6)) +
+        ",\"last_error\":" + nox.json.dump_string(row.get_str(6)) +
         ",\"updated_at_ms\":" + str(row.get_int(7)) +
         ",\"lease_failures\":" + str(row.get_int(8)) + "}"
     )
@@ -392,7 +392,7 @@ def _field_str(v: JsonValue, name: str) -> str:
             val: JsonValue = nox.json.object_value(v, i)
             if nox.json.is_string(val):
                 return nox.json.as_string(val)
-            return nox.json.encode(val)
+            return nox.json.dump(val)
         i = i + 1
     raise QueueError("missing field: " + name)
 
@@ -413,7 +413,7 @@ def work(db: Connection, registry: JobRegistry, limit: int) -> int:
         raw_opt: str | None = reserve(db)
         if raw_opt != None:
             raw_s: str = raw_opt
-            job: JsonValue = nox.json.decode(raw_s)
+            job: JsonValue = nox.json.parse(raw_s)
             id: int = _field_int(job, "id")
             name: str = _field_str(job, "job_name")
             payload: str = _field_str(job, "payload")

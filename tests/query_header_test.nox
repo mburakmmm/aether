@@ -37,8 +37,8 @@ class QhModule:
 
     def _search(self: QhModule) -> (HttpContext) -> HttpResponse:
         def search(ctx: HttpContext) -> HttpResponse:
-            body: str = "{\"q\":" + nox.json.encode_string(ctx.query_param("q"))
-            body = body + ",\"client\":" + nox.json.encode_string(ctx.header("X-Client-Id"))
+            body: str = "{\"q\":" + nox.json.dump_string(ctx.query_param("q"))
+            body = body + ",\"client\":" + nox.json.dump_string(ctx.header("X-Client-Id"))
             body = body + ",\"claims\":" + ctx.jwt_claims() + "}"
             return json_ok(body)
         return search

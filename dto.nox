@@ -199,7 +199,7 @@ def validate_value(v: JsonValue, schema: DtoSchema) -> list[str]:
 
 def validate_json_str(raw: str, schema: DtoSchema) -> list[str]:
     try:
-        v: JsonValue = nox.json.decode(raw)
+        v: JsonValue = nox.json.parse(raw)
         return validate_value(v, schema)
     except JsonError as e:
         errors: list[str] = []
@@ -208,7 +208,7 @@ def validate_json_str(raw: str, schema: DtoSchema) -> list[str]:
 
 def parse_value_or_raise(raw: str, schema: DtoSchema) -> JsonValue:
     try:
-        v: JsonValue = nox.json.decode(raw)
+        v: JsonValue = nox.json.parse(raw)
     except JsonError as e:
         errors: list[str] = []
         errors.append(e.message)

@@ -6,12 +6,12 @@ import aether.context
 
 def request_fields(extra: dict[str, str]) -> str:
     body: str = "{"
-    body = body + "\"request_id\":" + nox.json.encode_string(aether.context.current_request_id())
+    body = body + "\"request_id\":" + nox.json.dump_string(aether.context.current_request_id())
     keys: list[str] = extra.keys()
     i: int = 0
     while i < len(keys):
         k: str = keys[i]
-        body = body + "," + nox.json.encode_string(k) + ":" + nox.json.encode_string(extra[k])
+        body = body + "," + nox.json.dump_string(k) + ":" + nox.json.dump_string(extra[k])
         i = i + 1
     body = body + "}"
     return body

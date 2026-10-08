@@ -6,7 +6,7 @@ from nox.sqlite import Connection, Statement
 from aether.queue import JobRegistry, QueueError
 
 def job_field_str(raw: str, name: str) -> str:
-    v: JsonValue = nox.json.decode(raw)
+    v: JsonValue = nox.json.parse(raw)
     i: int = 0
     n: int = nox.json.object_len(v)
     while i < n:

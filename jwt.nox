@@ -26,7 +26,7 @@ def _find_object_field(v: JsonValue, name: str) -> JsonValue | None:
     return None
 
 def _with_exp(payload_json: str, exp_unix: int) -> str:
-    v: JsonValue = nox.json.decode(payload_json)
+    v: JsonValue = nox.json.parse(payload_json)
     if not nox.json.is_object(v):
         raise JwtError("payload must be a JSON object")
     out: str = "{\"exp\":" + str(exp_unix)
@@ -35,7 +35,7 @@ def _with_exp(payload_json: str, exp_unix: int) -> str:
     while i < n:
         key: str = nox.json.object_key(v, i)
         if key != "exp":
-            out = out + "," + nox.json.encode_string(key) + ":" + nox.json.encode(nox.json.object_value(v, i))
+            out = out + "," + nox.json.dump_string(key) + ":" + nox.json.dump(nox.json.object_value(v, i))
         i = i + 1
     return out + "}"
 
@@ -87,7 +87,7 @@ def decode(secret: str, token: str) -> str:
         payload_json = nox.jwt.verify(token, secret)
     except NoxJwtError as e:
         raise JwtError(e.message)
-    payload: JsonValue = nox.json.decode(payload_json)
+    payload: JsonValue = nox.json.parse(payload_json)
     if not nox.json.is_object(payload):
         raise JwtError("payload must be an object")
     _check_time_claims(payload)

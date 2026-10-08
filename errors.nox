@@ -70,10 +70,10 @@ class InternalError(HttpError):
 
 def error_json(err: HttpError, include_kind: bool, kind: str) -> str:
     body: str = "{\"error\":{"
-    body = body + "\"code\":" + nox.json.encode_string(err.code) + ","
-    body = body + "\"message\":" + nox.json.encode_string(err.message)
+    body = body + "\"code\":" + nox.json.dump_string(err.code) + ","
+    body = body + "\"message\":" + nox.json.dump_string(err.message)
     if include_kind:
-        body = body + ",\"kind\":" + nox.json.encode_string(kind)
+        body = body + ",\"kind\":" + nox.json.dump_string(kind)
     body = body + ",\"line\":" + str(err.line)
     if len(err.details) > 0:
         body = body + ",\"details\":["
@@ -81,7 +81,7 @@ def error_json(err: HttpError, include_kind: bool, kind: str) -> str:
         while i < len(err.details):
             if i > 0:
                 body = body + ","
-            body = body + nox.json.encode_string(err.details[i])
+            body = body + nox.json.dump_string(err.details[i])
             i = i + 1
         body = body + "]"
     body = body + "}}"

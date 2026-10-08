@@ -172,7 +172,7 @@ class Gateway:
         event: str = ""
         payload: str = raw + ""
         try:
-            v: JsonValue = nox.json.decode(raw)
+            v: JsonValue = nox.json.parse(raw)
             if nox.json.is_object(v):
                 i: int = 0
                 n: int = nox.json.object_len(v)
@@ -183,7 +183,7 @@ class Gateway:
                         if nox.json.is_string(val):
                             event = nox.json.as_string(val)
                     if key == "payload":
-                        payload = nox.json.encode(nox.json.object_value(v, i))
+                        payload = nox.json.dump(nox.json.object_value(v, i))
                     i = i + 1
         except JsonError:
             event = "message"
@@ -200,11 +200,11 @@ class Gateway:
                 return
             if event == "join":
                 self.rooms.join(room, conn_id)
-                conn.send_text("{\"event\":\"joined\",\"payload\":{\"room\":" + nox.json.encode_string(room) + "}}")
+                conn.send_text("{\"event\":\"joined\",\"payload\":{\"room\":" + nox.json.dump_string(room) + "}}")
                 return
             if event == "leave":
                 self.rooms.leave(room, conn_id)
-                conn.send_text("{\"event\":\"left\",\"payload\":{\"room\":" + nox.json.encode_string(room) + "}}")
+                conn.send_text("{\"event\":\"left\",\"payload\":{\"room\":" + nox.json.dump_string(room) + "}}")
                 return
             msg: str = _payload_message(payload)
             n_sent: int = self.rooms.broadcast(room, msg)
@@ -237,7 +237,7 @@ def require_token_auth(expected: str) -> (WebSocketServerConn, str) -> bool:
 
 def _payload_room(payload: str) -> str:
     try:
-        v: JsonValue = nox.json.decode(payload)
+        v: JsonValue = nox.json.parse(payload)
         if nox.json.is_object(v):
             i: int = 0
             n: int = nox.json.object_len(v)
@@ -255,20 +255,20 @@ def _payload_room(payload: str) -> str:
 
 def _payload_message(payload: str) -> str:
     try:
-        v: JsonValue = nox.json.decode(payload)
+        v: JsonValue = nox.json.parse(payload)
         if nox.json.is_object(v):
             i: int = 0
             n: int = nox.json.object_len(v)
             while i < n:
                 if nox.json.object_key(v, i) == "message":
-                    return nox.json.encode(nox.json.object_value(v, i))
+                    return nox.json.dump(nox.json.object_value(v, i))
                 i = i + 1
     except JsonError:
         return payload + ""
     return payload + ""
 
 def echo_handler(conn: WebSocketServerConn, event: str, payload: str) -> None:
-    conn.send_text("{\"event\":" + nox.json.encode_string(event) + ",\"payload\":" + payload + "}")
+    conn.send_text("{\"event\":" + nox.json.dump_string(event) + ",\"payload\":" + payload + "}")
 
 def run_connection(gateway: Gateway, conn: WebSocketServerConn) -> None:
     run_connection_authed(gateway, conn, "")

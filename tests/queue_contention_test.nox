@@ -7,7 +7,7 @@ from nox.sqlite import Connection, Statement
 from aether.queue import QueueError
 
 def lease_token_of(raw: str) -> str:
-    v: JsonValue = nox.json.decode(raw)
+    v: JsonValue = nox.json.parse(raw)
     i: int = 0
     while i < nox.json.object_len(v):
         if nox.json.object_key(v, i) == "lease_token":
