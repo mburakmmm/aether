@@ -6,10 +6,12 @@ from aether.errors import ValidationError
 
 address: DtoSchema = DtoSchema("Address")
 address.require("city", "string")
+nox.test.assert_true(address.scalar, "flat schema stays scalar")
 
 user: DtoSchema = DtoSchema("User")
 user.require("name", "string")
 user.require_object("address", address)
+nox.test.assert_true(not user.scalar, "nested schema leaves the scalar path")
 
 ok: list[str] = validate_json_str("{\"name\":\"ada\",\"address\":{\"city\":\"paris\"}}", user)
 nox.test.assert_eq_int(len(ok), 0, "valid nested")

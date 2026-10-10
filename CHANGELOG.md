@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 — 2026-10-11
+
+Nox floor **2.0.0**. LLVM is the default `noxc` backend; QBE is `--backend qbe`.
+
+- `workers>1` still calls `serve_multicore` on both backends. On LLVM that call joins the process M:N pool, so `NOX_POOL_WORKERS` must equal `AETHER_WORKERS` before the process starts. `require_pool_env` rejects a mismatch instead of listening on fewer workers than requested
+- `apply_pool_workers` still only affects child processes
+- A body schema that is a single required string skips `ValidatedBody` and `nox.validate`: one `nox.json.parse`, then `input_str` reads the cached field. `json_ok_field` writes that one field without a dict. Nested, format, range, and multi-field schemas still use `nox.validate`
+
 ## 0.7.2 — 2026-10-08
 
 Nox floor **1.171.2**. Nox 1.171 removed the old `nox.json` names. Aether calls `parse`, `dump`, and `dump_string`.

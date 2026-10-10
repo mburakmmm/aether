@@ -236,6 +236,9 @@ class HttpContext:
     trust_xff: bool
     _has_body: bool
     _body: ValidatedBody
+    _scalar_hit: bool
+    _scalar_name: str
+    _scalar_val: str
 
     def __init__(
         self: HttpContext,
@@ -261,6 +264,9 @@ class HttpContext:
         self.trust_xff = trust_xff
         self._has_body = False
         self._body = _EMPTY_BODY
+        self._scalar_hit = False
+        self._scalar_name = ""
+        self._scalar_val = ""
 
     def ensure_query(self: HttpContext) -> None:
         if self._query_parsed:
@@ -337,7 +343,18 @@ class HttpContext:
         self._has_body = True
         return body
 
+    def set_scalar_string(self: HttpContext, raw: str, name: str, value: str) -> None:
+        self.input_body = raw
+        set_input_json(raw)
+        self._scalar_hit = True
+        self._scalar_name = name
+        self._scalar_val = value
+        self._has_body = False
+
     def input_str(self: HttpContext, name: str) -> str:
+        if self._scalar_hit:
+            if self._scalar_name == name:
+                return self._scalar_val
         return self.validated_body().get_str(name)
 
     def input_int(self: HttpContext, name: str) -> int:

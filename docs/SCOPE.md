@@ -1,6 +1,6 @@
 # Aether scopes: Application / Worker / Request
 
-Proven against Nox ≥ 1.171.2 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). Nox 1.93.0 pins each `--release` accept loop to its worker. Nox 1.80.4 keeps stolen tasks on the slot that initialized them.
+Proven against Nox ≥ 2.0.0 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). LLVM is the default backend. `serve_multicore` accept loops stay on the worker that opened them; stolen connection fibers keep that slot’s globals.
 
 ## Scopes
 

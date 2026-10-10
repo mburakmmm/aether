@@ -3,6 +3,7 @@ import nox.os
 import aether.server
 import aether.config
 from aether.config import Config
+from aether.server import ServerError
 
 cfg_prod: Config = aether.config.defaults("production")
 nox.test.assert_eq_int(cfg_prod.workers, 1, "prod workers default 1")
@@ -15,9 +16,18 @@ nox.test.assert_eq_int(aether.server.effective_workers(cfg_exp), 4, "explicit wo
 nox.test.assert_eq_str(aether.server.pool_workers_wanted(cfg_exp), "4", "wanted 4")
 nox.test.assert_true(aether.server.materialize_request_headers(cfg_prod), "headers default on")
 
+nox.os.set_var("NOX_POOL_WORKERS", "1")
+pool_rejected: bool = False
+try:
+    aether.server.require_pool_env(cfg_exp)
+except ServerError:
+    pool_rejected = True
+nox.test.assert_true(pool_rejected, "workers>1 rejects a smaller NOX_POOL_WORKERS")
+
 aether.server.apply_pool_workers(cfg_exp)
 nox.test.assert_eq_str(nox.os.getenv("NOX_POOL_WORKERS"), "4", "pool env mapped")
 nox.test.assert_true(aether.server.pool_env_matches(cfg_exp), "matches after set_var")
+aether.server.require_pool_env(cfg_exp)
 
 cfg_bare: Config = aether.config.defaults("production")
 cfg_bare.request_headers = False

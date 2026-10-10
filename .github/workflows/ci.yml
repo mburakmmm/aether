@@ -16,7 +16,7 @@ jobs:
 
       - name: Install Nox
         run: |
-          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.171.2 bash
+          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v2.0.0 bash
           echo "$HOME/.nox-lang/bin" >> "$GITHUB_PATH"
 
       - name: Check release refs (VERSION / nox.json / nox.lock)
@@ -105,7 +105,7 @@ jobs:
 
       - name: Install Nox
         run: |
-          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v1.171.2 bash
+          curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v2.0.0 bash
           echo "$HOME/.nox-lang/bin" >> "$GITHUB_PATH"
 
       - name: Point package at checkout
@@ -142,6 +142,18 @@ jobs:
 
       - name: Fetch
         run: noxc fetch
+
+      - name: HTTP smoke multicore (default LLVM)
+        run: |
+          chmod +x scripts/smoke_http_multicore.sh
+          AETHER_PORT=34570 ./scripts/smoke_http_multicore.sh
+
+      - name: Worker AppBind probe (LLVM)
+        run: |
+          chmod +x scripts/smoke_worker_bind.sh
+          AETHER_PORT=34683 AETHER_WORKERS=4 AETHER_PROBE_MODE=llvm \
+            AETHER_PROBE_REQUESTS=200 \
+            ./scripts/smoke_worker_bind.sh
 
       - name: HTTP smoke (noxc build --release)
         run: |

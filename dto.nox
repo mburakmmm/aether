@@ -47,6 +47,9 @@ class DtoSchema:
     nested_names: list[str]
     nested_schemas: list[DtoSchema]
     _flat: Schema
+    # True while every field is a plain string, number, or bool.
+    # validation_pipe then checks the object in one pass and skips nox.validate.
+    scalar: bool
 
     def __init__(self: DtoSchema, name: str) -> None:
         self.name = name
@@ -54,20 +57,28 @@ class DtoSchema:
         self.nested_names = []
         self.nested_schemas = []
         self._flat = Schema()
+        self.scalar = True
+
+    def _note_kind(self: DtoSchema, kind: str) -> None:
+        if kind != "string" and kind != "number" and kind != "bool":
+            self.scalar = False
 
     def require(self: DtoSchema, name: str, kind: str) -> None:
+        self._note_kind(kind)
         fields: list[Field] = self.fields
         fields.append(Field(name, kind, True, "", "", ""))
         self.fields = fields
         self._flat.require(name, kind)
 
     def optional(self: DtoSchema, name: str, kind: str) -> None:
+        self._note_kind(kind)
         fields: list[Field] = self.fields
         fields.append(Field(name, kind, False, "", "", ""))
         self.fields = fields
         self._flat.optional(name, kind)
 
     def require_format(self: DtoSchema, name: str, kind: str, format_name: str) -> None:
+        self.scalar = False
         fields: list[Field] = self.fields
         fields.append(Field(name, kind, True, format_name, "", ""))
         self.fields = fields
@@ -76,6 +87,7 @@ class DtoSchema:
             self._flat.format(name, format_name)
 
     def require_number_range(self: DtoSchema, name: str, minimum: int, maximum: int) -> None:
+        self.scalar = False
         fields: list[Field] = self.fields
         f: Field = Field(name, "number", True, "", "", "")
         f.has_min = True
@@ -89,6 +101,7 @@ class DtoSchema:
         self._flat.max(name, float(str(maximum)))
 
     def require_object(self: DtoSchema, name: str, nested: DtoSchema) -> None:
+        self.scalar = False
         fields: list[Field] = self.fields
         fields.append(Field(name, "object", True, "", nested.name, ""))
         self.fields = fields
@@ -101,6 +114,7 @@ class DtoSchema:
         self.nested_schemas = nested_schemas
 
     def require_array(self: DtoSchema, name: str, item_kind: str) -> None:
+        self.scalar = False
         fields: list[Field] = self.fields
         fields.append(Field(name, "array", True, "", "", item_kind))
         self.fields = fields

@@ -12,16 +12,14 @@ from aether.application import Application, EMPTY_HEADERS
 from aether.config import Config
 from aether.module import ModuleBuilder
 from aether.context import HttpContext
-from aether.response import json_ok, json_ok_str
+from aether.response import json_ok, json_ok_field
 from aether.dto import DtoSchema
 
 def ping_handler(ctx: HttpContext) -> HttpResponse:
     return json_ok("{\"pong\":true}")
 
 def echo_handler(ctx: HttpContext) -> HttpResponse:
-    fields: dict[str, str] = {}
-    fields["msg"] = ctx.input_str("msg")
-    return json_ok_str(fields)
+    return json_ok_field("msg", ctx.input_str("msg"))
 
 def build(app: Application) -> None:
     m: ModuleBuilder = app.module()

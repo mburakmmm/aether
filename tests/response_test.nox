@@ -12,6 +12,8 @@ nox.test.assert_true(nox.strings.contains(encoded, "\"hello\""), "value")
 ok: HttpResponse = aether.response.json_ok_str(data)
 nox.test.assert_eq_int(ok.status, 200, "json_ok_str status")
 nox.test.assert_true(nox.strings.contains(ok.body, "hello"), "json_ok_str body")
+field: HttpResponse = aether.response.json_ok_field("msg", "hello")
+nox.test.assert_true(field.body == "{\"msg\":\"hello\"}", "json_ok_field")
 
 base: HttpResponse = aether.response.json_ok("{\"pong\":true}")
 extra: dict[str, str] = {}

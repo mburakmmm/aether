@@ -1,8 +1,8 @@
 # Nox limitations (Aether evidence)
 
-Aether targets **Nox ≥ 1.171.2**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
+Aether targets **Nox ≥ 2.0.0**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
 
-Rechecked **2026-10-08** against nox-lang **1.171.2**. Nox 1.143–1.170 added language features (`in`, `break`, comprehensions, `set`, f-strings, dunder methods, NNI). Aether does not rewrite onto them. The required change is Nox **1.171.0**: `nox.json` dropped `decode`/`encode`/`encode_string` in favor of `parse`/`dump`/`dump_string`. `HttpRequest.peer_addr` now defaults to `""`.
+Rechecked **2026-10-11** against nox-lang **2.0.0**. LLVM is the default backend; QBE is `--backend qbe`. The two backends match on language results (overflow traps, keyword evaluation order). `serve_multicore` is still the multicore entry on both: LLVM flattens it into the M:N pool, QBE starts OS threads. Aether calls it whenever `AETHER_WORKERS>1` and refuses to start unless `NOX_POOL_WORKERS` already matches, because the LLVM pool size is fixed at process start. Nox 1.143–2.0 syntax (`in`, `break`, comprehensions, `set`, f-strings, dunder methods, NNI) does not replace an Aether API. `nox.json` names stay `parse` / `dump` / `dump_string`.
 
 Still open in Nox: qualified type names in annotations (item 11). Partial: `serve_multicore*` still rejects closures and still binds IPv4 itself (items 4 and 19); `nox.atomic` is int/bool only (item 12); `decorator_handler` still only returns top-level `(Context) -> HttpResponse` (item 3). List assignment still copies (item 15); chained `append` does not.
 
@@ -211,7 +211,7 @@ These landed after 1.29.8. Aether code already matches them.
 
 **Status:** `partial` (Nox 1.131 `nox.atomic` `AtomicInt` / `AtomicBool` only). Application, route tables, and closures stay slot-local. Metrics stay worker-local.
 
-**Impact:** Both QBE `serve_multicore` and `--release` M:N keep **module globals per worker slot** (`RuntimeState.globals_blocks[g_worker_slot]`). Aether `AppBind` / `Application` / closure services / `Metrics` / `RateStore` are **worker-local**. Shared heap under `--release` does **not** imply a shared Application. Parent `boot_with_config` before serve does not populate sibling slots; `dispatch_ensure` boots each empty slot on first request.
+**Impact:** LLVM (default) and QBE `serve_multicore` both keep **module globals per worker slot** (`RuntimeState.globals_blocks[g_worker_slot]`). Aether `AppBind` / `Application` / closure services / `Metrics` / `RateStore` are **worker-local**. A shared LLVM heap does not imply a shared Application. Parent `boot_with_config` before serve does not populate sibling slots; `dispatch_ensure` boots each empty slot on first request. On LLVM the pool is `NOX_POOL_WORKERS` at process start; a smaller pool drops accept loops.
 
 **Evidence:**
 - Nox `runtime/alloc/asap.zig` `globals_blocks` / `nox_globals_get`
@@ -220,7 +220,7 @@ These landed after 1.29.8. Aether code already matches them.
 
 **Desired Nox change:** Optional process-wide atomic counters / documented shared-mutable collections when frameworks need aggregate metrics.
 
-**Aether workaround:** Document worker-local scope; require idempotent `build()`; keep in-memory rate-limit / metrics opt-in with external backends for process-wide truth; default `AETHER_WORKERS=1`. Export `NOX_POOL_WORKERS=$AETHER_WORKERS` before exec.
+**Aether workaround:** Document worker-local scope; require idempotent `build()`; keep in-memory rate-limit / metrics opt-in with external backends for process-wide truth; default `AETHER_WORKERS=1`. `require_pool_env` refuses `workers>1` unless `NOX_POOL_WORKERS` already equals that count.
 
 ---
 
@@ -352,4 +352,4 @@ See `docs/SCOPE.md`.
 3. Shared objects across workers beyond `AtomicInt` / `AtomicBool` (item 12).
 4. List-assignment copy semantics (item 15). Chained `append` is closed.
 
-Nox 1.143–1.170 (syntax, `set`, f-strings, dunder methods, NNI) and 1.142.25–1.142.26 (string primitives, error-block layout) do not add a stdlib call Aether should switch to. Nox **1.171.0** removed the old `nox.json` names; Aether now calls `parse` / `dump` / `dump_string`.
+Nox 2.0 makes LLVM the default backend and matches QBE on language results. Aether’s multicore path is `serve_multicore` on both, with the LLVM pool sized by `NOX_POOL_WORKERS` before exec. Qualified annotations, multicore closures, and sharing beyond `nox.atomic` stay open.

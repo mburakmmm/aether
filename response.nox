@@ -13,6 +13,11 @@ def json(status: int, body: str) -> HttpResponse:
 def json_ok(body: str) -> HttpResponse:
     return json(200, body)
 
+# One string field, no intermediate dict. Echo and other single-field
+# responses use this instead of encode_str_map.
+def json_ok_field(name: str, value: str) -> HttpResponse:
+    return json_ok("{" + nox.json.dump_string(name) + ":" + nox.json.dump_string(value) + "}")
+
 def json_created(body: str) -> HttpResponse:
     return json(201, body)
 

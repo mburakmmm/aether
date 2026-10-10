@@ -506,7 +506,7 @@ def bound() -> Application:
     return _bind.apps[0]
 
 def ensure_bound(cfg: Config, build: (Application) -> None) -> Application:
-    # Per worker-slot AppBind (QBE shared-nothing and --release M:N alike).
+    # Per worker-slot AppBind (LLVM M:N and QBE shared-nothing alike).
     # Empty slot → boot_with_config. Already bound on this slot → reuse.
     if len(_bind.apps) == 0:
         return boot_with_config(cfg, build)

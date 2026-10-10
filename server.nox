@@ -11,7 +11,7 @@
 #       return aether.application.dispatch_from_parts(
 #           req.method, req.target, req.body, aether.application.EMPTY_HEADERS, "", cfg, build)
 #   # NOX_POOL_WORKERS must be in the process environment BEFORE exec
-#   # (Nox --release $main pool). apply_pool_workers is too late for that.
+#   # (LLVM $main pool, the default backend). apply_pool_workers is too late.
 #   if aether.server.materialize_request_headers(cfg):
 #       nox.http.serve(cfg.port, handle)
 #   else:
@@ -20,15 +20,18 @@
 # boot_with_config auto-calls bind(app). Do not close over Application in handle
 # (Nox codegen rejects that with serve*).
 #
-# Dual runtime (Nox 1.104+):
-#   QBE (`noxc run` / `noxc test` / `noxc build`): shared-nothing workers.
-#     Module globals (AppBind) are per OS worker; dispatch_ensure boots each slot.
-#   LLVM (`noxc build --release`, macOS/arm64): shared M:N pool.
-#     Heap is shared, but module globals remain per worker slot — Application,
-#     Metrics, RateStore, and closure services are worker-local, not process-wide.
-#     Nox 1.93.0 pins each accept loop to its worker. Stolen tasks keep the
-#     slot globals that booted them (1.80.4).
-#     Size the pool with process-env NOX_POOL_WORKERS (read at $main init).
+# Dual runtime (Nox 2.0, LLVM is the default backend):
+#   LLVM (`noxc run` / `noxc build` / `noxc build --release`): shared M:N pool.
+#     `serve_multicore` flattens into that pool (`$nox_pool_serve`). Each slot
+#     opens its own SO_REUSEPORT socket; connection fibers are stealable.
+#     The pool size is fixed at process start from NOX_POOL_WORKERS (or the
+#     CPU count when the program contains serve_multicore and the variable
+#     is unset). In-process set_var cannot resize it. If the pool is smaller
+#     than AETHER_WORKERS, extra accept loops are dropped.
+#   QBE (`noxc run --backend qbe`): one OS thread per serve_multicore worker,
+#     each with its own SO_REUSEPORT socket. NOX_POOL_WORKERS is unused.
+#   Both: module globals (AppBind, Metrics, RateStore, closures) are per slot.
+#     Stolen tasks keep the globals of the slot that started them.
 #   See docs/SCOPE.md.
 #
 # Multicore:
@@ -86,29 +89,41 @@ def pool_workers_env() -> str:
         return ""
 
 # True when the process already has NOX_POOL_WORKERS matching cfg.workers.
-# --release $main reads this at init; in-process set_var cannot resize the pool.
+# LLVM reads this at process start; in-process set_var cannot resize the pool.
 def pool_env_matches(cfg: Config) -> bool:
     return pool_workers_env() == pool_workers_wanted(cfg)
 
-# workers>1 → serve_multicore (QBE SO_REUSEPORT; --release M:N + steal since 1.29.5).
+# workers>1 → serve_multicore on LLVM (default) and on QBE (--backend qbe).
 def use_os_workers(cfg: Config) -> bool:
     return effective_workers(cfg) > 1
 
 # Best-effort: sets NOX_POOL_WORKERS for *child* processes spawned after this
-# call. Does NOT resize an already-created --release $main pool — export the
+# call. Does NOT resize an already-created LLVM $main pool — export the
 # variable in the launching shell (scripts/aether_env.sh, run.sh).
 def apply_pool_workers(cfg: Config) -> None:
     n: int = effective_workers(cfg)
     nox.os.set_var("NOX_POOL_WORKERS", str(n))
 
-def warn_pool_env(cfg: Config) -> None:
+# LLVM sizes the M:N pool before user code runs. workers>1 must already
+# see NOX_POOL_WORKERS equal to AETHER_WORKERS; a later set_var does not
+# add accept loops. QBE ignores the variable, so the same check is safe.
+def require_pool_env(cfg: Config) -> None:
+    if not use_os_workers(cfg):
+        return
     if pool_env_matches(cfg):
         return
-    print(
-        "aether warning: NOX_POOL_WORKERS='" + pool_workers_env() +
-        "' wanted='" + pool_workers_wanted(cfg) +
-        "' — export before exec; apply_pool_workers is too late for --release"
+    message: str = (
+        "AETHER_WORKERS=" + pool_workers_wanted(cfg) +
+        " requires NOX_POOL_WORKERS=" + pool_workers_wanted(cfg) +
+        " in the environment before the process starts (saw '" +
+        pool_workers_env() +
+        "'). LLVM reads the pool size at startup; set_var cannot resize it."
     )
+    print(message)
+    raise ServerError(message)
+
+def warn_pool_env(cfg: Config) -> None:
+    require_pool_env(cfg)
 
 # When false, serve handle_bare so Nox 1.29.2 skips iterateHeaders (G1).
 # Default true: JWT / CORS / ctx.header() need the map. Bench sets

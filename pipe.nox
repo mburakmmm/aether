@@ -20,8 +20,16 @@ def run_pipes(pipes: list[(HttpContext) -> None], ctx: HttpContext) -> None:
 def validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
     def transform(ctx: HttpContext) -> None:
         raw: str = ctx.body()
-        v: JsonValue = parse_value_or_raise(raw, schema)
-        ctx.set_validated_body(aether.body.from_decoded(raw, v))
+        if schema.scalar and len(schema.fields) == 1:
+            only: Field = schema.fields[0]
+            if only.required and only.kind == "string":
+                ctx.set_scalar_string(raw, only.name, aether.body.take_required_string(raw, only.name))
+                return
+        if schema.scalar:
+            ctx.set_validated_body(aether.body.accept_scalar(raw, schema))
+        else:
+            v: JsonValue = parse_value_or_raise(raw, schema)
+            ctx.set_validated_body(aether.body.from_decoded(raw, v))
     return transform
 
 def _dict_to_json_object(data: dict[str, str]) -> str:

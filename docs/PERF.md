@@ -2,31 +2,31 @@
 
 ## Defaults
 
-- Development / test: `AETHER_WORKERS=1` (single `nox.http.serve`), `noxc run` (QBE)
+- Development / test: `AETHER_WORKERS=1` (single `nox.http.serve`). `noxc run` uses LLVM unless `--backend qbe`.
 - Production: `AETHER_WORKERS` defaults to **1**. Set `AETHER_WORKERS>1` for multicore.
-- Production binary (Nox 1.171.2+, macOS/arm64): `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
+- Production binary (Nox 2.0.0+, macOS/arm64): `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app` (`--release` is the same LLVM backend with optimizations)
 - Prefer `handle` that reads `req.method/target/body/headers` and calls `dispatch_from_parts` (do not pass `req` — that disables Nox header-skip)
-- Export `NOX_POOL_WORKERS` **before** exec (`scripts/aether_env.sh`, `./run.sh`). `apply_pool_workers` cannot resize the `--release` `$main` pool.
+- Export `NOX_POOL_WORKERS` **before** exec (`scripts/aether_env.sh`, `./run.sh`). `apply_pool_workers` cannot resize the LLVM `$main` pool.
 - Production CORS is **off** unless `AETHER_CORS_ORIGINS` is set (largest hot-path win)
 - Production route metrics off unless `AETHER_METRICS_ROUTES=1`; status counters off with `AETHER_METRICS=0`
 
-## Dual runtime (Nox 1.29+)
+## Dual runtime (Nox 2.0)
 
 | Path | Command | Scheduler | AppBind |
 |------|---------|-----------|---------|
-| QBE (default) | `noxc run` / `noxc test` / `noxc build` | M:1 fiber per OS thread; shared-nothing | Fresh globals per OS worker → `dispatch_ensure` boots |
-| LLVM `--release` | `noxc build --release` | Shared M:N work-stealing + atomic ARC | **Also** per worker-slot globals — not a process-wide Application |
+| LLVM (default) | `noxc run` / `noxc build` / `noxc build --release` | Shared M:N work-stealing + atomic ARC | Per worker-slot globals — not a process-wide Application |
+| QBE | `noxc run --backend qbe` | M:1 fiber per OS thread; shared-nothing | Fresh globals per OS worker → `dispatch_ensure` boots |
 
 See [SCOPE.md](SCOPE.md). Parent `boot_with_config` does not fill sibling slots; `build()` must be idempotent.
 
-`--release` is comprehensively supported on **macOS/arm64**. Linux/Windows LLVM is not a production claim.
+LLVM is the supported production backend on **macOS/arm64**.
 
-Under `--release`, `serve_multicore(port, handle, N)` flattens into `$nox_pool_serve`.
-Nox **1.93.0+** pins each `serve_multicore` accept loop to its worker (`spawnPinned`).
-Connection fibers may still be stolen; module globals stay on the slot that
-booted them (Nox 1.80.4). Size the pool with process-env
-`NOX_POOL_WORKERS=$AETHER_WORKERS`. QBE and `--release` both use
-`aether.server.use_os_workers` → `serve_multicore` when `workers>1`.
+On LLVM, `serve_multicore(port, handle, N)` flattens into `$nox_pool_serve`.
+Each accept loop stays on its worker. Connection fibers may be stolen; module
+globals stay on the slot that booted them. The pool size is `NOX_POOL_WORKERS`,
+read once at process start, and must equal `N`. A smaller pool silently drops
+accept loops, so `require_pool_env` refuses to listen. QBE uses the same
+`serve_multicore` call via OS threads and ignores the pool variable.
 
 `nox.json.parse` rejects documents nested deeper than **32** (`JsonError`).
 `nox.sqlite.Statement` is the `nox.db.Statement` re-export (bind/execute/query unchanged).

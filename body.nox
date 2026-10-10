@@ -1,19 +1,28 @@
 # aether.body - typed accessors over validated JSON request bodies.
-# from_decoded / from_raw keep the decoded JsonValue; accessors read it
-# directly (no parallel-array materialization walk after validate).
+# Scalar schemas (string/number/bool only) are accepted in one object
+# pass. String fields land in a cache so get_str does not walk the
+# object again. Nested, format, and range schemas still use nox.validate.
 
 import nox.json
 from nox.json import JsonError
+import aether.dto
+from aether.dto import DtoSchema, Field
 import aether.errors
 from aether.errors import ValidationError, BadRequestError
 
 class ValidatedBody:
     _raw: str
     _jsons: list[JsonValue]
+    _cached: bool
+    _str_names: list[str]
+    _str_vals: list[str]
 
     def __init__(self: ValidatedBody, raw: str) -> None:
         self._raw = raw
         self._jsons = []
+        self._cached = False
+        self._str_names = []
+        self._str_vals = []
 
     def raw(self: ValidatedBody) -> str:
         return self._raw
@@ -49,7 +58,21 @@ class ValidatedBody:
     def has(self: ValidatedBody, name: str) -> bool:
         return self._find(name) != None
 
+    def _cached_str(self: ValidatedBody, name: str) -> str | None:
+        if not self._cached:
+            return None
+        i: int = 0
+        while i < len(self._str_names):
+            if self._str_names[i] == name:
+                return self._str_vals[i]
+            i = i + 1
+        return None
+
     def get_str(self: ValidatedBody, name: str) -> str:
+        cached: str | None = self._cached_str(name)
+        if cached != None:
+            hit: str = cached
+            return hit
         got: JsonValue | None = self._find(name)
         if got != None:
             val: JsonValue = got
@@ -61,6 +84,10 @@ class ValidatedBody:
         raise ValidationError("missing field: " + name, details)
 
     def get_str_or(self: ValidatedBody, name: str, default: str) -> str:
+        cached: str | None = self._cached_str(name)
+        if cached != None:
+            hit: str = cached
+            return hit
         got: JsonValue | None = self._find(name)
         if got != None:
             val: JsonValue = got
@@ -116,3 +143,100 @@ def from_decoded(raw: str, v: JsonValue) -> ValidatedBody:
     held.append(v)
     body._jsons = held
     return body
+
+def _reject(message: str) -> None:
+    details: list[str] = []
+    details.append(message)
+    raise ValidationError("request body validation failed", details)
+
+def _kind_ok(v: JsonValue, kind: str) -> bool:
+    if kind == "string":
+        return nox.json.is_string(v)
+    if kind == "number":
+        return nox.json.is_number(v)
+    if kind == "bool":
+        return nox.json.is_bool(v)
+    return False
+
+def _seen(names: list[str], name: str) -> bool:
+    i: int = 0
+    while i < len(names):
+        if names[i] == name:
+            return True
+        i = i + 1
+    return False
+
+def _field_named(schema: DtoSchema, name: str) -> Field | None:
+    i: int = 0
+    while i < len(schema.fields):
+        if schema.fields[i].name == name:
+            return schema.fields[i]
+        i = i + 1
+    return None
+
+# One parse and one key scan. String values are cached for get_str.
+# Messages match nox.validate so clients see the same 422 details.
+def accept_scalar(raw: str, schema: DtoSchema) -> ValidatedBody:
+    try:
+        v: JsonValue = nox.json.parse(raw)
+    except JsonError as e:
+        _reject(e.message)
+        return ValidatedBody(raw)
+    if not nox.json.is_object(v):
+        _reject("beklenen bir JSON nesnesi (object)")
+    names: list[str] = []
+    vals: list[str] = []
+    seen: list[str] = []
+    n: int = nox.json.object_len(v)
+    i: int = 0
+    while i < n:
+        key: str = nox.json.object_key(v, i)
+        found: Field | None = _field_named(schema, key)
+        if found != None:
+            if not _seen(seen, key):
+                val: JsonValue = nox.json.object_value(v, i)
+                if not _kind_ok(val, found.kind):
+                    _reject("alan '" + key + "' icin beklenen tip: " + found.kind)
+                seen.append(key)
+                if found.kind == "string":
+                    names.append(key)
+                    vals.append(nox.json.as_string(val))
+        i = i + 1
+    j: int = 0
+    while j < len(schema.fields):
+        field: Field = schema.fields[j]
+        if field.required:
+            if not _seen(seen, field.name):
+                _reject("eksik zorunlu alan: '" + field.name + "'")
+        j = j + 1
+    body: ValidatedBody = ValidatedBody(raw)
+    held: list[JsonValue] = []
+    held.append(v)
+    body._jsons = held
+    body._cached = True
+    body._str_names = names
+    body._str_vals = vals
+    return body
+
+# Required string field: one parse, one key scan, no ValidatedBody.
+def take_required_string(raw: str, name: str) -> str:
+    try:
+        v: JsonValue = nox.json.parse(raw)
+    except JsonError as e:
+        _reject(e.message)
+        return ""
+    if not nox.json.is_object(v):
+        _reject("beklenen bir JSON nesnesi (object)")
+        return ""
+    i: int = 0
+    n: int = nox.json.object_len(v)
+    while i < n:
+        if nox.json.object_key(v, i) == name:
+            val: JsonValue = nox.json.object_value(v, i)
+            if not nox.json.is_string(val):
+                _reject("alan '" + name + "' icin beklenen tip: string")
+                return ""
+            return nox.json.as_string(val)
+        i = i + 1
+    _reject("eksik zorunlu alan: '" + name + "'")
+    return ""

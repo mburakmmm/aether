@@ -1,7 +1,9 @@
 import nox.test
 import nox.json
 import aether.body
+import aether.dto
 from aether.body import ValidatedBody
+from aether.dto import DtoSchema
 from aether.errors import ValidationError
 
 raw: str = "{\"name\":\"ada\",\"age\":36,\"ok\":true}"
@@ -21,5 +23,33 @@ try:
     nox.test.assert_true(False, "should raise")
 except ValidationError as e:
     nox.test.assert_eq_int(e.status, 422, "status")
+
+echo_schema: DtoSchema = DtoSchema("Echo")
+echo_schema.require("msg", "string")
+nox.test.assert_true(echo_schema.scalar, "plain string schema is scalar")
+fast: ValidatedBody = aether.body.accept_scalar("{\"msg\":\"hello\"}", echo_schema)
+nox.test.assert_true(fast.get_str("msg") == "hello", "cached msg")
+nox.test.assert_true(aether.body.take_required_string("{\"msg\":\"hello\"}", "msg") == "hello", "one string")
+nox.test.assert_true(fast.get_str_or("other", "x") == "x", "cached default")
+
+try:
+    aether.body.accept_scalar("{}", echo_schema)
+    nox.test.assert_true(False, "missing msg should raise")
+except ValidationError as missing:
+    nox.test.assert_eq_int(missing.status, 422, "missing status")
+    nox.test.assert_true(len(missing.details) == 1, "missing detail")
+
+try:
+    aether.body.accept_scalar("{\"msg\":1}", echo_schema)
+    nox.test.assert_true(False, "bad type should raise")
+except ValidationError as bad_type:
+    nox.test.assert_eq_int(bad_type.status, 422, "type status")
+
+opt: DtoSchema = DtoSchema("Opt")
+opt.require("msg", "string")
+opt.optional("note", "string")
+both: ValidatedBody = aether.body.accept_scalar("{\"note\":\"n\",\"msg\":\"m\"}", opt)
+nox.test.assert_true(both.get_str("msg") == "m", "msg with extra order")
+nox.test.assert_true(both.get_str("note") == "n", "optional note")
 
 print("body_test ok")

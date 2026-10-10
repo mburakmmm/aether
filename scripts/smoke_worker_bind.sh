@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${AETHER_PORT:-34670}"
 WORKERS="${AETHER_WORKERS:-4}"
-MODE="${AETHER_PROBE_MODE:-qbe}" # qbe | release
+MODE="${AETHER_PROBE_MODE:-llvm}" # llvm (default noxc) | qbe | release
 REQUESTS="${AETHER_PROBE_REQUESTS:-400}"
 PARALLEL="${AETHER_PROBE_PARALLEL:-40}"
 MARKERS="${AETHER_BOOT_MARKERS:-/tmp/aether-boot-markers}"
@@ -72,9 +72,13 @@ if [[ "$MODE" == "release" ]]; then
   noxc build --release -o "$BIN" benchmarks/worker_probe/main.nox
   "$BIN" >"$LOG" 2>&1 &
   PID=$!
-else
+elif [[ "$MODE" == "qbe" ]]; then
   echo "starting QBE probe (workers=$WORKERS)..."
-  noxc run benchmarks/worker_probe/main.nox >"$LOG" 2>&1 &
+  noxc run --backend qbe benchmarks/worker_probe/main.nox >"$LOG" 2>&1 &
+  PID=$!
+else
+  echo "starting LLVM probe (workers=$WORKERS)..."
+  noxc run --backend llvm benchmarks/worker_probe/main.nox >"$LOG" 2>&1 &
   PID=$!
 fi
 

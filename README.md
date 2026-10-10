@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.7.2 · **License:** MIT · **Requires Nox ≥ 1.171.2**  
+**Version:** 0.8.0 · **License:** MIT · **Requires Nox ≥ 2.0.0**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.7.2"
+      "ref": "v0.8.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.7.2
+noxc install github.com/mburakmmm/aether@v0.8.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -100,6 +100,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.8.0
+
+Nox floor **2.0.0**. LLVM is the default backend. `AETHER_WORKERS>1` calls `serve_multicore` on LLVM and on QBE. On LLVM the process pool is fixed at startup, so the process must be started with `NOX_POOL_WORKERS` equal to `AETHER_WORKERS`. A mismatch is an error.
 
 ## What’s new in 0.7.2
 
@@ -276,10 +280,10 @@ Do **not** close over `Application` in that handle (`dispatch(app, req)`). Use
 `dispatch_from_parts(method, target, body, headers, peer_addr, cfg, build)` so the serve
 handle does not escape `req`. Pass `""` instead of `req.peer_addr` on a throughput
 handle so Nox skips the peer-string retain. Each worker slot boots its own `AppBind` via
-`dispatch_ensure` (QBE and `--release`). See [docs/SCOPE.md](docs/SCOPE.md).
+`dispatch_ensure` (LLVM ve QBE). See [docs/SCOPE.md](docs/SCOPE.md).
 
-Production: `NOX_POOL_WORKERS=$AETHER_WORKERS noxc build --release -o app && ./app`
-(Nox ≥ 1.171.2, macOS/arm64). Dev: `./run.sh`. Prefer `./run-release.sh`. `AETHER_IPV6=1` is single-worker.
+Production: `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app`
+(Nox ≥ 2.0.0, macOS/arm64). `--release` aynı LLVM backend’inin optimize halidir. Dev: `./run.sh`. `AETHER_IPV6=1` is single-worker.
 
 ## License
 
