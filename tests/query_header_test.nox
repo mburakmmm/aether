@@ -69,6 +69,7 @@ nox.test.assert_true(nox.strings.contains(ok.body, "s1"), "jwt claims")
 
 missing_q: HttpResponse = aether.testing.get_headers(app, "/search?page=1", headers)
 nox.test.assert_eq_int(missing_q.status, 422, "missing query field")
+nox.test.assert_true(nox.strings.contains(missing_q.body, "missing query parameter: q"), "english missing query")
 
 no_auth: dict[str, str] = {}
 no_auth["X-Client-Id"] = "cli-9"

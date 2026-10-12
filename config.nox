@@ -147,6 +147,8 @@ def defaults(env: str) -> Config:
         # Opt-in like rate limit: avoid per-request CORS cost unless configured.
         cors = ""
         metrics_routes = False
+    # max_body_bytes is 1 MiB. nox.http drops the connection above 10 MiB
+    # and after 30s of read or write, so 413 only covers an accepted body.
     return Config(
         env,
         "0.0.0.0",

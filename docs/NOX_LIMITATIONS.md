@@ -1,8 +1,8 @@
 # Nox limitations (Aether evidence)
 
-Aether targets **Nox ≥ 2.0.0**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
+Aether targets **Nox ≥ 2.0.7**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
 
-Rechecked **2026-10-11** against nox-lang **2.0.0**. LLVM is the default backend; QBE is `--backend qbe`. The two backends match on language results (overflow traps, keyword evaluation order). `serve_multicore` is still the multicore entry on both: LLVM flattens it into the M:N pool, QBE starts OS threads. Aether calls it whenever `AETHER_WORKERS>1` and refuses to start unless `NOX_POOL_WORKERS` already matches, because the LLVM pool size is fixed at process start. Nox 1.143–2.0 syntax (`in`, `break`, comprehensions, `set`, f-strings, dunder methods, NNI) does not replace an Aether API. `nox.json` names stay `parse` / `dump` / `dump_string`.
+Rechecked **2026-10-12** against nox-lang **2.0.8** (source) and the published compiler **2.0.7**. LLVM is the default backend; QBE is `--backend qbe`. The two backends match on language results (overflow traps, keyword evaluation order). `serve_multicore` is still the multicore entry on both: LLVM flattens it into the M:N pool, QBE starts OS threads. Aether calls it whenever `AETHER_WORKERS>1` and refuses to start unless `NOX_POOL_WORKERS` already matches, because the LLVM pool size is fixed at process start. Since 2.0.1, compiler diagnostics and stdlib exception text are English. The scalar body fast path copies the `nox.validate` sentences so a one-field schema and `nox.validate` return the same detail. Nox 2.0.2–2.0.8 (known-target escape, list-index strength reduction, hosted riscv64, NNI list/dict, cross-file navigation) does not replace an Aether API. `nox.json` names stay `parse` / `dump` / `dump_string`.
 
 Still open in Nox: qualified type names in annotations (item 11). Partial: `serve_multicore*` still rejects closures and still binds IPv4 itself (items 4 and 19); `nox.atomic` is int/bool only (item 12); `decorator_handler` still only returns top-level `(Context) -> HttpResponse` (item 3). List assignment still copies (item 15); chained `append` does not.
 
@@ -25,6 +25,8 @@ These landed after 1.29.8. Aether code already matches them.
 | `a.b.c.xs.append` mutates a nested list field | 1.142.8 | `app.route_table.routes.append` and `route.guards.append` |
 | `nox.http.listen_v6(port, v6_only)` + bracketed IPv6 `peer_addr` | 1.142.10 | `AETHER_IPV6=1` uses `serve_fd`. `serve_multicore` stays IPv4. `client_ip()` strips the port |
 | `s = s + x` grows in place | 1.142.17 | JSON and error builders benefit without an API change |
+| `nox.http` read and write timeouts are 30s; a request body above **10 MiB** is dropped before the handler runs | 1.158.0 write timeout; body cap is the server constant `MAX_REQUEST_BODY_BYTES` | `AETHER_MAX_BODY_BYTES` defaults to 1 MiB and returns 413 only for bodies the runtime already accepted. `serve` / `serve_fd` / `serve_multicore` argument lists are unchanged (`max_connections` stays optional) |
+| `nox.http` `HttpError`, TLS context logs, `nox.websocket` errors, and `nox.url` query errors are English | 2.0.1 | Aether forwards `query_float` / `query_bool` `ValueError.message`. A missing query parameter uses the same sentence: `missing query parameter: <name>`. Listen failures are `listen failed` / `IPv6 listen failed` / `request failed` from stdlib, not Aether strings |
 
 `spawn` of a function that mutates a shared `list` / `dict` / `class` is a compile error on `--release` (1.30.0, deepened through 1.46.0). Aether does not call `spawn`. HTTP handlers are not spawn targets.
 
@@ -89,8 +91,7 @@ These landed after 1.29.8. Aether code already matches them.
 **Impact:** Cannot pass `app.dispatch` method or lambda to `nox.http.serve`. Templates must define `def handle(req): ...`.
 
 **Evidence:**
-- `stdlib/nox/router.nox` header comments (serve handle is compile-time intrinsic)
-- Nyx `docs/NOX_LIMITATIONS.md` / `server.nox` (same constraint)
+- Checker (`compiler/typecheck/checker.zig`), English since 2.0.1: `'handle' must be a plain function name (a closure handler is NOT supported in this variant: in the default build the multicore workers use a SEPARATE RuntimeState, so a closure from the main runtime cannot be passed to them)`
 - HTTP intrinsic codegen: `compiler/codegen_qbe/http_intrinsics.zig` (`genHttpServe`)
 
 **Desired Nox change:** Allow first-class function values (or bound methods) as serve handlers.
@@ -264,7 +265,7 @@ These landed after 1.29.8. Aether code already matches them.
 - `obj.field.append(x)` is rejected: `append` only allowed on a bare variable (`xs.append(v)` then `obj.field = xs`)
 
 **Evidence:**
-- Minimal local empty-list field init → codegen "desteklenmeyen yapı"
+- Minimal local empty-list field init → codegen "this program contains a construct that is not supported at the moment"
 - Works: class field + `self.names = []` (Nyx `JobRegistry` pattern)
 - Debug: `after_builder=1` / `after_app=0` before `RouteTable` fix
 
@@ -326,7 +327,7 @@ These landed after 1.29.8. Aether code already matches them.
 
 **Status:** `partial` (Nox 1.133 closures work for `serve` / `serve_fd`, not `serve_multicore*`). Multicore entrypoints still use a top-level `handle` and `boot_for_serve`.
 
-**Impact:** The idiomatic Nest/Express pattern `def handle(req): return dispatch(app, req)` fails codegen when `app: Application` is a free variable of the serve handler (`desteklenmeyen yapı`). Config and simple values are fine; capturing the framework Application graph is not.
+**Impact:** The idiomatic Nest/Express pattern `def handle(req): return dispatch(app, req)` fails codegen when `app: Application` is a free variable of the serve handler (`codegen: this program contains a construct that is not supported at the moment`). Config and simple values are fine; capturing the framework Application graph is not.
 
 **Evidence:**
 - Minimal repro: boot + `handle` referencing `app` + `nox.http.serve` → codegen error
@@ -352,4 +353,4 @@ See `docs/SCOPE.md`.
 3. Shared objects across workers beyond `AtomicInt` / `AtomicBool` (item 12).
 4. List-assignment copy semantics (item 15). Chained `append` is closed.
 
-Nox 2.0 makes LLVM the default backend and matches QBE on language results. Aether’s multicore path is `serve_multicore` on both, with the LLVM pool sized by `NOX_POOL_WORKERS` before exec. Qualified annotations, multicore closures, and sharing beyond `nox.atomic` stay open.
+Nox 2.0 makes LLVM the default backend and matches QBE on language results. 2.0.1–2.0.8 did not close the items above. Aether’s multicore path is `serve_multicore` on both, with the LLVM pool sized by `NOX_POOL_WORKERS` before exec. Qualified annotations, multicore closures, and sharing beyond `nox.atomic` stay open.

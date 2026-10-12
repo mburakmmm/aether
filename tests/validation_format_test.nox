@@ -1,4 +1,5 @@
 import nox.test
+import nox.strings
 import aether.dto
 from aether.dto import DtoSchema, validate_json_str
 
@@ -9,12 +10,12 @@ ok: list[str] = validate_json_str("{\"email\":\"ada@example.com\"}", email_schem
 nox.test.assert_eq_int(len(ok), 0, "valid email")
 
 bad: list[str] = validate_json_str("{\"email\":\"not-an-email\"}", email_schema)
-nox.test.assert_true(len(bad) > 0, "invalid email")
+nox.test.assert_eq_str(bad[0], "field 'email' is not a valid email address", "english email")
 
 uri_schema: DtoSchema = DtoSchema("Link")
 uri_schema.require_format("url", "string", "uri")
 bad_uri: list[str] = validate_json_str("{\"url\":\"ftp://no\"}", uri_schema)
-nox.test.assert_true(len(bad_uri) > 0, "invalid uri")
+nox.test.assert_eq_str(bad_uri[0], "field 'url' is not a valid uri", "english uri")
 
 ok_uri: list[str] = validate_json_str("{\"url\":\"https://example.com\"}", uri_schema)
 nox.test.assert_eq_int(len(ok_uri), 0, "valid uri")
@@ -22,6 +23,6 @@ nox.test.assert_eq_int(len(ok_uri), 0, "valid uri")
 range_schema: DtoSchema = DtoSchema("Age")
 range_schema.require_number_range("age", 1, 120)
 bad_range: list[str] = validate_json_str("{\"age\":0}", range_schema)
-nox.test.assert_true(len(bad_range) > 0, "age too small")
+nox.test.assert_true(nox.strings.contains(bad_range[0], "must be at least"), "english range")
 
 print("validation_format_test ok")

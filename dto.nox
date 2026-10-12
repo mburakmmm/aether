@@ -184,13 +184,13 @@ def _check_format(field: Field, v: JsonValue) -> str:
     s: str = nox.json.as_string(v)
     if field.format_name == "email":
         if not _looks_email(s):
-            return "alan '" + field.name + "' icin gecersiz email"
+            return "field '" + field.name + "' is not a valid email address"
     if field.format_name == "uuid":
         if not nox.uuid.is_valid(s):
-            return "alan '" + field.name + "' icin gecersiz uuid"
+            return "field '" + field.name + "' is not a valid uuid"
     if field.format_name == "uri":
         if not _looks_uri(s):
-            return "alan '" + field.name + "' icin gecersiz uri"
+            return "field '" + field.name + "' is not a valid uri"
     return ""
 
 def validate_value(v: JsonValue, schema: DtoSchema) -> list[str]:

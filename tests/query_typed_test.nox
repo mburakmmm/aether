@@ -43,6 +43,7 @@ nox.test.assert_eq_int(bad.status, 422, "bad number")
 
 bad_bool: HttpResponse = aether.testing.get(app, "/page?page=1&on=yes")
 nox.test.assert_eq_int(bad_bool.status, 422, "bad bool")
+nox.test.assert_true(nox.strings.contains(bad_bool.body, "invalid bool value for query parameter: on=yes"), "english query bool")
 
 aether.application.shutdown(app)
 print("query_typed_test ok")

@@ -183,7 +183,7 @@ def accept_scalar(raw: str, schema: DtoSchema) -> ValidatedBody:
         _reject(e.message)
         return ValidatedBody(raw)
     if not nox.json.is_object(v):
-        _reject("beklenen bir JSON nesnesi (object)")
+        _reject("expected a JSON object")
     names: list[str] = []
     vals: list[str] = []
     seen: list[str] = []
@@ -196,7 +196,7 @@ def accept_scalar(raw: str, schema: DtoSchema) -> ValidatedBody:
             if not _seen(seen, key):
                 val: JsonValue = nox.json.object_value(v, i)
                 if not _kind_ok(val, found.kind):
-                    _reject("alan '" + key + "' icin beklenen tip: " + found.kind)
+                    _reject("field '" + key + "' expected type: " + found.kind)
                 seen.append(key)
                 if found.kind == "string":
                     names.append(key)
@@ -207,7 +207,7 @@ def accept_scalar(raw: str, schema: DtoSchema) -> ValidatedBody:
         field: Field = schema.fields[j]
         if field.required:
             if not _seen(seen, field.name):
-                _reject("eksik zorunlu alan: '" + field.name + "'")
+                _reject("missing required field: '" + field.name + "'")
         j = j + 1
     body: ValidatedBody = ValidatedBody(raw)
     held: list[JsonValue] = []
@@ -226,7 +226,7 @@ def take_required_string(raw: str, name: str) -> str:
         _reject(e.message)
         return ""
     if not nox.json.is_object(v):
-        _reject("beklenen bir JSON nesnesi (object)")
+        _reject("expected a JSON object")
         return ""
     i: int = 0
     n: int = nox.json.object_len(v)
@@ -234,9 +234,9 @@ def take_required_string(raw: str, name: str) -> str:
         if nox.json.object_key(v, i) == name:
             val: JsonValue = nox.json.object_value(v, i)
             if not nox.json.is_string(val):
-                _reject("alan '" + name + "' icin beklenen tip: string")
+                _reject("field '" + name + "' expected type: string")
                 return ""
             return nox.json.as_string(val)
         i = i + 1
-    _reject("eksik zorunlu alan: '" + name + "'")
+    _reject("missing required field: '" + name + "'")
     return ""

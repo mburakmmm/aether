@@ -33,13 +33,13 @@ def _hex_nibble(b: int) -> int:
         return b - 87
     if b >= 65 and b <= 70:
         return b - 55
-    raise Base64Error("gecersiz hex karakteri")
+    raise Base64Error("invalid hex character")
 
 # HMAC hex (nox.crypto.hmac_sha256) -> raw bytes -> base64url.
 def encode_hex_url(hex_data: str) -> str:
     n: int = nox.strings.byte_len(hex_data)
     if n % 2 != 0:
-        raise Base64Error("hex uzunlugu cift olmali")
+        raise Base64Error("hex length must be even")
     raw: str = ""
     i: int = 0
     while i + 1 < n:

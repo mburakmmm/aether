@@ -1,5 +1,6 @@
 import nox.test
 import nox.json
+import nox.validate
 import aether.body
 import aether.dto
 from aether.body import ValidatedBody
@@ -38,12 +39,26 @@ try:
 except ValidationError as missing:
     nox.test.assert_eq_int(missing.status, 422, "missing status")
     nox.test.assert_true(len(missing.details) == 1, "missing detail")
+    empty: JsonValue = nox.json.parse("{}")
+    missing_std: list[str] = nox.validate.validate(empty, echo_schema.flat())
+    nox.test.assert_eq_str(missing.details[0], missing_std[0], "missing matches nox.validate")
 
 try:
     aether.body.accept_scalar("{\"msg\":1}", echo_schema)
     nox.test.assert_true(False, "bad type should raise")
 except ValidationError as bad_type:
     nox.test.assert_eq_int(bad_type.status, 422, "type status")
+    typed: JsonValue = nox.json.parse("{\"msg\":1}")
+    type_std: list[str] = nox.validate.validate(typed, echo_schema.flat())
+    nox.test.assert_eq_str(bad_type.details[0], type_std[0], "type matches nox.validate")
+
+try:
+    aether.body.take_required_string("[]", "msg")
+    nox.test.assert_true(False, "array should raise")
+except ValidationError as not_obj:
+    arr: JsonValue = nox.json.parse("[]")
+    obj_std: list[str] = nox.validate.validate(arr, echo_schema.flat())
+    nox.test.assert_eq_str(not_obj.details[0], obj_std[0], "non-object matches nox.validate")
 
 opt: DtoSchema = DtoSchema("Opt")
 opt.require("msg", "string")

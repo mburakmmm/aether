@@ -81,7 +81,7 @@ def _query_to_json(q: dict[str, str], schema: DtoSchema) -> str:
         if not present or len(raw) == 0:
             if field.required:
                 details: list[str] = []
-                details.append("missing " + name)
+                details.append("missing query parameter: " + name)
                 raise ValidationError("query validation failed", details)
         else:
             if written > 0:

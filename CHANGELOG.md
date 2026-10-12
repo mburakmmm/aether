@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1 — 2026-10-12
+
+Nox floor **2.0.7** (latest published compiler). Reviewed 2.0.1 through 2.0.8.
+
+- 2.0.1 made stdlib exception text English. The single-field body fast path now uses the same `nox.validate` sentences (`expected a JSON object`, `missing required field`, `expected type`). Format and range errors come from `nox.validate` and are English as well. `uri` stays Aether-only, in the same wording
+- `nox.http` listen and client errors, TLS context logs, WebSocket errors, and the `serve*` handler diagnostics are English too. Call shapes are unchanged. Query validation forwards `nox.url` messages (`missing query parameter`, `invalid bool value for query parameter`). The runtime still drops a body above 10 MiB and stalls a read or write after 30s, before Aether can return 413
+- 2.0.2–2.0.8 (known-target escape, list-index strength reduction, hosted riscv64, NNI list/dict, cross-file navigation) do not change an Aether call. 2.0.8 is tagged; its binary release is not published yet, so CI installs **v2.0.7**
+
 ## 0.8.0 — 2026-10-11
 
 Nox floor **2.0.0**. LLVM is the default `noxc` backend; QBE is `--backend qbe`.
