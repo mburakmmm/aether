@@ -18,6 +18,7 @@ jobs:
         run: |
           curl -fsSL https://raw.githubusercontent.com/mburakmmm/nox-lang/main/install.sh | NOX_VERSION=v2.0.63 bash
           echo "$HOME/.nox-lang/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.nox/bin" >> "$GITHUB_PATH"
 
       - name: Tag matches VERSION and refs
         run: |
