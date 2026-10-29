@@ -1,0 +1,18 @@
+import nox.test
+import nox.strings
+import aether.logx
+
+fields: dict[str, str] = {}
+fields["user"] = "ada"
+fields["password"] = "hunter2"
+fields["note"] = "reset password=hunter2 now"
+safe: dict[str, str] = aether.logx.redact_fields(fields)
+nox.test.assert_eq_str(safe["user"], "ada", "plain field")
+nox.test.assert_eq_str(safe["password"], "***", "secret field")
+
+line: str = aether.logx.request_fields(fields)
+nox.test.assert_true(nox.strings.contains(line, "\"password\":\"***\""), "json secret")
+nox.test.assert_true(not nox.strings.contains(line, "hunter2"), "assignment masked")
+nox.test.assert_true(nox.strings.contains(line, "password=***"), "assignment form")
+
+print("log_redact_test ok")

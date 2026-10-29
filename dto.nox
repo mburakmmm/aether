@@ -4,7 +4,11 @@ import nox.json
 import nox.validate
 import nox.strings
 import nox.uuid
+import nox.url
+import nox.regex
 from nox.json import JsonError
+from nox.url import UrlError, URL
+from nox.regex import RegexError, Match
 from nox.validate import Schema
 import aether.errors
 from aether.errors import ValidationError
@@ -20,6 +24,11 @@ class Field:
     maximum: int
     has_min: bool
     has_max: bool
+    pattern: str
+    has_min_len: bool
+    min_len: int
+    has_max_len: bool
+    max_len: int
 
     def __init__(
         self: Field,
@@ -40,6 +49,11 @@ class Field:
         self.maximum = 0
         self.has_min = False
         self.has_max = False
+        self.pattern = ""
+        self.has_min_len = False
+        self.min_len = 0
+        self.has_max_len = False
+        self.max_len = 0
 
 class DtoSchema:
     name: str
@@ -99,6 +113,41 @@ class DtoSchema:
         self._flat.require(name, "number")
         self._flat.min(name, float(str(minimum)))
         self._flat.max(name, float(str(maximum)))
+
+    def _field_named(self: DtoSchema, name: str) -> Field:
+        i: int = 0
+        while i < len(self.fields):
+            if self.fields[i].name == name:
+                return self.fields[i]
+            i = i + 1
+        raise ValueError("rule not found: " + name)
+
+    # Same engine and sentence as nox.validate: unanchored nox.regex.is_match.
+    def pattern(self: DtoSchema, name: str, regex: str) -> None:
+        try:
+            checked: Match | None = nox.regex.match(regex, "")
+            if checked == None:
+                pass
+        except RegexError as e:
+            raise ValueError(e.message)
+        self.scalar = False
+        self._flat.pattern(name, regex)
+        found: Field = self._field_named(name)
+        found.pattern = regex
+
+    def min_length(self: DtoSchema, name: str, n: int) -> None:
+        self.scalar = False
+        self._flat.min_length(name, n)
+        found: Field = self._field_named(name)
+        found.has_min_len = True
+        found.min_len = n
+
+    def max_length(self: DtoSchema, name: str, n: int) -> None:
+        self.scalar = False
+        self._flat.max_length(name, n)
+        found: Field = self._field_named(name)
+        found.has_max_len = True
+        found.max_len = n
 
     def require_object(self: DtoSchema, name: str, nested: DtoSchema) -> None:
         self.scalar = False
@@ -167,12 +216,16 @@ def _substr_from(s: str, start: int) -> str:
         i = i + 1
     return out
 
-def _looks_uri(s: str) -> bool:
-    if nox.strings.starts_with(s, "http://"):
-        return True
-    if nox.strings.starts_with(s, "https://"):
-        return True
-    return False
+def _valid_uri(s: str) -> bool:
+    try:
+        u: URL = nox.url.parse(s)
+    except UrlError as e:
+        return False
+    if u.scheme != "http" and u.scheme != "https":
+        return False
+    if len(u.host) == 0:
+        return False
+    return True
 
 def _check_format(field: Field, v: JsonValue) -> str:
     if len(field.format_name) == 0:
@@ -189,7 +242,7 @@ def _check_format(field: Field, v: JsonValue) -> str:
         if not nox.uuid.is_valid(s):
             return "field '" + field.name + "' is not a valid uuid"
     if field.format_name == "uri":
-        if not _looks_uri(s):
+        if not _valid_uri(s):
             return "field '" + field.name + "' is not a valid uri"
     return ""
 

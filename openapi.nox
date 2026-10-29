@@ -15,6 +15,12 @@ def _field_schema_json(field: Field, nested_ref: bool) -> str:
     body: str = "{\"type\":" + nox.json.dump_string(field.kind)
     if len(field.format_name) > 0:
         body = body + ",\"format\":" + nox.json.dump_string(field.format_name)
+    if len(field.pattern) > 0:
+        body = body + ",\"pattern\":" + nox.json.dump_string(field.pattern)
+    if field.has_min_len:
+        body = body + ",\"minLength\":" + str(field.min_len)
+    if field.has_max_len:
+        body = body + ",\"maxLength\":" + str(field.max_len)
     if field.kind == "number":
         if field.has_min:
             body = body + ",\"minimum\":" + str(field.minimum)

@@ -35,6 +35,9 @@ app: Application = aether.application.boot_with_config(cfg, build)
 
 ok: HttpResponse = aether.testing.get(app, "/page?page=3&on=true")
 nox.test.assert_eq_int(ok.status, 200, "typed query ok")
+
+padded: HttpResponse = aether.testing.get(app, "/page?page=%203&on=true")
+nox.test.assert_eq_int(padded.status, 200, "padded number")
 nox.test.assert_true(nox.strings.contains(ok.body, "page"), "page key")
 nox.test.assert_true(nox.strings.contains(ok.body, "true"), "bool true")
 

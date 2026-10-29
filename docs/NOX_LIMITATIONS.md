@@ -1,8 +1,8 @@
 # Nox limitations (Aether evidence)
 
-Aether targets **Nox ≥ 2.0.7**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
+Aether targets **Nox ≥ 2.0.63**. This document lists language/runtime gaps that block NestJS-identical ergonomics. Each item has **impact**, **evidence in nox-lang**, **desired Nox change**, and **Aether workaround**.
 
-Rechecked **2026-10-12** against nox-lang **2.0.8** (source) and the published compiler **2.0.7**. LLVM is the default backend; QBE is `--backend qbe`. The two backends match on language results (overflow traps, keyword evaluation order). `serve_multicore` is still the multicore entry on both: LLVM flattens it into the M:N pool, QBE starts OS threads. Aether calls it whenever `AETHER_WORKERS>1` and refuses to start unless `NOX_POOL_WORKERS` already matches, because the LLVM pool size is fixed at process start. Since 2.0.1, compiler diagnostics and stdlib exception text are English. The scalar body fast path copies the `nox.validate` sentences so a one-field schema and `nox.validate` return the same detail. Nox 2.0.2–2.0.8 (known-target escape, list-index strength reduction, hosted riscv64, NNI list/dict, cross-file navigation) does not replace an Aether API. `nox.json` names stay `parse` / `dump` / `dump_string`.
+Rechecked **2026-10-29** against nox-lang **2.0.68** (source) and the published compiler **2.0.63**. LLVM is the default backend; QBE is `--backend qbe`. The two backends match on language results (overflow traps, keyword evaluation order). `serve_multicore` is still the multicore entry on both: LLVM flattens it into the M:N pool, QBE starts OS threads. Aether calls it whenever `AETHER_WORKERS>1` and refuses to start unless `NOX_POOL_WORKERS` already matches, because the LLVM pool size is fixed at process start. Since 2.0.1, compiler diagnostics and stdlib exception text are English. The scalar body fast path copies the `nox.validate` sentences so a one-field schema and `nox.validate` return the same detail. `nox.json` names stay `parse` / `dump` / `dump_string`. Generators, mixins, `@property`, and `*args` (2.0.49–2.0.68) do not replace an Aether API.
 
 Still open in Nox: qualified type names in annotations (item 11). Partial: `serve_multicore*` still rejects closures and still binds IPv4 itself (items 4 and 19); `nox.atomic` is int/bool only (item 12); `decorator_handler` still only returns top-level `(Context) -> HttpResponse` (item 3). List assignment still copies (item 15); chained `append` does not.
 
@@ -27,6 +27,10 @@ These landed after 1.29.8. Aether code already matches them.
 | `s = s + x` grows in place | 1.142.17 | JSON and error builders benefit without an API change |
 | `nox.http` read and write timeouts are 30s; a request body above **10 MiB** is dropped before the handler runs | 1.158.0 write timeout; body cap is the server constant `MAX_REQUEST_BODY_BYTES` | `AETHER_MAX_BODY_BYTES` defaults to 1 MiB and returns 413 only for bodies the runtime already accepted. `serve` / `serve_fd` / `serve_multicore` argument lists are unchanged (`max_connections` stays optional) |
 | `nox.http` `HttpError`, TLS context logs, `nox.websocket` errors, and `nox.url` query errors are English | 2.0.1 | Aether forwards `query_float` / `query_bool` `ValueError.message`. A missing query parameter uses the same sentence: `missing query parameter: <name>`. Listen failures are `listen failed` / `IPv6 listen failed` / `request failed` from stdlib, not Aether strings |
+| `nox.url.parse` accepts bracketed IPv6 hosts; `int()` / `float()` strip surrounding ASCII space | 2.0.30 | `uri` fields call `nox.url.parse` and require scheme `http` or `https` plus a non-empty host. Query numbers such as `%203` pass |
+| `nox.http.request` / `put` / `patch` / `delete` / `head` / `options`, `HttpTimeoutError`, and response bodies may contain NUL | 2.0.31 | Aether has no outbound client. Apps call `nox.http.request` themselves. JSON bodies still fail `nox.json.parse` when they are not JSON |
+| `nox.log.redact` / `mask_assignments` | 2.0.45 | `aether.logx` replaces secret field values and masks `key=value` text. Access logs use `redact_line` |
+| `nox.regex` and `Schema.pattern` / `min_length` / `max_length` | 2.0.57 | `DtoSchema.pattern` / `min_length` / `max_length` call `nox.validate`. The 422 sentence is the stdlib one. A bad pattern raises `ValueError` when the schema is built |
 
 `spawn` of a function that mutates a shared `list` / `dict` / `class` is a compile error on `--release` (1.30.0, deepened through 1.46.0). Aether does not call `spawn`. HTTP handlers are not spawn targets.
 
@@ -135,7 +139,7 @@ These landed after 1.29.8. Aether code already matches them.
 
 ## 7. `nox.validate` is flat object-only (no nested/format API)
 
-**Status:** `closed` (Nox 1.135). `DtoSchema` writes nested objects, typed arrays, `min`/`max`, and email/uuid `format` onto `Schema`. `uri` stays in Aether.
+**Status:** `closed` (Nox 1.135; `pattern` uses `nox.regex` since 2.0.57). `DtoSchema` writes nested objects, typed arrays, `min`/`max`, email/uuid `format`, `pattern`, and string length onto `Schema`. `uri` stays in Aether.
 
 **Impact:** Nested DTO and format/min/max/pattern need framework code.
 
@@ -145,7 +149,7 @@ These landed after 1.29.8. Aether code already matches them.
 
 **Desired Nox change:** Nested schema API + format/min/max/pattern rules.
 
-**Aether workaround:** `aether.dto` recursive validation + OpenAPI field metadata (`format`, `minimum`, …) owned by Aether.
+**Aether:** `pattern`, `min_length`, and `max_length` delegate to `nox.validate`. OpenAPI emits `pattern`, `minLength`, and `maxLength`. `uri` is still checked with `nox.url.parse`.
 
 ---
 
@@ -353,4 +357,4 @@ See `docs/SCOPE.md`.
 3. Shared objects across workers beyond `AtomicInt` / `AtomicBool` (item 12).
 4. List-assignment copy semantics (item 15). Chained `append` is closed.
 
-Nox 2.0 makes LLVM the default backend and matches QBE on language results. 2.0.1–2.0.8 did not close the items above. Aether’s multicore path is `serve_multicore` on both, with the LLVM pool sized by `NOX_POOL_WORKERS` before exec. Qualified annotations, multicore closures, and sharing beyond `nox.atomic` stay open.
+Nox 2.0 makes LLVM the default backend and matches QBE on language results. 2.0.9–2.0.68 did not close the items above. Aether’s multicore path is `serve_multicore` on both, with the LLVM pool sized by `NOX_POOL_WORKERS` before exec. Qualified annotations, multicore closures, and sharing beyond `nox.atomic` stay open.

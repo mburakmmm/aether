@@ -20,6 +20,7 @@ import aether.metrics
 import aether.swagger
 import aether.lifecycle
 import aether.server
+import aether.logx
 from aether.config import Config
 from aether.container import Container
 from aether.context import HttpContext, begin, finish, path_only, normalize_path
@@ -190,7 +191,9 @@ def _field_sig(f: Field) -> str:
     return (
         f.name + ":" + f.kind + ":" + str(f.required) + ":" + f.format_name +
         ":" + f.item_kind + ":" + str(f.has_min) + ":" + str(f.minimum) +
-        ":" + str(f.has_max) + ":" + str(f.maximum)
+        ":" + str(f.has_max) + ":" + str(f.maximum) + ":" + f.pattern +
+        ":" + str(f.has_min_len) + ":" + str(f.min_len) +
+        ":" + str(f.has_max_len) + ":" + str(f.max_len)
     )
 
 def _fields_fingerprint(schema: DtoSchema) -> str:
@@ -380,9 +383,9 @@ def _complete_request(
             app.metrics.record_route_key(route_key)
     if app.config.log_requests:
         elapsed: int = nox.time.now_ms() - started
-        nox.log.info(
+        nox.log.info(aether.logx.redact_line(
             req.method + " " + path + " -> " + str(out.status) + " " + str(elapsed) + "ms id=" + rid
-        )
+        ))
     return out
 
 def dispatch(app: Application, req: HttpRequest) -> HttpResponse:

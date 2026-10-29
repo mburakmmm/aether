@@ -17,12 +17,48 @@ uri_schema.require_format("url", "string", "uri")
 bad_uri: list[str] = validate_json_str("{\"url\":\"ftp://no\"}", uri_schema)
 nox.test.assert_eq_str(bad_uri[0], "field 'url' is not a valid uri", "english uri")
 
+bare_uri: list[str] = validate_json_str("{\"url\":\"http://\"}", uri_schema)
+nox.test.assert_eq_str(bare_uri[0], "field 'url' is not a valid uri", "bare http")
+
 ok_uri: list[str] = validate_json_str("{\"url\":\"https://example.com\"}", uri_schema)
 nox.test.assert_eq_int(len(ok_uri), 0, "valid uri")
+
+ok_v6: list[str] = validate_json_str("{\"url\":\"http://[::1]:8080/\"}", uri_schema)
+nox.test.assert_eq_int(len(ok_v6), 0, "ipv6 uri")
 
 range_schema: DtoSchema = DtoSchema("Age")
 range_schema.require_number_range("age", 1, 120)
 bad_range: list[str] = validate_json_str("{\"age\":0}", range_schema)
 nox.test.assert_true(nox.strings.contains(bad_range[0], "must be at least"), "english range")
+
+code_schema: DtoSchema = DtoSchema("Code")
+code_schema.require("code", "string")
+code_schema.pattern("code", "^[A-Z]{2}$")
+ok_code: list[str] = validate_json_str("{\"code\":\"AB\"}", code_schema)
+nox.test.assert_eq_int(len(ok_code), 0, "pattern match")
+bad_code: list[str] = validate_json_str("{\"code\":\"ab\"}", code_schema)
+nox.test.assert_eq_str(bad_code[0], "field 'code' does not match the pattern: ^[A-Z]{2}$", "pattern sentence")
+loose: DtoSchema = DtoSchema("Loose")
+loose.require("code", "string")
+loose.pattern("code", "A")
+ok_loose: list[str] = validate_json_str("{\"code\":\"xAy\"}", loose)
+nox.test.assert_eq_int(len(ok_loose), 0, "unanchored pattern")
+
+len_schema: DtoSchema = DtoSchema("Name")
+len_schema.require("name", "string")
+len_schema.min_length("name", 3)
+len_schema.max_length("name", 5)
+short: list[str] = validate_json_str("{\"name\":\"ab\"}", len_schema)
+nox.test.assert_eq_str(short[0], "field 'name' must be at least 3 characters", "min length")
+long: list[str] = validate_json_str("{\"name\":\"abcdef\"}", len_schema)
+nox.test.assert_eq_str(long[0], "field 'name' must be at most 5 characters", "max length")
+
+try:
+    broken: DtoSchema = DtoSchema("Broken")
+    broken.require("code", "string")
+    broken.pattern("code", "[")
+    nox.test.assert_true(False, "invalid pattern should raise")
+except ValueError as e:
+    nox.test.assert_true(nox.strings.contains(e.message, "invalid regular expression"), "pattern compile")
 
 print("validation_format_test ok")

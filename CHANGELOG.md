@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.2 — 2026-10-29
+
+Nox floor **2.0.63** (latest published compiler). Reviewed source through **2.0.68**. `v2.0.64`–`v2.0.68` are tagged without a release archive, so CI installs **v2.0.63**.
+
+- `uri` fields go through `nox.url.parse`. The scheme must be `http` or `https` and the host must be present, so `http://[::1]:8080/` is valid and `http://` is not. The 422 sentence stays `field '<name>' is not a valid uri`
+- `int()` / `float()` strip surrounding ASCII space (2.0.30), so a query number such as `%203` passes
+- String schemas can call `pattern`, `min_length`, and `max_length`. Matching and the 422 sentences come from `nox.validate` / `nox.regex` (unanchored `is_match`). An invalid pattern fails when the schema is built. OpenAPI emits `pattern`, `minLength`, and `maxLength`
+- `aether.logx` replaces secret field values (`password`, `token`, `authorization`, …) and runs `nox.log.mask_assignments` on the line. Access logs use the same mask
+- `serve` call shapes are unchanged. Generators, mixins, `@property`, and `*args` do not replace an Aether API. There is no outbound HTTP client wrapper; apps call `nox.http.request`
+
 ## 0.8.1 — 2026-10-12
 
 Nox floor **2.0.7** (latest published compiler). Reviewed 2.0.1 through 2.0.8.

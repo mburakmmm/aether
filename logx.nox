@@ -1,37 +1,72 @@
 # aether.logx - structured JSON log lines for Aether apps.
+# Secret field names are replaced before encoding. key=value text is masked
+# with nox.log.mask_assignments (Nox 2.0.45).
 
 import nox.json
 import nox.log
+import nox.strings
 import aether.context
 
-def request_fields(extra: dict[str, str]) -> str:
-    body: str = "{"
-    body = body + "\"request_id\":" + nox.json.dump_string(aether.context.current_request_id())
+def _is_secret_key(name: str) -> bool:
+    n: str = nox.strings.lower(name)
+    if n == "password" or n == "passwd" or n == "secret" or n == "token":
+        return True
+    if n == "access_token" or n == "refresh_token" or n == "authorization":
+        return True
+    if n == "api_key" or n == "apikey" or n == "private_key" or n == "client_secret":
+        return True
+    return False
+
+def _secret_keys() -> list[str]:
+    keys: list[str] = []
+    keys.append("password")
+    keys.append("passwd")
+    keys.append("secret")
+    keys.append("token")
+    keys.append("access_token")
+    keys.append("refresh_token")
+    keys.append("authorization")
+    keys.append("api_key")
+    keys.append("apikey")
+    keys.append("private_key")
+    keys.append("client_secret")
+    return keys
+
+def redact_fields(extra: dict[str, str]) -> dict[str, str]:
+    out: dict[str, str] = {}
     keys: list[str] = extra.keys()
     i: int = 0
     while i < len(keys):
         k: str = keys[i]
-        body = body + "," + nox.json.dump_string(k) + ":" + nox.json.dump_string(extra[k])
+        if _is_secret_key(k):
+            out[k] = "***"
+        else:
+            out[k] = extra[k]
         i = i + 1
-    body = body + "}"
-    return body
+    return out
 
-def info(event: str, extra: dict[str, str]) -> None:
-    fields: dict[str, str] = {}
-    keys: list[str] = extra.keys()
+def redact_line(message: str) -> str:
+    return nox.log.mask_assignments(message, _secret_keys())
+
+def request_fields(extra: dict[str, str]) -> str:
+    safe: dict[str, str] = redact_fields(extra)
+    body: str = "{"
+    body = body + "\"request_id\":" + nox.json.dump_string(aether.context.current_request_id())
+    keys: list[str] = safe.keys()
     i: int = 0
     while i < len(keys):
-        fields[keys[i]] = extra[keys[i]]
+        k: str = keys[i]
+        body = body + "," + nox.json.dump_string(k) + ":" + nox.json.dump_string(safe[k])
         i = i + 1
+    body = body + "}"
+    return redact_line(body)
+
+def info(event: str, extra: dict[str, str]) -> None:
+    fields: dict[str, str] = redact_fields(extra)
     fields["event"] = event
     nox.log.info(request_fields(fields))
 
 def error(event: str, extra: dict[str, str]) -> None:
-    fields: dict[str, str] = {}
-    keys: list[str] = extra.keys()
-    i: int = 0
-    while i < len(keys):
-        fields[keys[i]] = extra[keys[i]]
-        i = i + 1
+    fields: dict[str, str] = redact_fields(extra)
     fields["event"] = event
     nox.log.error(request_fields(fields))

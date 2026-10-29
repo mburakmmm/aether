@@ -5,7 +5,7 @@
 **[Nox](https://github.com/mburakmmm/nox-lang) için NestJS esintili API / backend framework’ü.**  
 Pythonic modüller, closure tabanlı DI, guard / pipe / interceptor, typed DTO, OpenAPI + Swagger UI, WebSocket gateway ve SQLite iş kuyrukları.
 
-**Sürüm:** 0.8.1 · **Lisans:** MIT · **Nox ≥ 2.0.7**  
+**Sürüm:** 0.8.2 · **Lisans:** MIT · **Nox ≥ 2.0.63**  
 Paket: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > [Nyx](https://github.com/mburakmmm/nyx)’ten bağımsızdır (Rails tarzı full-stack). HTTP API için **Aether**; HTML monolit için **Nyx**.
@@ -24,7 +24,7 @@ Uygulama `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.8.1"
+      "ref": "v0.8.2"
     }
   ]
 }
@@ -44,12 +44,16 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI iskelet
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.8.1
+noxc install github.com/mburakmmm/aether@v0.8.2
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
 
 ---
+
+## 0.8.2
+
+Nox tabanı **2.0.63**. `uri` alanı `nox.url.parse` ile bakılır (`http`/`https`, host zorunlu, IPv6 literal geçer). Sorgu sayıları kenar boşluğunu kabul eder. Metin şemaları `pattern`, `min_length` ve `max_length` kabul eder (`nox.regex`). Yapılandırılmış günlükler gizli alanları maskeler. `serve` imzaları aynıdır.
 
 ## 0.8.1
 

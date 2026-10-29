@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.8.1 · **License:** MIT · **Requires Nox ≥ 2.0.7**  
+**Version:** 0.8.2 · **License:** MIT · **Requires Nox ≥ 2.0.63**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.8.1"
+      "ref": "v0.8.2"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.8.1
+noxc install github.com/mburakmmm/aether@v0.8.2
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -100,6 +100,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.8.2
+
+Nox floor **2.0.63**. A `uri` field is parsed with `nox.url.parse` (`http`/`https`, host required, IPv6 literals allowed). Query numbers accept surrounding ASCII space. String schemas accept `pattern`, `min_length`, and `max_length` (`nox.regex`). Structured logs mask secret fields. Serve signatures are unchanged.
 
 ## What’s new in 0.8.1
 
@@ -223,7 +227,7 @@ safer WS room defaults, OpenAPI 4xx/5xx + security schemes.
 | Guards / pipes / interceptors | `aether.guard`, `pipe`, `interceptor` |
 | JWT HS256 | `aether.jwt`, `jwt_bearer` |
 | Base64 (URL) | `aether.base64` |
-| DTO validation | `aether.dto` |
+| DTO validation (`pattern`, length) | `aether.dto` |
 | Structured errors | `aether.errors` |
 | OpenAPI 3 + Swagger UI | `aether.openapi`, `aether.swagger` |
 | CORS / rate limit / metrics | `aether.cors`, `rate_limit`, `metrics` |
@@ -287,7 +291,7 @@ handle so Nox skips the peer-string retain. Each worker slot boots its own `AppB
 `dispatch_ensure` (LLVM ve QBE). See [docs/SCOPE.md](docs/SCOPE.md).
 
 Production: `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app`
-(Nox ≥ 2.0.7, macOS/arm64). `--release` aynı LLVM backend’inin optimize halidir. Dev: `./run.sh`. `AETHER_IPV6=1` is single-worker.
+(Nox ≥ 2.0.63, macOS/arm64). `--release` aynı LLVM backend’inin optimize halidir. Dev: `./run.sh`. `AETHER_IPV6=1` is single-worker.
 
 ## License
 
