@@ -4,8 +4,8 @@
 
 - Development / test: `AETHER_WORKERS=1` (single `nox.http.serve`). `noxc run` uses LLVM unless `--backend qbe`.
 - Production: `AETHER_WORKERS` defaults to **1**. Set `AETHER_WORKERS>1` for multicore.
-- Production binary (Nox 2.0.63+, macOS/arm64): `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app` (`--release` is the same LLVM backend with optimizations)
-- Prefer `handle` that reads `req.method/target/body/headers` and calls `dispatch_from_parts` (do not pass `req` — that disables Nox header-skip)
+- Production binary (Nox 2.0.186+, macOS/arm64): `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app` (`--release` is the same LLVM backend with optimizations)
+- Prefer `handle` that reads `req.method/target/body/headers` and calls `dispatch_from_parts` (do not pass `req` — that disables Nox header-skip). Pass `req.conn` from that handle. `handle_bare` does not read `conn`
 - Export `NOX_POOL_WORKERS` **before** exec (`scripts/aether_env.sh`, `./run.sh`). `apply_pool_workers` cannot resize the LLVM `$main` pool.
 - Production CORS is **off** unless `AETHER_CORS_ORIGINS` is set (largest hot-path win)
 - Production route metrics off unless `AETHER_METRICS_ROUTES=1`; status counters off with `AETHER_METRICS=0`
@@ -50,7 +50,7 @@ accept loops, so `require_pool_env` refuses to listen. QBE uses the same
 ```nox
 def handle(req: HttpRequest) -> HttpResponse:
     return aether.application.dispatch_from_parts(
-        req.method, req.target, req.body, req.headers, "", cfg, build
+        req.method, req.target, req.body, req.headers, "", cfg, build, req.conn
     )
 
 workers: int = aether.server.effective_workers(cfg)
@@ -67,20 +67,20 @@ Default remains `AETHER_WORKERS=1`.
 
 ## Bench
 
-See [BENCHMARKS.md](BENCHMARKS.md) for Aether vs NestJS vs Gin vs Axum (`benchmarks/run.sh`).
+See [BENCHMARKS.md](BENCHMARKS.md) for Aether vs NestJS vs Gin vs Axum (`benchmarks/run.sh`). Nox 2.0.127 turns HTTP/2 on by default. wrk is HTTP/1.1, so the harness sets `AETHER_HTTP2=0` and the bench program sets `cfg.http2 = False` before `boot_for_serve`. The result tables were not remeasured for 0.9.0.
 
 ```sh
 # QBE (dev / CI) — pool env required for apples-to-apples --release later
 AETHER_ENV=production AETHER_WORKERS=1 NOX_POOL_WORKERS=1 AETHER_PORT=3000 \
   AETHER_OPENAPI=0 AETHER_CORS_ORIGINS= AETHER_METRICS=0 AETHER_METRICS_ROUTES=0 \
-  AETHER_REQUEST_ID=0 AETHER_REQUEST_HEADERS=0 \
+  AETHER_REQUEST_ID=0 AETHER_REQUEST_HEADERS=0 AETHER_HTTP2=0 \
   noxc run benchmarks/aether/main.nox
 
 # LLVM --release (macOS/arm64 production path)
 AETHER_ENV=production AETHER_WORKERS=1 NOX_POOL_WORKERS=1 \
   AETHER_PORT=3000 \
   AETHER_OPENAPI=0 AETHER_CORS_ORIGINS= AETHER_METRICS=0 AETHER_METRICS_ROUTES=0 \
-  AETHER_REQUEST_ID=0 AETHER_REQUEST_HEADERS=0 \
+  AETHER_REQUEST_ID=0 AETHER_REQUEST_HEADERS=0 AETHER_HTTP2=0 \
   noxc build --release -o /tmp/aether-bench benchmarks/aether/main.nox
 /tmp/aether-bench
 ```

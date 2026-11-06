@@ -33,6 +33,13 @@ class Config:
     request_headers: bool
     ipv6: bool
     ipv6_only: bool
+    max_header_bytes: int
+    read_timeout_ms: int
+    max_connections: int
+    drain_timeout_ms: int
+    http2: bool
+    security_headers: bool
+    log_level: str
 
     def __init__(
         self: Config,
@@ -60,7 +67,14 @@ class Config:
         request_id: bool,
         request_headers: bool,
         ipv6: bool,
-        ipv6_only: bool
+        ipv6_only: bool,
+        max_header_bytes: int,
+        read_timeout_ms: int,
+        max_connections: int,
+        drain_timeout_ms: int,
+        http2: bool,
+        security_headers: bool,
+        log_level: str
     ) -> None:
         self.env = env
         self.host = host
@@ -87,6 +101,13 @@ class Config:
         self.request_headers = request_headers
         self.ipv6 = ipv6
         self.ipv6_only = ipv6_only
+        self.max_header_bytes = max_header_bytes
+        self.read_timeout_ms = read_timeout_ms
+        self.max_connections = max_connections
+        self.drain_timeout_ms = drain_timeout_ms
+        self.http2 = http2
+        self.security_headers = security_headers
+        self.log_level = log_level
 
     def is_development(self: Config) -> bool:
         return self.env == "development"
@@ -136,6 +157,7 @@ def defaults(env: str) -> Config:
     cors: str = "*"
     metrics_routes: bool = True
     metrics_on: bool = True
+    security: bool = False
     if env == "test":
         log_req = False
         jobs = ":memory:"
@@ -147,8 +169,11 @@ def defaults(env: str) -> Config:
         # Opt-in like rate limit: avoid per-request CORS cost unless configured.
         cors = ""
         metrics_routes = False
-    # max_body_bytes is 1 MiB. nox.http drops the connection above 10 MiB
-    # and after 30s of read or write, so 413 only covers an accepted body.
+        security = True
+    # max_body_bytes is 1 MiB. boot_for_serve passes it to nox.http.configure,
+    # so the runtime answers 413 before the handler. 0 leaves Nox's 10 MiB cap.
+    # Header buffer default is 16 KiB, read silence 30s, 4096 connections,
+    # drain wait 10s. http2 follows Nox (on). Bench sets AETHER_HTTP2=0.
     return Config(
         env,
         "0.0.0.0",
@@ -157,7 +182,7 @@ def defaults(env: str) -> Config:
         log_req,
         openapi_on,
         "Aether API",
-        "0.6.4",
+        "0.9.0",
         jobs,
         "",
         "",
@@ -174,7 +199,14 @@ def defaults(env: str) -> Config:
         True,
         True,
         False,
-        False
+        False,
+        16384,
+        30000,
+        4096,
+        10000,
+        True,
+        security,
+        ""
     )
 
 def from_env() -> Config:
@@ -204,7 +236,22 @@ def from_env() -> Config:
     cfg.request_headers = _env_bool("AETHER_REQUEST_HEADERS", cfg.request_headers)
     cfg.ipv6 = _env_bool("AETHER_IPV6", cfg.ipv6)
     cfg.ipv6_only = _env_bool("AETHER_IPV6_ONLY", cfg.ipv6_only)
+    cfg.max_header_bytes = _env_int("AETHER_MAX_HEADER_BYTES", cfg.max_header_bytes)
+    cfg.read_timeout_ms = _env_int("AETHER_READ_TIMEOUT_MS", cfg.read_timeout_ms)
+    cfg.max_connections = _env_int("AETHER_MAX_CONNECTIONS", cfg.max_connections)
+    cfg.drain_timeout_ms = _env_int("AETHER_DRAIN_TIMEOUT_MS", cfg.drain_timeout_ms)
+    cfg.http2 = _env_bool("AETHER_HTTP2", cfg.http2)
+    cfg.security_headers = _env_bool("AETHER_SECURITY_HEADERS", cfg.security_headers)
+    cfg.log_level = _env_or("AETHER_LOG_LEVEL", cfg.log_level)
+    _validate_log_level(cfg.log_level)
     return cfg
+
+def _validate_log_level(level: str) -> None:
+    if len(level) == 0:
+        return
+    if level == "DEBUG" or level == "INFO" or level == "WARN" or level == "ERROR" or level == "OFF":
+        return
+    raise ConfigError("invalid AETHER_LOG_LEVEL: " + level + " (DEBUG|INFO|WARN|ERROR|OFF)")
 
 def load() -> Config:
     return from_env()

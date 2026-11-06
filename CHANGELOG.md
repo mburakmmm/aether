@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.0 — 2026-11-06
+
+Nox floor **2.0.186** (published compiler; macOS arm64, Linux, and Windows archives exist). The suite was run with that `noxc`, not a newer local build.
+
+- `boot_for_serve` calls `nox.http.configure` (body, header buffer, read timeout, connection cap, drain timeout) and `set_http2`. `AETHER_LOG_LEVEL` (`DEBUG|INFO|WARN|ERROR|OFF`) calls `nox.log.set_level` when it is set. An empty value does not. Unit tests use `boot_with_config` and do not change process HTTP limits
+- A socket body above `AETHER_MAX_BODY_BYTES` (default 1 MiB) is Nox’s plain-text 413 and the handler is not called. Aether’s own check still applies when `dispatch` already has the body. Passing `0` keeps Nox’s 10 MiB default
+- `dispatch_from_parts` takes `conn` (default 0). The full `handle` passes `req.conn`. `handle_bare` does not read `req.headers` or `req.peer_addr`
+- `HttpContext.stream` / `sse` / `finish_stream`. Headers that must hit the wire (security, request id, CORS) are merged before `request.stream`. With `conn == 0`, `finish_stream` joins `stream.sent` so tests see the body. The placeholder status is the status passed to `stream`
+- `with_cookie` / `expire_cookie` use `nox.web` and `nox.http.multi`, so each cookie is its own `Set-Cookie`. `HttpContext.cookie` reads the request `Cookie` header. An unsafe name or value is 400
+- Security headers (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`) are on in production and off otherwise. `AETHER_SECURITY_HEADERS` overrides. They do not replace a header the handler already set
+- `POST /__aether/shutdown` still calls `begin_shutdown` and keeps listening, so `/ping` and `/health` return 503. `request_shutdown(port)` writes that same file and then calls `nox.http.shutdown()`, which stops accept and makes `serve*` return after the drain timeout. SIGTERM stops accept without writing the file; `finalize_serve` writes it when `serve*` returns
+- Benchmarks force HTTP/1.1 (`cfg.http2 = False` and `AETHER_HTTP2=0`). wrk does not speak HTTP/2. Result tables were not remeasured
+- Qualified type annotations typecheck on this floor, including `aether.context.HttpContext`. `class_init_param_type` still returns a mangled name, so DI stays closures. `serve_multicore` still rejects closures and still listens on IPv4. See `docs/NOX_LIMITATIONS.md`
+
 ## 0.8.2 — 2026-10-29
 
 Nox floor **2.0.63** (latest published compiler). Reviewed source through **2.0.68**. `v2.0.64`–`v2.0.68` are tagged without a release archive, so CI installs **v2.0.63**.

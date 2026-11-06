@@ -351,6 +351,13 @@ def _error_response(cfg: Config, err: HttpError, kind: str) -> HttpResponse:
 
 def _finalize_response(app: Application, req: HttpRequest, rid: str, resp: HttpResponse) -> HttpResponse:
     extra: dict[str, str] = {}
+    if app.config.security_headers:
+        sec: dict[str, str] = aether.response.security_extras(resp.headers)
+        sec_keys: list[str] = sec.keys()
+        si: int = 0
+        while si < len(sec_keys):
+            extra[sec_keys[si]] = sec[sec_keys[si]]
+            si = si + 1
     if app.config.request_id:
         extra["X-Request-Id"] = rid
     cors_cfg: str = app.config.cors_origins
@@ -439,7 +446,9 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                         rid,
                         "",
                         app.config.trust_x_forwarded_for,
-                        path
+                        path,
+                        app.config.security_headers,
+                        app.config.cors_origins
                     )
                     resp_opt = execute(
                         hit.route,
@@ -534,9 +543,10 @@ def dispatch_from_parts(
     headers: dict[str, str],
     peer_addr: str,
     cfg: Config,
-    build: (Application) -> None
+    build: (Application) -> None,
+    conn: int = 0
 ) -> HttpResponse:
-    req: HttpRequest = HttpRequest(method, target, body, headers, peer_addr)
+    req: HttpRequest = HttpRequest(method, target, body, headers, peer_addr, conn)
     return dispatch_ensure(req, cfg, build)
 
 def shutdown(app: Application) -> None:
@@ -568,6 +578,7 @@ def finalize_serve(cfg: Config) -> None:
     release_bound()
 
 def boot_for_serve(cfg: Config, build: (Application) -> None) -> None:
+    aether.server.apply_http_server(cfg)
     aether.lifecycle.clear_shutdown(cfg.port)
     boot_with_config(cfg, build)
     if aether.server.use_os_workers(cfg):

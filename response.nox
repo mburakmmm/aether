@@ -1,8 +1,13 @@
 # aether.response - JSON / text HTTP helpers.
 
 from nox.http import HttpResponse
+import nox.http
 import nox.json
+import nox.strings
+import nox.web
 from nox.json import JsonWriter
+import aether.errors
+from aether.errors import BadRequestError
 
 _JSON_HEADERS: dict[str, str] = {}
 _JSON_HEADERS["Content-Type"] = "application/json; charset=utf-8"
@@ -89,3 +94,68 @@ def encode_str_map(data: dict[str, str]) -> str:
 
 def json_ok_str(data: dict[str, str]) -> HttpResponse:
     return json_ok(encode_str_map(data))
+
+def has_header(headers: dict[str, str], name: str) -> bool:
+    keys: list[str] = headers.keys()
+    i: int = 0
+    while i < len(keys):
+        if keys[i] == name:
+            return True
+        i = i + 1
+    return False
+
+# Headers a response does not already carry. Copy-on-write callers merge this
+# map; do not mutate a shared header dict.
+def security_extras(headers: dict[str, str]) -> dict[str, str]:
+    extra: dict[str, str] = {}
+    if not has_header(headers, "X-Content-Type-Options"):
+        extra["X-Content-Type-Options"] = "nosniff"
+    if not has_header(headers, "X-Frame-Options"):
+        extra["X-Frame-Options"] = "DENY"
+    if not has_header(headers, "Referrer-Policy"):
+        extra["Referrer-Policy"] = "no-referrer"
+    return extra
+
+def _set_cookie_value(headers: dict[str, str]) -> str:
+    keys: list[str] = headers.keys()
+    i: int = 0
+    while i < len(keys):
+        if keys[i] == "Set-Cookie":
+            return headers["Set-Cookie"]
+        i = i + 1
+    return ""
+
+# Append one Set-Cookie line. nox.http.multi joins with newlines and the
+# server writes each line as its own header (Nox 2.0.120).
+def _append_set_cookie(resp: HttpResponse, line: str) -> HttpResponse:
+    current: str = _set_cookie_value(resp.headers)
+    parts: list[str] = []
+    if len(current) > 0:
+        parts = nox.strings.split(current, "\n")
+    parts.append(line)
+    return with_header(resp, "Set-Cookie", nox.http.multi(parts))
+
+def with_cookie(
+    resp: HttpResponse,
+    name: str,
+    value: str,
+    path: str = "/",
+    max_age: int = -1,
+    http_only: bool = True,
+    secure: bool = False,
+    same_site: str = "Lax"
+) -> HttpResponse:
+    line: str = ""
+    try:
+        line = nox.web.cookie(name, value, path, max_age, http_only, secure, same_site)
+    except ValueError as e:
+        raise BadRequestError(e.message)
+    return _append_set_cookie(resp, line)
+
+def expire_cookie(resp: HttpResponse, name: str, path: str = "/") -> HttpResponse:
+    line: str = ""
+    try:
+        line = nox.web.expire_cookie(name, path)
+    except ValueError as e:
+        raise BadRequestError(e.message)
+    return _append_set_cookie(resp, line)

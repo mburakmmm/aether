@@ -29,7 +29,7 @@ aether.application.boot_for_serve(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
     return aether.application.dispatch_from_parts(
-        req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build
+        req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build, req.conn
     )
 
 def handle_bare(req: HttpRequest) -> HttpResponse:

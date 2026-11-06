@@ -3,13 +3,15 @@
 # DI model (official): closure injection. Container tracks provider *names* only.
 # Request-scoped string values live in TaskLocal RequestState (fiber-safe).
 
-from nox.http import HttpRequest
+from nox.http import HttpRequest, HttpResponse, ResponseStream
 import aether.container
 import aether.body
+import aether.response
 from aether.container import Container
 from aether.body import ValidatedBody
 import nox.strings
 import nox.url
+import nox.web
 from nox.url import UrlError
 
 # Shared empty map for begin() — set_request_value copy-on-writes (A4).
@@ -239,6 +241,9 @@ class HttpContext:
     _scalar_hit: bool
     _scalar_name: str
     _scalar_val: str
+    security_headers: bool
+    cors_origins: str
+    _stream_status: int
 
     def __init__(
         self: HttpContext,
@@ -248,7 +253,9 @@ class HttpContext:
         request_id_value: str,
         input_body: str,
         trust_xff: bool,
-        path: str
+        path: str,
+        security_headers: bool = False,
+        cors_origins: str = ""
     ) -> None:
         empty_q: dict[str, str] = {}
         self.request = request
@@ -267,6 +274,9 @@ class HttpContext:
         self._scalar_hit = False
         self._scalar_name = ""
         self._scalar_val = ""
+        self.security_headers = security_headers
+        self.cors_origins = cors_origins
+        self._stream_status = 200
 
     def ensure_query(self: HttpContext) -> None:
         if self._query_parsed:
@@ -371,3 +381,95 @@ class HttpContext:
 
     def jwt_claims(self: HttpContext) -> str:
         return get_request_value("aether.jwt")
+
+    def cookie(self: HttpContext, name: str) -> str:
+        raw: str = self.header("Cookie")
+        parsed: dict[str, str] = nox.web.parse_cookies(raw)
+        keys: list[str] = parsed.keys()
+        i: int = 0
+        while i < len(keys):
+            if keys[i] == name:
+                return parsed[name]
+            i = i + 1
+        return ""
+
+    def _stream_headers(self: HttpContext, headers: dict[str, str]) -> dict[str, str]:
+        merged: dict[str, str] = {}
+        keys: list[str] = headers.keys()
+        i: int = 0
+        while i < len(keys):
+            k: str = keys[i]
+            merged[k] = headers[k]
+            i = i + 1
+        if self.security_headers:
+            sec: dict[str, str] = aether.response.security_extras(merged)
+            sk: list[str] = sec.keys()
+            si: int = 0
+            while si < len(sk):
+                merged[sk[si]] = sec[sk[si]]
+                si = si + 1
+        if len(self.request_id) > 0:
+            if not aether.response.has_header(merged, "X-Request-Id"):
+                merged["X-Request-Id"] = self.request_id
+        allow: str = _stream_allow_origin(self.cors_origins, header_get(self.request.headers, "Origin"))
+        if len(allow) > 0:
+            if not aether.response.has_header(merged, "Access-Control-Allow-Origin"):
+                merged["Access-Control-Allow-Origin"] = allow
+            if not aether.response.has_header(merged, "Vary"):
+                merged["Vary"] = "Origin"
+        return merged
+
+    # Start a chunked response on the live connection (req.conn). Headers are
+    # written immediately. Return finish_stream(stream) from the handler.
+    # conn 0 (in-process tests) records chunks on the stream; the runtime
+    # ignores the placeholder HttpResponse once a real stream has started.
+    def stream(self: HttpContext, status: int, headers: dict[str, str]) -> ResponseStream:
+        self._stream_status = status
+        merged: dict[str, str] = self._stream_headers(headers)
+        req: HttpRequest = self.request
+        opened: ResponseStream = req.stream(status, merged)
+        return opened
+
+    def sse(self: HttpContext) -> ResponseStream:
+        headers: dict[str, str] = {}
+        headers["Content-Type"] = "text/event-stream; charset=utf-8"
+        headers["Cache-Control"] = "no-cache"
+        headers["X-Accel-Buffering"] = "no"
+        opened: ResponseStream = self.stream(200, headers)
+        return opened
+
+    def finish_stream(self: HttpContext, stream: ResponseStream) -> HttpResponse:
+        stream.end()
+        body: str = ""
+        req: HttpRequest = self.request
+        if req.conn == 0:
+            chunks: list[str] = stream.sent
+            body = _join_chunks(chunks)
+        headers: dict[str, str] = {}
+        headers["X-Aether-Stream"] = "1"
+        return HttpResponse(self._stream_status, body, headers)
+
+def _stream_allow_origin(origins_cfg: str, origin: str) -> str:
+    cfg: str = nox.strings.trim(origins_cfg)
+    if len(cfg) == 0:
+        return ""
+    if cfg == "*":
+        return "*"
+    if len(origin) == 0:
+        return ""
+    parts: list[str] = nox.strings.split(cfg, ",")
+    i: int = 0
+    while i < len(parts):
+        item: str = nox.strings.trim(parts[i])
+        if item == origin:
+            return origin
+        i = i + 1
+    return ""
+
+def _join_chunks(chunks: list[str]) -> str:
+    out: str = ""
+    i: int = 0
+    while i < len(chunks):
+        out = out + chunks[i]
+        i = i + 1
+    return out

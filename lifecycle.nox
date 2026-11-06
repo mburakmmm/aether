@@ -21,6 +21,7 @@
 # after the window. AETHER_STOP_POLL_MS=0 stats on every call.
 
 import nox.fs
+import nox.http
 import nox.os
 import nox.time
 from nox.os import OsError
@@ -116,6 +117,17 @@ def begin_shutdown(port: int) -> None:
     _ensure_tree(port)
     nox.fs.write_string(_stopping_path(port), "1\n")
     _publish_stopping(port, True)
+
+# File drain first, then Nox's process-wide accept stop. In-flight requests
+# on this worker see the flag immediately; siblings see it within
+# AETHER_STOP_POLL_MS. serve* returns after the drain timeout. New
+# connections are refused, so a load balancer cannot observe 503 on this
+# call. POST /__aether/shutdown uses begin_shutdown and keeps listening.
+# SIGTERM stops accept without writing the file; finalize_serve writes it
+# when serve* returns.
+def request_shutdown(port: int) -> None:
+    begin_shutdown(port)
+    nox.http.shutdown()
 
 def clear_shutdown(port: int) -> None:
     path: str = _stopping_path(port)

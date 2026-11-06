@@ -31,12 +31,14 @@ def build(app: Application) -> None:
     m.post_body("/echo", echo_handler, "Echo", echo_in, echo_out)
 
 cfg: Config = aether.config.load()
+# wrk speaks HTTP/1.1. Nox 2.0.127 serves HTTP/2 unless this is off.
+cfg.http2 = False
 aether.application.boot_for_serve(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
     # "" not req.peer_addr: reading the field makes Nox retain the peer string.
     return aether.application.dispatch_from_parts(
-        req.method, req.target, req.body, req.headers, "", cfg, build
+        req.method, req.target, req.body, req.headers, "", cfg, build, req.conn
     )
 
 def handle_bare(req: HttpRequest) -> HttpResponse:

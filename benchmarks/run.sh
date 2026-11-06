@@ -103,6 +103,7 @@ start_aether_qbe() {
       AETHER_METRICS=0 \
       AETHER_REQUEST_ID=0 \
       AETHER_REQUEST_HEADERS=0 \
+      AETHER_HTTP2=0 \
       noxc run benchmarks/aether/main.nox >/tmp/aether-bench-server.log 2>&1
   ) &
   AETHER_PID=$!
@@ -165,6 +166,7 @@ if [[ "${AETHER_SKIP_RELEASE:-0}" != "1" ]]; then
       AETHER_METRICS=0 \
       AETHER_REQUEST_ID=0 \
       AETHER_REQUEST_HEADERS=0 \
+      AETHER_HTTP2=0 \
       "$OUT/aether-bench" >/tmp/aether-release-bench-server.log 2>&1
   ) &
   REL_PID=$!

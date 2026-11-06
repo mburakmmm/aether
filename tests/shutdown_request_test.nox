@@ -1,0 +1,18 @@
+import nox.test
+import nox.fs
+import aether.lifecycle
+
+PORT: int = 34993
+
+aether.lifecycle.clear_shutdown(PORT)
+nox.test.assert_true(aether.lifecycle.is_stopping(PORT) == False, "idle")
+
+aether.lifecycle.request_shutdown(PORT)
+nox.test.assert_true(aether.lifecycle.is_stopping(PORT), "file flag is set")
+nox.test.assert_true(nox.fs.exists(aether.lifecycle.root_dir(PORT) + "/stopping"), "stopping file")
+
+aether.lifecycle.request_shutdown(PORT)
+nox.test.assert_true(aether.lifecycle.is_stopping(PORT), "second call stays stopping")
+
+aether.lifecycle.clear_shutdown(PORT)
+print("shutdown_request_test ok")

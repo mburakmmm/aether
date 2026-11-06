@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.8.2 · **License:** MIT · **Requires Nox ≥ 2.0.63**  
+**Version:** 0.9.0 · **License:** MIT · **Requires Nox ≥ 2.0.186**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.8.2"
+      "ref": "v0.9.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.8.2
+noxc install github.com/mburakmmm/aether@v0.9.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -83,7 +83,7 @@ aether.application.boot_for_serve(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
     return aether.application.dispatch_from_parts(
-        req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build
+        req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build, req.conn
     )
 
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
@@ -100,6 +100,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.9.0
+
+Nox floor **2.0.186**. `boot_for_serve` applies `nox.http.configure` and `set_http2`. The full `handle` passes `req.conn`, so a handler can `ctx.sse()` / `ctx.stream()` and the bytes go out on that connection. `with_cookie` / `expire_cookie` emit one `Set-Cookie` per cookie. Production responses gain `nosniff`, `DENY`, and `no-referrer` unless the handler already set them. `POST /__aether/shutdown` keeps listening and answers 503. `request_shutdown` writes the drain file and stops accept. SIGTERM stops accept without the file; `finalize_serve` writes it when `serve*` returns. Benchmarks stay on HTTP/1.1.
 
 ## What’s new in 0.8.2
 
@@ -266,6 +270,14 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 | `AETHER_TRUST_X_FORWARDED_FOR` | `false` | Enable only behind a trusted proxy |
 | `AETHER_JOBS_DB` | `db/jobs.sqlite` | Queue SQLite path |
 | `AETHER_JOB_STALE_MS` | `300000` | Stuck `running` reclaim window |
+| `AETHER_MAX_BODY_BYTES` | `1048576` | Passed to `nox.http.configure`. A larger socket body is Nox’s plain-text 413 and the handler does not run. `0` keeps Nox’s 10 MiB |
+| `AETHER_MAX_HEADER_BYTES` | `16384` | Request line + headers. `0` keeps the Nox default |
+| `AETHER_READ_TIMEOUT_MS` | `30000` | Silence before Nox closes the read |
+| `AETHER_MAX_CONNECTIONS` | `4096` | Extra connections get Nox’s 503 |
+| `AETHER_DRAIN_TIMEOUT_MS` | `10000` | How long `nox.http.shutdown` waits for in-flight requests |
+| `AETHER_HTTP2` | on | `0` in benchmarks (wrk is HTTP/1.1) |
+| `AETHER_SECURITY_HEADERS` | off (on in production) | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` |
+| `AETHER_LOG_LEVEL` | empty | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` \| `OFF`. Empty does not call `nox.log.set_level` |
 
 Built-in routes: `GET /health`, `GET /metrics`, and when OpenAPI is on: `GET /openapi.json`, `GET /docs`.
 
@@ -285,13 +297,13 @@ Built-in routes: `GET /health`, `GET /metrics`, and when OpenAPI is on: `GET /op
 Nox `serve*` requires a **bare top-level** `handle` / `ws_handle` name — do not wrap `dispatch` inside `aether.server.listen(...)`.
 
 Do **not** close over `Application` in that handle (`dispatch(app, req)`). Use
-`dispatch_from_parts(method, target, body, headers, peer_addr, cfg, build)` so the serve
+`dispatch_from_parts(method, target, body, headers, peer_addr, cfg, build, conn)` so the serve
 handle does not escape `req`. Pass `""` instead of `req.peer_addr` on a throughput
 handle so Nox skips the peer-string retain. Each worker slot boots its own `AppBind` via
 `dispatch_ensure` (LLVM ve QBE). See [docs/SCOPE.md](docs/SCOPE.md).
 
 Production: `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app`
-(Nox ≥ 2.0.63, macOS/arm64). `--release` aynı LLVM backend’inin optimize halidir. Dev: `./run.sh`. `AETHER_IPV6=1` is single-worker.
+(Nox ≥ 2.0.186, macOS/arm64). `--release` aynı LLVM backend’inin optimize halidir. Dev: `./run.sh`. `AETHER_IPV6=1` is single-worker. Pass `req.conn` from the full `handle`. `handle_bare` leaves `conn` at 0.
 
 ## License
 

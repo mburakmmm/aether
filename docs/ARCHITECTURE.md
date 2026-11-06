@@ -1,19 +1,19 @@
 # Aether Architecture
 
-Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 2.0.63).
+Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 2.0.186).
 It is independent of Nyx (the Rails-style full-stack framework).
 
 ## Design
 
 - **Pythonic modules:** `class UsersModule: def configure(self, m: ModuleBuilder)`
-- **Official DI = closures:** `m.provide("Name")` is a **name registry only**. Hold service instances in module fields/locals and capture them when registering handlers (`m.get(..., self._show(svc))`). Cross-module `class X(Injectable)` is impossible in Nox today.
+- **Official DI = closures:** `m.provide("Name")` is a **name registry only**. Hold service instances in module fields/locals and capture them when registering handlers (`m.get(..., self._show(svc))`). An imported class can be a base (`class Mine(HttpError)`), but `class_init_param_type` returns a mangled name, so Aether does not wire constructors from reflect.
 - **Module import:** `app.import_module(configure)` / `app.import_configure(configure)`; `m.prefix("/api")` for path prefixes
 - **Top-level route decorators** (optional): `@get` / `@post` + `mount_decorators` (still run through `dispatch` pipeline)
 - **Custom pipeline:** Guard → Pipe → Interceptor (before may short-circuit) → Handler → Interceptor after → exception filters
 
 ## Request flow
 
-1. Bare `handle` reads `req.method/target/body[/headers]` and optionally `req.peer_addr`, then `dispatch_from_parts` (Nox `serve*` requirement; do not pass `req` through). Omit `peer_addr` (pass `""`) when the handler must not retain the peer string.
+1. Bare `handle` reads `req.method/target/body[/headers]`, optionally `req.peer_addr`, and `req.conn`, then `dispatch_from_parts` (Nox `serve*` requirement; do not pass `req` through). Omit `peer_addr` (pass `""`) when the handler must not retain the peer string. `handle_bare` does not read headers, peer, or `conn` (`conn` stays 0). Streaming needs the full handle.
 2. `application.dispatch` → normalize path → body limit / CORS OPTIONS / 405 → match → `HttpContext` + `TaskLocal`
 3. Global + route guards
 4. Input pipes / DTO validation (including format checks)

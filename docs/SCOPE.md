@@ -1,6 +1,6 @@
 # Aether scopes: Application / Worker / Request
 
-Proven against Nox ≥ 2.0.63 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). LLVM is the default backend. `serve_multicore` accept loops stay on the worker that opened them; stolen connection fibers keep that slot’s globals.
+Proven against Nox ≥ 2.0.186 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). LLVM is the default backend. `serve_multicore` accept loops stay on the worker that opened them; stolen connection fibers keep that slot’s globals.
 
 ## Scopes
 
@@ -37,12 +37,13 @@ Put process-level work in the launching shell / supervisor **before** `serve*`, 
 
 Because hooks cannot be invoked across worker slots, Aether uses a **shared filesystem drain flag** (`aether.lifecycle`):
 
-1. `begin_shutdown(port)` or `POST /__aether/shutdown` (opt-in: `AETHER_SHUTDOWN_ROUTE=1`) sets `/tmp/aether-life-<port>/stopping` and publishes that fact on the calling worker immediately.
+1. `begin_shutdown(port)` or `POST /__aether/shutdown` (opt-in: `AETHER_SHUTDOWN_ROUTE=1`) sets `/tmp/aether-life-<port>/stopping` and publishes that fact on the calling worker immediately. The process keeps accepting. That is the load-balancer 503 window.
 2. Other workers notice the file within `AETHER_STOP_POLL_MS` (default **200**). Until then they may still return 200. `AETHER_STOP_POLL_MS=0` stats on every request. Each worker that has observed the flag returns **503** and runs **its own** `on_shutdown` hooks via `shutdown_bound()`.
 3. `GET /health` also returns 503 while stopping (load balancer drain).
-4. Entrypoint `finally: finalize_serve(cfg)` sets the flag and `release_bound()` after `serve*` returns.
-5. `await_workers_drained(port, timeout_ms)` polls until worker registry files are gone.
-6. `shutdown_bound()` runs hooks but keeps the closed Application bound (no rebuild during drain).
+4. `request_shutdown(port)` writes the same file and then calls `nox.http.shutdown()`. New accepts stop. In-flight requests have `AETHER_DRAIN_TIMEOUT_MS` (default **10000**) to finish, then `serve*` returns. A later `serve*` in the same process returns immediately. This is process exit, not the 503 window.
+5. SIGTERM and SIGINT are handled inside Nox. They stop accept and do not write the file. When `serve*` returns, `finally: finalize_serve(cfg)` sets the flag and `release_bound()`.
+6. `await_workers_drained(port, timeout_ms)` polls until worker registry files are gone.
+7. `shutdown_bound()` runs hooks but keeps the closed Application bound (no rebuild during drain).
    `release_bound()` clears AppBind (parent clear / process exit).
 
 Process-once cleanup that is not per-Application still belongs in the supervisor (migrations, shared cron).

@@ -1,0 +1,111 @@
+import nox.test
+import nox.strings
+import aether.application
+import aether.config
+import aether.testing
+import aether.response
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok, with_cookie, expire_cookie
+from nox.http import HttpResponse, ResponseStream
+
+def build(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+
+    def ticks(ctx: HttpContext) -> HttpResponse:
+        stream: ResponseStream = ctx.sse()
+        stream.event("hello", "tick", "1")
+        return ctx.finish_stream(stream)
+
+    def raw(ctx: HttpContext) -> HttpResponse:
+        headers: dict[str, str] = {}
+        headers["Content-Type"] = "text/plain; charset=utf-8"
+        stream2: ResponseStream = ctx.stream(201, headers)
+        stream2.send("abc")
+        return ctx.finish_stream(stream2)
+
+    def set_cookies(ctx: HttpContext) -> HttpResponse:
+        resp: HttpResponse = json_ok("{}")
+        resp = with_cookie(resp, "a", "1")
+        resp = with_cookie(resp, "b", "2")
+        return resp
+
+    def clear_cookie(ctx: HttpContext) -> HttpResponse:
+        return expire_cookie(json_ok("{}"), "a")
+
+    def read_cookie(ctx: HttpContext) -> HttpResponse:
+        return json_ok("{\"sid\":\"" + ctx.cookie("sid") + "\"}")
+
+    def bad_cookie(ctx: HttpContext) -> HttpResponse:
+        return with_cookie(json_ok("{}"), "a b", "1")
+
+    m.get("/ticks", ticks)
+    m.get("/raw", raw)
+    m.get("/set", set_cookies)
+    m.get("/clear", clear_cookie)
+    m.get("/read", read_cookie)
+    m.get("/bad", bad_cookie)
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+cfg.metrics = False
+cfg.request_id = False
+app: Application = aether.application.boot_with_config(cfg, build)
+
+ticks_resp: HttpResponse = aether.testing.get(app, "/ticks")
+nox.test.assert_eq_int(ticks_resp.status, 200, "sse status")
+nox.test.assert_true(nox.strings.contains(ticks_resp.body, "event: tick"), "sse event")
+nox.test.assert_true(nox.strings.contains(ticks_resp.body, "data: hello"), "sse data")
+nox.test.assert_true(ticks_resp.headers["X-Aether-Stream"] == "1", "stream marker")
+
+raw_resp: HttpResponse = aether.testing.get(app, "/raw")
+nox.test.assert_eq_int(raw_resp.status, 201, "stream status kept")
+nox.test.assert_true(raw_resp.body == "abc", "stream body")
+
+set_resp: HttpResponse = aether.testing.get(app, "/set")
+cookie_header: str = set_resp.headers["Set-Cookie"]
+nox.test.assert_true(nox.strings.contains(cookie_header, "a=1"), "cookie a")
+nox.test.assert_true(nox.strings.contains(cookie_header, "b=2"), "cookie b")
+nox.test.assert_true(nox.strings.contains(cookie_header, "\n"), "multi encodes a newline")
+nox.test.assert_true(nox.strings.contains(cookie_header, "HttpOnly"), "http only")
+nox.test.assert_true(nox.strings.contains(cookie_header, "SameSite=Lax"), "same site")
+
+clear_resp: HttpResponse = aether.testing.get(app, "/clear")
+nox.test.assert_true(nox.strings.contains(clear_resp.headers["Set-Cookie"], "Max-Age=0"), "expire")
+
+read_headers: dict[str, str] = {}
+read_headers["Cookie"] = "sid=abc; other=1"
+read_resp: HttpResponse = aether.testing.get_headers(app, "/read", read_headers)
+nox.test.assert_true(nox.strings.contains(read_resp.body, "\"sid\":\"abc\""), "cookie read")
+
+bad_resp: HttpResponse = aether.testing.get(app, "/bad")
+nox.test.assert_eq_int(bad_resp.status, 400, "unsafe cookie is 400")
+
+cfg_prod: Config = aether.config.defaults("production")
+cfg_prod.log_requests = False
+cfg_prod.metrics = False
+cfg_prod.request_id = False
+app_prod: Application = aether.application.boot_with_config(cfg_prod, build)
+health: HttpResponse = aether.testing.get(app_prod, "/health")
+nox.test.assert_true(health.headers["X-Content-Type-Options"] == "nosniff", "nosniff")
+nox.test.assert_true(health.headers["X-Frame-Options"] == "DENY", "frame deny")
+nox.test.assert_true(health.headers["Referrer-Policy"] == "no-referrer", "referrer")
+
+cfg_dev: Config = aether.config.defaults("development")
+cfg_dev.log_requests = False
+cfg_dev.metrics = False
+cfg_dev.request_id = False
+app_dev: Application = aether.application.boot_with_config(cfg_dev, build)
+dev_health: HttpResponse = aether.testing.get(app_dev, "/health")
+dev_keys: list[str] = dev_health.headers.keys()
+saw_nosniff: bool = False
+ki: int = 0
+while ki < len(dev_keys):
+    if dev_keys[ki] == "X-Content-Type-Options":
+        saw_nosniff = True
+    ki = ki + 1
+nox.test.assert_true(not saw_nosniff, "security headers off outside production")
+
+print("http_surface_test ok")

@@ -5,7 +5,7 @@
 **[Nox](https://github.com/mburakmmm/nox-lang) için NestJS esintili API / backend framework’ü.**  
 Pythonic modüller, closure tabanlı DI, guard / pipe / interceptor, typed DTO, OpenAPI + Swagger UI, WebSocket gateway ve SQLite iş kuyrukları.
 
-**Sürüm:** 0.8.2 · **Lisans:** MIT · **Nox ≥ 2.0.63**  
+**Sürüm:** 0.9.0 · **Lisans:** MIT · **Nox ≥ 2.0.186**  
 Paket: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > [Nyx](https://github.com/mburakmmm/nyx)’ten bağımsızdır (Rails tarzı full-stack). HTTP API için **Aether**; HTML monolit için **Nyx**.
@@ -24,7 +24,7 @@ Uygulama `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.8.2"
+      "ref": "v0.9.0"
     }
   ]
 }
@@ -44,12 +44,18 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI iskelet
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.8.2
+noxc install github.com/mburakmmm/aether@v0.9.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
 
 ---
+
+## 0.9.0
+
+Nox tabanı **2.0.186**. `boot_for_serve`, `nox.http.configure` ve `set_http2` uygular. Tam `handle` `req.conn` geçirir; handler `ctx.sse()` / `ctx.stream()` ile o bağlantıya yazar. `with_cookie` / `expire_cookie` her çerez için ayrı `Set-Cookie` üretir. Production yanıtlarına, handler kendi değerini yazmadıysa, `nosniff`, `DENY` ve `no-referrer` eklenir. `POST /__aether/shutdown` dinlemeyi sürdürür ve 503 döner. `request_shutdown` drain dosyasını yazıp accept’i durdurur. SIGTERM dosyayı yazmadan accept’i durdurur; `finalize_serve` dosyayı `serve*` dönünce yazar. Benchmark HTTP/1.1’de kalır (`AETHER_HTTP2=0`).
+
+Soket gövdesi `AETHER_MAX_BODY_BYTES` (varsayılan 1 MiB) üstündeyse Nox düz metin 413 döner ve handler çalışmaz. `0` Nox’un 10 MiB varsayılanını bırakır.
 
 ## 0.8.2
 

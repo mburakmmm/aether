@@ -6,7 +6,7 @@
 #
 #   def handle(req: HttpRequest) -> HttpResponse:
 #       return aether.application.dispatch_from_parts(
-#           req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build)
+#           req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build, req.conn)
 #   def handle_bare(req: HttpRequest) -> HttpResponse:
 #       return aether.application.dispatch_from_parts(
 #           req.method, req.target, req.body, aether.application.EMPTY_HEADERS, "", cfg, build)
@@ -50,6 +50,7 @@
 
 import nox.fs
 import nox.http
+import nox.log
 import nox.os
 from nox.os import OsError
 import aether.config
@@ -155,6 +156,20 @@ def require_ipv6_listen(cfg: Config) -> None:
 def listen_v6_fd(cfg: Config) -> int:
     require_ipv6_listen(cfg)
     return nox.http.listen_v6(cfg.port, cfg.ipv6_only)
+
+# Process-wide Nox server limits. 0 keeps that knob's current Nox default.
+# Call once before serve* (boot_for_serve does). Safe to repeat with the same cfg.
+def apply_http_server(cfg: Config) -> None:
+    nox.http.configure(
+        cfg.max_body_bytes,
+        cfg.max_header_bytes,
+        cfg.read_timeout_ms,
+        cfg.max_connections,
+        cfg.drain_timeout_ms
+    )
+    nox.http.set_http2(cfg.http2)
+    if len(cfg.log_level) > 0:
+        nox.log.set_level(cfg.log_level)
 
 def print_listen(cfg: Config, mode: str) -> None:
     workers: int = effective_workers(cfg)
