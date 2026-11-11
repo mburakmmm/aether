@@ -70,7 +70,7 @@ if [[ "$MODE" == "release" ]]; then
   PID=$!
 else
   echo "starting QBE shutdown probe (workers=$WORKERS)..."
-  noxc run benchmarks/worker_probe/main.nox >"$LOG" 2>&1 &
+  noxc run --backend qbe benchmarks/worker_probe/main.nox >"$LOG" 2>&1 &
   PID=$!
 fi
 

@@ -1,0 +1,38 @@
+import nox.test
+import aether.application
+import aether.config
+import aether.testing
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from nox.http import HttpRequest, HttpResponse
+
+def build(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    def ping(ctx: HttpContext) -> HttpResponse:
+        return json_ok("{\"pong\":true}")
+    m.get("/ping", ping)
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+cfg.metrics = False
+cfg.request_id = False
+
+def make_handle() -> (HttpRequest) -> HttpResponse:
+    aether.application.boot_with_config(cfg, build)
+    def bound(req: HttpRequest) -> HttpResponse:
+        return aether.application.dispatch_from_parts(
+            req.method, req.target, req.body, req.headers, "", cfg, build, req.conn
+        )
+    return bound
+
+handler: (HttpRequest) -> HttpResponse = make_handle()
+app: Application = aether.application.boot_with_config(cfg, build)
+resp: HttpResponse = aether.testing.get(app, "/ping")
+nox.test.assert_eq_int(resp.status, 200, "factory boot still serves")
+one: HttpResponse = handler(HttpRequest("GET", "/ping", "", {}, "", 0))
+nox.test.assert_eq_int(one.status, 200, "factory handler serves")
+
+print("factory_boot_test ok")

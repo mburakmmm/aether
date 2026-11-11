@@ -1,6 +1,6 @@
 # Aether throughput gaps — teknik rapor
 
-**Güncel floor:** Nox **2.0.186**, Aether **0.9.0**. 2026-09-27 satırı Nox 1.104.0 ölçümüdür (QBE ping 156 305 / echo 130 595). 1.29.8 tabloları tarihseldir. 0.9.0 HTTP/2’yi benchmarkta kapatır (`AETHER_HTTP2=0`); tablolar yeniden ölçülmedi.
+**Güncel floor:** Nox **2.1.52**, Aether **0.10.0**. 2026-09-27 satırı Nox 1.104.0 ölçümüdür (QBE ping 156 305 / echo 130 595). 1.29.8 tabloları tarihseldir. 0.10.0 HTTP/2’yi benchmarkta kapatır (`AETHER_HTTP2=0`); tablolar yeniden ölçülmedi.
 
 Kaynak ölçüm (tarihsel): `wrk -t4 -c40 -d8s`, darwin arm64, Nox **1.29.8**, Aether **0.6.3**,
 `AETHER_WORKERS=1`, `NOX_POOL_WORKERS=1`, `AETHER_REQUEST_ID=0`,

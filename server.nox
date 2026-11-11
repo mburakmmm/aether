@@ -143,15 +143,22 @@ def serve_mode(cfg: Config, want_ws: bool) -> str:
         return "ws"
     return "plain"
 
-# serve_multicore opens its own IPv4 sockets. IPv6 is listen_v6 + serve_fd
-# (Nox 1.142.10) and only when this process has a single worker.
+# 0 = IPv4, 1 = dual-stack IPv6, 2 = IPv6 only. serve_multicore* reads this
+# from nox.http.configure (Nox 2.1.32). Windows ignores it. A single worker
+# still uses listen_v6 + serve_fd, which does not read ip_family.
+def http_ip_family(cfg: Config) -> int:
+    if not cfg.ipv6:
+        return 0
+    if cfg.ipv6_only:
+        return 2
+    return 1
+
+# Single-worker WebSocket listen is AF_INET. Multicore WebSocket follows ip_family.
 def require_ipv6_listen(cfg: Config) -> None:
     if not cfg.ipv6:
         return
-    if use_os_workers(cfg):
-        raise ServerError("AETHER_IPV6 requires AETHER_WORKERS=1; serve_multicore listens on IPv4")
-    if cfg.ws_enabled:
-        raise ServerError("AETHER_IPV6 does not combine with AETHER_WS")
+    if cfg.ws_enabled and not use_os_workers(cfg):
+        raise ServerError("AETHER_IPV6 with AETHER_WS requires AETHER_WORKERS>1; single-worker serve_ws listens on IPv4")
 
 def listen_v6_fd(cfg: Config) -> int:
     require_ipv6_listen(cfg)
@@ -165,7 +172,8 @@ def apply_http_server(cfg: Config) -> None:
         cfg.max_header_bytes,
         cfg.read_timeout_ms,
         cfg.max_connections,
-        cfg.drain_timeout_ms
+        cfg.drain_timeout_ms,
+        http_ip_family(cfg)
     )
     nox.http.set_http2(cfg.http2)
     if len(cfg.log_level) > 0:

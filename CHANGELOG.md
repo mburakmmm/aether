@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0 — 2026-11-11
+
+Nox floor **2.1.52** (published compiler; macOS arm64, Linux, and Windows archives exist). The suite and the limitation proofs were run with the installed `noxc 2.1.52`. Tags `v2.1.53`–`v2.1.55` are freestanding, WASM, and docs only, so they are not the pin. This revision is not published.
+
+- `workers>1` passes a top-level `make_handle` / `make_handle_bare` to `serve_multicore*`. Nox 2.1.20 calls that factory once inside each worker. The factory calls `boot_with_config`, arms a drain fiber, and returns a closure that calls `dispatch_from_parts`. The fiber polls the stopping file so a worker that never accepts still runs `on_shutdown` and leaves the registry. `boot_for_serve` still validates in the parent and clears that slot when `workers>1`. A bare `serve(handle)` still boots through `dispatch_ensure`. The factory has to be a bare name in the application entry
+- `nox.http.configure` takes `ip_family` (Nox 2.1.32): `0` IPv4, `1` dual-stack, `2` IPv6 only. `AETHER_IPV6=1` with `AETHER_WORKERS>1` uses that argument and `serve_multicore*`. Windows ignores the family. A single worker still uses `listen_v6` + `serve_fd`. `AETHER_IPV6` together with `AETHER_WS` and `AETHER_WORKERS=1` is still rejected, because single-worker `serve_ws` is IPv4
+- Request ids and `boot_id` are `nox.uuid.uuid7` (Nox 2.1.7). Queue lease tokens and gateway connection ids stay `uuid4`
+- Request-log elapsed time and in-memory rate-limit windows use `nox.time.monotonic_ns() // 1000000` (Nox 2.1.13). Queue leases and the lifecycle drain file stay on `now_ms`, because those values are compared across process restarts
+- `nox.jwt.verify_claims` is not used. It skips a missing `exp` and applies one leeway to every time claim. Aether still requires `exp`, allows 60 seconds of future `iat`, and does not widen `exp`
+- Not integrated, on purpose: a gRPC router, a second `nox.signal` handler beside HTTP SIGTERM, an `AtomicRef` drain flag, shared mutable `list`/`dict`, and class or method decorators as handlers. List assignment stays a copy. See `docs/NOX_LIMITATIONS.md`
+
 ## 0.9.0 — 2026-11-06
 
 Nox floor **2.0.186** (published compiler; macOS arm64, Linux, and Windows archives exist). The suite was run with that `noxc`, not a newer local build.

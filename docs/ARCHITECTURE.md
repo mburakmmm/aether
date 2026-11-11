@@ -1,6 +1,6 @@
 # Aether Architecture
 
-Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 2.0.186).
+Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 2.1.52).
 It is independent of Nyx (the Rails-style full-stack framework).
 
 ## Design
@@ -13,7 +13,7 @@ It is independent of Nyx (the Rails-style full-stack framework).
 
 ## Request flow
 
-1. Bare `handle` reads `req.method/target/body[/headers]`, optionally `req.peer_addr`, and `req.conn`, then `dispatch_from_parts` (Nox `serve*` requirement; do not pass `req` through). Omit `peer_addr` (pass `""`) when the handler must not retain the peer string. `handle_bare` does not read headers, peer, or `conn` (`conn` stays 0). Streaming needs the full handle.
+1. A single worker passes a bare `handle` to `serve` / `serve_fd`. `workers>1` passes a top-level zero-arg `make_handle` to `serve_multicore*`; Nox calls it once inside each worker and the closure it returns calls `dispatch_from_parts`. Do not pass `req` through. Omit `peer_addr` (pass `""`) when the handler must not retain the peer string. `handle_bare` does not read headers, peer, or `conn` (`conn` stays 0). Streaming needs the full handle. The factory has to be a bare name in the application entry; `aether.server.something` is not a factory.
 2. `application.dispatch` → normalize path → body limit / CORS OPTIONS / 405 → match → `HttpContext` + `TaskLocal`
 3. Global + route guards
 4. Input pipes / DTO validation (including format checks)

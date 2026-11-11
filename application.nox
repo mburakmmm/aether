@@ -322,7 +322,7 @@ def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
         xs.append(aether.rate_limit.rate_limit_interceptor(cfg.rate_limit_max, cfg.rate_limit_window_ms))
     hooks.interceptors = xs
     shutdown_hooks: list[() -> None] = []
-    boot_id: str = nox.uuid.uuid4()
+    boot_id: str = nox.uuid.uuid7()
     app: Application = Application(cfg, container, table, hooks, shutdown_hooks, "{}", Metrics(), boot_id)
     build(app)
     _mount_framework_routes(app)
@@ -389,7 +389,7 @@ def _complete_request(
         if app.config.metrics_routes and len(route_key) > 0:
             app.metrics.record_route_key(route_key)
     if app.config.log_requests:
-        elapsed: int = nox.time.now_ms() - started
+        elapsed: int = nox.time.monotonic_ns() // 1000000 - started
         nox.log.info(aether.logx.redact_line(
             req.method + " " + path + " -> " + str(out.status) + " " + str(elapsed) + "ms id=" + rid
         ))
@@ -398,7 +398,7 @@ def _complete_request(
 def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
     rid: str = ""
     if app.config.request_id:
-        rid = nox.uuid.uuid4()
+        rid = nox.uuid.uuid7()
     path: str = normalize_path(path_only(req.target))
     want_tl: bool = False
     if app.config.request_id:
@@ -409,7 +409,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
         begin(rid, req.method, path)
     started: int = 0
     if app.config.log_requests:
-        started = nox.time.now_ms()
+        started = nox.time.monotonic_ns() // 1000000
     resp_opt: HttpResponse | None = None
     # Metrics key uses route pattern (not raw path) to bound cardinality.
     route_key: str = ""
@@ -566,6 +566,25 @@ def shutdown(app: Application) -> None:
 def shutdown_bound() -> None:
     if len(_bind.apps) > 0:
         shutdown(_bind.apps[0])
+
+# Factory boot registers every worker before any request. A worker that never
+# accepts would otherwise stay in the registry and skip on_shutdown. This
+# fiber polls the drain file on that worker's own globals. sleep_ms yields
+# the fiber, so the accept loop keeps running. shutdown() is idempotent with
+# the request path.
+async def _watch_drain(port: int) -> None:
+    seen: bool = False
+    while not seen:
+        wait: int = aether.lifecycle.poll_interval()
+        if wait < 25:
+            wait = 25
+        nox.time.sleep_ms(wait)
+        if aether.lifecycle.is_stopping(port):
+            seen = True
+    shutdown_bound()
+
+def arm_drain(port: int) -> None:
+    spawn _watch_drain(port)
 
 def release_bound() -> None:
     if len(_bind.apps) > 0:

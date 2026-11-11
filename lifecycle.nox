@@ -45,6 +45,9 @@ class StopCache:
 
 _stop_cache: StopCache = StopCache()
 
+def poll_interval() -> int:
+    return _poll_ms()
+
 def _poll_ms() -> int:
     cache: StopCache = _stop_cache
     if cache.poll_ready:

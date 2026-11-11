@@ -69,6 +69,24 @@ def handle_bare(req: HttpRequest) -> HttpResponse:
         req.method, req.target, req.body, EMPTY_HEADERS, "", cfg, build
     )
 
+def make_handle() -> (HttpRequest) -> HttpResponse:
+    aether.application.boot_with_config(cfg, build)
+    aether.application.arm_drain(cfg.port)
+    def bound(req: HttpRequest) -> HttpResponse:
+        return aether.application.dispatch_from_parts(
+            req.method, req.target, req.body, req.headers, "", cfg, build, req.conn
+        )
+    return bound
+
+def make_handle_bare() -> (HttpRequest) -> HttpResponse:
+    aether.application.boot_with_config(cfg, build)
+    aether.application.arm_drain(cfg.port)
+    def bound(req: HttpRequest) -> HttpResponse:
+        return aether.application.dispatch_from_parts(
+            req.method, req.target, req.body, EMPTY_HEADERS, "", cfg, build
+        )
+    return bound
+
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
 try:
     workers: int = aether.server.effective_workers(cfg)
@@ -76,9 +94,9 @@ try:
     want_headers: bool = aether.server.materialize_request_headers(cfg)
     if aether.server.use_os_workers(cfg):
         if want_headers:
-            nox.http.serve_multicore(cfg.port, handle, workers)
+            nox.http.serve_multicore(cfg.port, make_handle, workers)
         else:
-            nox.http.serve_multicore(cfg.port, handle_bare, workers)
+            nox.http.serve_multicore(cfg.port, make_handle_bare, workers)
     else:
         if want_headers:
             nox.http.serve(cfg.port, handle)

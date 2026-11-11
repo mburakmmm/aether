@@ -2,7 +2,9 @@
 #
 # Signing and signature checks go through nox.jwt (Nox >= 1.126).
 # Aether still injects exp and rejects expired, early, or future-iat tokens.
-# nox.jwt.sign/verify do not apply that policy.
+# nox.jwt.verify_claims skips a missing exp and applies one leeway to every
+# time claim. Aether requires exp, allows 60s of future iat, and does not
+# widen exp, so it does not call verify_claims.
 
 import nox.json
 import nox.jwt

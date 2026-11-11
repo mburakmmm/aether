@@ -50,7 +50,7 @@ class RateStore:
         self.buckets = fresh
 
     def allow(self: RateStore, key: str, max_n: int, window_ms: int) -> bool:
-        now: int = nox.time.now_ms()
+        now: int = nox.time.monotonic_ns() // 1000000
         self._evict_expired(now, window_ms)
         i: int = 0
         while i < len(self.buckets):

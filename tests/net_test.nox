@@ -13,11 +13,22 @@ nox.test.assert_eq_str(peer_host(""), "", "empty peer")
 cfg: Config = aether.config.defaults("test")
 cfg.ipv6 = True
 cfg.workers = 4
+aether.server.require_ipv6_listen(cfg)
+nox.test.assert_eq_int(aether.server.http_ip_family(cfg), 1, "dual stack family")
+cfg.ipv6_only = True
+nox.test.assert_eq_int(aether.server.http_ip_family(cfg), 2, "ipv6 only family")
+plain: Config = aether.config.defaults("test")
+nox.test.assert_eq_int(aether.server.http_ip_family(plain), 0, "ipv4 family")
+
+ws: Config = aether.config.defaults("test")
+ws.ipv6 = True
+ws.workers = 1
+ws.ws_enabled = True
 rejected: bool = False
 try:
-    aether.server.require_ipv6_listen(cfg)
+    aether.server.require_ipv6_listen(ws)
 except ServerError as e:
     rejected = len(e.message) > 0
-nox.test.assert_true(rejected, "ipv6 rejects multicore")
+nox.test.assert_true(rejected, "single-worker websocket stays ipv4")
 
 print("net_test ok")

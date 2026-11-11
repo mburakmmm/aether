@@ -5,8 +5,9 @@
 #   1) HTTP GET /__worker → boot_id (only workers that served)
 #   2) /tmp/aether-boot-markers/*.boot → every build() (validation boot + serving workers)
 #
-# boot_for_serve validates once then clears idle parent AppBind when workers>1;
-# sibling workers still boot via dispatch_ensure on first request.
+# boot_for_serve validates once then clears idle parent AppBind when workers>1.
+# serve_multicore calls make_handle in each worker, so build() runs again there.
+# A bare serve(handle) still boots an empty slot on first request.
 #
 # Interpretation:
 #   markers > http_unique  → validation boot and/or extra slots beyond those hit

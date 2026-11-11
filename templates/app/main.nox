@@ -24,7 +24,7 @@ def build(app: Application) -> None:
     RootModule().configure(app.module())
 
 cfg: Config = aether.config.load()
-# Validates once; workers>1 clears parent AppBind (siblings boot via dispatch_ensure).
+# Validates once. workers>1 clears parent AppBind; make_handle boots each worker.
 aether.application.boot_for_serve(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
@@ -37,12 +37,31 @@ def handle_bare(req: HttpRequest) -> HttpResponse:
         req.method, req.target, req.body, EMPTY_HEADERS, "", cfg, build
     )
 
+# serve_multicore calls this once inside each worker, then uses the closure.
+def make_handle() -> (HttpRequest) -> HttpResponse:
+    aether.application.boot_with_config(cfg, build)
+    aether.application.arm_drain(cfg.port)
+    def bound(req: HttpRequest) -> HttpResponse:
+        return aether.application.dispatch_from_parts(
+            req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build, req.conn
+        )
+    return bound
+
+def make_handle_bare() -> (HttpRequest) -> HttpResponse:
+    aether.application.boot_with_config(cfg, build)
+    aether.application.arm_drain(cfg.port)
+    def bound(req: HttpRequest) -> HttpResponse:
+        return aether.application.dispatch_from_parts(
+            req.method, req.target, req.body, EMPTY_HEADERS, "", cfg, build
+        )
+    return bound
+
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
 try:
     workers: int = aether.server.effective_workers(cfg)
     aether.server.apply_pool_workers(cfg)
     want_headers: bool = aether.server.materialize_request_headers(cfg)
-    if cfg.ipv6:
+    if cfg.ipv6 and not aether.server.use_os_workers(cfg):
         fd: int = aether.server.listen_v6_fd(cfg)
         if want_headers:
             nox.http.serve_fd(fd, handle)
@@ -51,9 +70,9 @@ try:
     else:
         if aether.server.use_os_workers(cfg):
             if want_headers:
-                nox.http.serve_multicore(cfg.port, handle, workers)
+                nox.http.serve_multicore(cfg.port, make_handle, workers)
             else:
-                nox.http.serve_multicore(cfg.port, handle_bare, workers)
+                nox.http.serve_multicore(cfg.port, make_handle_bare, workers)
         else:
             if want_headers:
                 nox.http.serve(cfg.port, handle)

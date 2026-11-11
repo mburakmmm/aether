@@ -1,6 +1,6 @@
 # Aether scopes: Application / Worker / Request
 
-Proven against Nox ≥ 2.0.186 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). LLVM is the default backend. `serve_multicore` accept loops stay on the worker that opened them; stolen connection fibers keep that slot’s globals.
+Proven against Nox ≥ 2.1.52 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). LLVM is the default backend. `serve_multicore` accept loops stay on the worker that opened them; stolen connection fibers keep that slot’s globals. Module globals are still per worker.
 
 ## Scopes
 
@@ -19,7 +19,7 @@ Nox isolates **module globals per worker slot** on both runtimes (shared heap un
 Consequences:
 
 1. `boot_for_serve(cfg, build)` validates routes once, then **clears** this slot when `workers>1` so no idle parent Application remains.
-2. Sibling workers start empty → `dispatch_ensure` / `dispatch_from_parts` call `boot_with_config` again on first request.
+2. The multicore entry calls `make_handle` / `make_handle_bare`. Nox runs that factory once in each worker. The factory calls `boot_with_config` and arms a drain fiber. `dispatch_ensure` still boots a slot that is empty, which is the `workers=1` `serve(handle)` path and any caller that does not use the factory.
 3. `workers=1` keeps the bound Application after `boot_for_serve`.
 
 Probe: `benchmarks/worker_probe/main.nox` + `scripts/smoke_worker_bind.sh`.
@@ -38,7 +38,7 @@ Put process-level work in the launching shell / supervisor **before** `serve*`, 
 Because hooks cannot be invoked across worker slots, Aether uses a **shared filesystem drain flag** (`aether.lifecycle`):
 
 1. `begin_shutdown(port)` or `POST /__aether/shutdown` (opt-in: `AETHER_SHUTDOWN_ROUTE=1`) sets `/tmp/aether-life-<port>/stopping` and publishes that fact on the calling worker immediately. The process keeps accepting. That is the load-balancer 503 window.
-2. Other workers notice the file within `AETHER_STOP_POLL_MS` (default **200**). Until then they may still return 200. `AETHER_STOP_POLL_MS=0` stats on every request. Each worker that has observed the flag returns **503** and runs **its own** `on_shutdown` hooks via `shutdown_bound()`.
+2. Other workers notice the file within `AETHER_STOP_POLL_MS` (default **200**). Until then they may still return 200. `AETHER_STOP_POLL_MS=0` stats on every request. Each worker that has observed the flag returns **503** and runs **its own** `on_shutdown` hooks via `shutdown_bound()`. A factory-booted worker also polls from its own fiber, so a slot that never accepts still unregisters and runs its hooks.
 3. `GET /health` also returns 503 while stopping (load balancer drain).
 4. `request_shutdown(port)` writes the same file and then calls `nox.http.shutdown()`. New accepts stop. In-flight requests have `AETHER_DRAIN_TIMEOUT_MS` (default **10000**) to finish, then `serve*` returns. A later `serve*` in the same process returns immediately. This is process exit, not the 503 window.
 5. SIGTERM and SIGINT are handled inside Nox. They stop accept and do not write the file. When `serve*` returns, `finally: finalize_serve(cfg)` sets the flag and `release_bound()`.

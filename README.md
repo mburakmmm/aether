@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.9.0 · **License:** MIT · **Requires Nox ≥ 2.0.186**  
+**Version:** 0.10.0 · **License:** MIT · **Requires Nox ≥ 2.1.52**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.9.0"
+      "ref": "v0.10.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.9.0
+noxc install github.com/mburakmmm/aether@v0.10.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -78,7 +78,7 @@ def build(app: Application) -> None:
     HealthModule().configure(app.module())
 
 cfg: Config = aether.config.load()
-# Validates once; workers>1 clears idle parent AppBind (siblings boot on first request).
+# Validates once. workers>1 clears parent AppBind; make_handle boots each worker.
 aether.application.boot_for_serve(cfg, build)
 
 def handle(req: HttpRequest) -> HttpResponse:
@@ -86,11 +86,19 @@ def handle(req: HttpRequest) -> HttpResponse:
         req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build, req.conn
     )
 
+def make_handle() -> (HttpRequest) -> HttpResponse:
+    aether.application.boot_with_config(cfg, build)
+    def bound(req: HttpRequest) -> HttpResponse:
+        return aether.application.dispatch_from_parts(
+            req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build, req.conn
+        )
+    return bound
+
 aether.server.print_listen(cfg, aether.server.serve_mode(cfg, False))
 try:
     workers: int = aether.server.effective_workers(cfg)
     if aether.server.use_os_workers(cfg):
-        nox.http.serve_multicore(cfg.port, handle, workers)
+        nox.http.serve_multicore(cfg.port, make_handle, workers)
     else:
         nox.http.serve(cfg.port, handle)
 finally:
@@ -100,6 +108,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.10.0
+
+Nox floor **2.1.52**. This revision is local until it is tagged. Multicore entrypoints pass `make_handle` to `serve_multicore*`; each worker builds its own `Application` before accept. `AETHER_IPV6=1` with `AETHER_WORKERS>1` sets `nox.http.configure` `ip_family` (`1` dual-stack, `2` with `AETHER_IPV6_ONLY`). A single worker still uses `listen_v6` + `serve_fd`. Request ids and `boot_id` are UUID v7. Rate-limit windows and request-log elapsed time use a monotonic clock. Queue leases stay on wall time and UUID v4.
 
 ## What’s new in 0.9.0
 
@@ -294,16 +306,14 @@ Built-in routes: `GET /health`, `GET /metrics`, and when OpenAPI is on: `GET /op
 
 ## Serve note
 
-Nox `serve*` requires a **bare top-level** `handle` / `ws_handle` name — do not wrap `dispatch` inside `aether.server.listen(...)`.
+A single worker passes a **bare top-level** `handle` to `serve`. `workers>1` passes a bare top-level `make_handle` to `serve_multicore*`. That name has to live in the application entry. Do not wrap `dispatch` inside `aether.server.listen(...)`.
 
-Do **not** close over `Application` in that handle (`dispatch(app, req)`). Use
-`dispatch_from_parts(method, target, body, headers, peer_addr, cfg, build, conn)` so the serve
-handle does not escape `req`. Pass `""` instead of `req.peer_addr` on a throughput
-handle so Nox skips the peer-string retain. Each worker slot boots its own `AppBind` via
-`dispatch_ensure` (LLVM ve QBE). See [docs/SCOPE.md](docs/SCOPE.md).
+Do **not** close over `Application` (`dispatch(app, req)`). The factory calls `boot_with_config`, then the closure it returns calls
+`dispatch_from_parts(method, target, body, headers, peer_addr, cfg, build, conn)`. Pass `""` instead of `req.peer_addr` on a throughput
+handle so Nox skips the peer-string retain. `dispatch_ensure` still boots an empty slot when the entry used a bare `handle`. See [docs/SCOPE.md](docs/SCOPE.md).
 
 Production: `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app`
-(Nox ≥ 2.0.186, macOS/arm64). `--release` aynı LLVM backend’inin optimize halidir. Dev: `./run.sh`. `AETHER_IPV6=1` is single-worker. Pass `req.conn` from the full `handle`. `handle_bare` leaves `conn` at 0.
+(Nox ≥ 2.1.52, macOS/arm64). `--release` aynı LLVM backend’inin optimize halidir. Dev: `./run.sh`. `AETHER_IPV6=1` with one worker uses `listen_v6`. With `AETHER_WORKERS>1` the same flag is `ip_family` on `serve_multicore*`. Pass `req.conn` from the full `handle`. `handle_bare` leaves `conn` at 0.
 
 ## License
 

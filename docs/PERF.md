@@ -4,7 +4,7 @@
 
 - Development / test: `AETHER_WORKERS=1` (single `nox.http.serve`). `noxc run` uses LLVM unless `--backend qbe`.
 - Production: `AETHER_WORKERS` defaults to **1**. Set `AETHER_WORKERS>1` for multicore.
-- Production binary (Nox 2.0.186+, macOS/arm64): `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app` (`--release` is the same LLVM backend with optimizations)
+- Production binary (Nox 2.1.52+, macOS/arm64): `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app` (`--release` is the same LLVM backend with optimizations)
 - Prefer `handle` that reads `req.method/target/body/headers` and calls `dispatch_from_parts` (do not pass `req` — that disables Nox header-skip). Pass `req.conn` from that handle. `handle_bare` does not read `conn`
 - Export `NOX_POOL_WORKERS` **before** exec (`scripts/aether_env.sh`, `./run.sh`). `apply_pool_workers` cannot resize the LLVM `$main` pool.
 - Production CORS is **off** unless `AETHER_CORS_ORIGINS` is set (largest hot-path win)
@@ -15,13 +15,13 @@
 | Path | Command | Scheduler | AppBind |
 |------|---------|-----------|---------|
 | LLVM (default) | `noxc run` / `noxc build` / `noxc build --release` | Shared M:N work-stealing + atomic ARC | Per worker-slot globals — not a process-wide Application |
-| QBE | `noxc run --backend qbe` | M:1 fiber per OS thread; shared-nothing | Fresh globals per OS worker → `dispatch_ensure` boots |
+| QBE | `noxc run --backend qbe` | M:1 fiber per OS thread; shared-nothing | Fresh globals per OS worker. The factory boots at serve start; `dispatch_ensure` remains for a bare `handle` |
 
 See [SCOPE.md](SCOPE.md). Parent `boot_with_config` does not fill sibling slots; `build()` must be idempotent.
 
 LLVM is the supported production backend on **macOS/arm64**.
 
-On LLVM, `serve_multicore(port, handle, N)` flattens into `$nox_pool_serve`.
+On LLVM, `serve_multicore(port, make_handle, N)` flattens into `$nox_pool_serve`. The factory is a top-level function with no parameters.
 Each accept loop stays on its worker. Connection fibers may be stolen; module
 globals stay on the slot that booted them. The pool size is `NOX_POOL_WORKERS`,
 read once at process start, and must equal `N`. A smaller pool silently drops
@@ -67,7 +67,7 @@ Default remains `AETHER_WORKERS=1`.
 
 ## Bench
 
-See [BENCHMARKS.md](BENCHMARKS.md) for Aether vs NestJS vs Gin vs Axum (`benchmarks/run.sh`). Nox 2.0.127 turns HTTP/2 on by default. wrk is HTTP/1.1, so the harness sets `AETHER_HTTP2=0` and the bench program sets `cfg.http2 = False` before `boot_for_serve`. The result tables were not remeasured for 0.9.0.
+See [BENCHMARKS.md](BENCHMARKS.md) for Aether vs NestJS vs Gin vs Axum (`benchmarks/run.sh`). Nox 2.0.127 turns HTTP/2 on by default. wrk is HTTP/1.1, so the harness sets `AETHER_HTTP2=0` and the bench program sets `cfg.http2 = False` before `boot_for_serve`. The result tables were not remeasured for 0.10.0.
 
 ```sh
 # QBE (dev / CI) — pool env required for apples-to-apples --release later
