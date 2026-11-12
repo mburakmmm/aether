@@ -71,6 +71,12 @@ missing_q: HttpResponse = aether.testing.get_headers(app, "/search?page=1", head
 nox.test.assert_eq_int(missing_q.status, 422, "missing query field")
 nox.test.assert_true(nox.strings.contains(missing_q.body, "missing query parameter: q"), "english missing query")
 
+spaced: dict[str, str] = {}
+spaced["Authorization"] = "Bearer  " + token
+spaced["X-Client-Id"] = "cli-9"
+spaced_ok: HttpResponse = aether.testing.get_headers(app, "/search?q=hello", spaced)
+nox.test.assert_eq_int(spaced_ok.status, 200, "bearer padding trimmed")
+
 no_auth: dict[str, str] = {}
 no_auth["X-Client-Id"] = "cli-9"
 unauth: HttpResponse = aether.testing.get_headers(app, "/search?q=x", no_auth)

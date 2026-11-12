@@ -304,7 +304,7 @@ class HttpContext:
         return ""
 
     def header(self: HttpContext, name: str) -> str:
-        return header_get(self.request.headers, name)
+        return nox.web.header(self.request, name)
 
     def body(self: HttpContext) -> str:
         return self.request.body
@@ -411,7 +411,7 @@ class HttpContext:
         if len(self.request_id) > 0:
             if not aether.response.has_header(merged, "X-Request-Id"):
                 merged["X-Request-Id"] = self.request_id
-        allow: str = _stream_allow_origin(self.cors_origins, header_get(self.request.headers, "Origin"))
+        allow: str = _stream_allow_origin(self.cors_origins, nox.web.header(self.request, "Origin"))
         if len(allow) > 0:
             if not aether.response.has_header(merged, "Access-Control-Allow-Origin"):
                 merged["Access-Control-Allow-Origin"] = allow

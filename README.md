@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.10.0 · **License:** MIT · **Requires Nox ≥ 2.1.52**  
+**Version:** 0.10.1 · **License:** MIT · **Requires Nox ≥ 2.1.52**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.10.0"
+      "ref": "v0.10.1"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.10.0
+noxc install github.com/mburakmmm/aether@v0.10.1
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -108,6 +108,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.10.1
+
+Nox floor stays **2.1.52**. JWT bearer tokens are read with `nox.web.bearer_token`, so surrounding spaces are trimmed. Header lookup uses `nox.web.header`. `peer_host` is unchanged.
 
 ## What’s new in 0.10.0
 

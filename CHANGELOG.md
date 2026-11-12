@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1 — 2026-11-12
+
+Nox floor stays **2.1.52**.
+
+- `jwt_bearer` reads the token with `nox.web.bearer_token`. Spaces around the token are trimmed. The static bearer guard still compares the whole header in constant time
+- `HttpContext.header`, CORS `Origin`, and the stream `Origin` lookup go through `nox.web.header`. `peer_host` stays: `nox.web.client_ip` drops the last colon piece, which breaks a bare IPv6 address and a non-numeric port
+
 ## 0.10.0 — 2026-11-11
 
 Nox floor **2.1.52** (published compiler; macOS arm64, Linux, and Windows archives exist). The suite and the limitation proofs were run with the installed `noxc 2.1.52`. Tags `v2.1.53`–`v2.1.55` are freestanding, WASM, and docs only, so they are not the pin. This revision is not published.

@@ -1,8 +1,8 @@
 # aether.guard - request guards as (HttpContext) -> bool functions.
 # Nox >= 1.137 allows guards[i](ctx). Bound methods (Nox >= 1.139) are valid guards.
 
-import nox.strings
 import nox.crypto
+import nox.web
 import aether.context
 from aether.context import HttpContext
 import aether.errors
@@ -43,20 +43,9 @@ def require_header(header_name: str) -> (HttpContext) -> bool:
         return True
     return check
 
-def _bearer_raw(auth: str) -> str:
-    if not nox.strings.starts_with(auth, "Bearer "):
-        return ""
-    out: str = ""
-    i: int = 7
-    while i < len(auth):
-        out = out + auth[i]
-        i = i + 1
-    return out
-
 def jwt_bearer(secret: str) -> (HttpContext) -> bool:
     def check(ctx: HttpContext) -> bool:
-        auth: str = ctx.header("Authorization")
-        token: str = _bearer_raw(auth)
+        token: str = nox.web.bearer_token(ctx.request)
         if len(token) == 0:
             raise UnauthorizedError("missing or invalid credentials")
         try:

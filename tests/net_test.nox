@@ -9,6 +9,8 @@ nox.test.assert_eq_str(peer_host("198.51.100.10:4000"), "198.51.100.10", "ipv4 p
 nox.test.assert_eq_str(peer_host("198.51.100.10"), "198.51.100.10", "bare host")
 nox.test.assert_eq_str(peer_host("[2001:db8::1]:443"), "2001:db8::1", "ipv6 brackets")
 nox.test.assert_eq_str(peer_host(""), "", "empty peer")
+nox.test.assert_eq_str(peer_host("2001:db8::1"), "2001:db8::1", "bare ipv6 kept")
+nox.test.assert_eq_str(peer_host("host:notaport"), "host:notaport", "non-numeric port kept")
 
 cfg: Config = aether.config.defaults("test")
 cfg.ipv6 = True

@@ -1,9 +1,9 @@
 # aether.cors - allowlist CORS with Origin reflection + Vary.
 
 import nox.strings
+import nox.web
 from nox.http import HttpRequest, HttpResponse
 import aether.response
-from aether.context import header_get
 
 def allow_origin_header(origins_cfg: str, origin: str) -> str:
     # Returns the Allow-Origin value to emit, or "" if none.
@@ -44,4 +44,4 @@ def preflight_response(origins_cfg: str, origin: str) -> HttpResponse:
     return HttpResponse(204, "", headers)
 
 def read_origin(req: HttpRequest) -> str:
-    return header_get(req.headers, "Origin")
+    return nox.web.header(req, "Origin")

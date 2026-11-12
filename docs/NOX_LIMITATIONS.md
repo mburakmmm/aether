@@ -1,6 +1,6 @@
 # Nox limitations
 
-Aether **0.10.0** requires **Nox ≥ 2.1.52**. This note is the recheck of the gaps that still shape Aether. Each item has the command that was run and the output that command printed.
+Aether **0.10.1** requires **Nox ≥ 2.1.52**. This note is the recheck of the gaps that still shape Aether. Each item has the command that was run and the output that command printed.
 
 Checked **2026-11-11** with the installed compiler `noxc 2.1.52`. GitHub release `v2.1.52` has `nox-lang-v2.1.52-macos-arm64.tar.gz`, the Linux archives, and the Windows archives. The local clone’s tag `v2.1.52` is `b1debe1e7af0a83c720b6c465c3e29d00fcd5a27`. Tags `v2.1.53`–`v2.1.55` do not change this surface (freestanding, WASM import notes, FFI notes).
 
