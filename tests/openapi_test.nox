@@ -4,7 +4,7 @@ import aether.config
 import aether.application
 from aether.config import Config
 from aether.application import Application
-from aether.module import ModuleBuilder
+from aether.module import ModuleBuilder, RouteOptions
 from aether.context import HttpContext
 from aether.response import json_ok
 from aether.dto import DtoSchema
@@ -16,6 +16,7 @@ class DocModule:
         out.require("pong", "bool")
         m.tag("demo")
         m.get_documented("/ping", self._ping(), "Ping", out)
+        m.route("PATCH", "/ping", self._ping(), RouteOptions())
 
     def _ping(self: DocModule) -> (HttpContext) -> HttpResponse:
         def ping(ctx: HttpContext) -> HttpResponse:
@@ -33,6 +34,9 @@ doc: str = app.openapi_doc
 nox.test.assert_true(nox.strings.contains(doc, "openapi"), "has openapi")
 nox.test.assert_true(nox.strings.contains(doc, "/ping"), "has ping path")
 nox.test.assert_true(nox.strings.contains(doc, "Test API"), "has title")
+nox.test.assert_true(nox.strings.contains(doc, "\"type\":\"boolean\""), "bool is boolean")
+nox.test.assert_true(nox.strings.contains(doc, "\"get\":"), "get operation")
+nox.test.assert_true(nox.strings.contains(doc, "\"patch\":"), "patch operation")
 
 aether.application.shutdown(app)
 print("openapi_test ok")

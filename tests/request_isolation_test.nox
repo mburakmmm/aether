@@ -1,0 +1,46 @@
+import nox.test
+import nox.strings
+import aether.config
+import aether.application
+import aether.testing
+from aether.config import Config
+from aether.application import Application
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+from nox.http import HttpResponse
+
+class IsoMod:
+    def configure(self: IsoMod, m: ModuleBuilder) -> None:
+        m.get("/who", self._who())
+
+    def _who(self: IsoMod) -> (HttpContext) -> HttpResponse:
+        def who(ctx: HttpContext) -> HttpResponse:
+            seen: str = ctx.get_request_value("aether.jwt")
+            mark: str = ctx.header("x-mark")
+            if mark == "1":
+                ctx.set_request_value("aether.jwt", "secret-token")
+            return json_ok("{\"saw\":\"" + seen + "\"}")
+        return who
+
+def build(app: Application) -> None:
+    IsoMod().configure(app.module())
+
+cfg: Config = aether.config.defaults("test")
+cfg.request_id = False
+cfg.log_requests = False
+cfg.metrics = False
+app: Application = aether.application.boot_with_config(cfg, build)
+
+mark: dict[str, str] = {}
+mark["X-Mark"] = "1"
+first: HttpResponse = aether.testing.get_headers(app, "/who", mark)
+nox.test.assert_eq_int(first.status, 200, "first status")
+nox.test.assert_true(nox.strings.contains(first.body, "\"saw\":\"\""), "first request starts empty")
+
+second: HttpResponse = aether.testing.get(app, "/who")
+nox.test.assert_eq_int(second.status, 200, "second status")
+nox.test.assert_true(nox.strings.contains(second.body, "\"saw\":\"\""), "second request does not see aether.jwt")
+nox.test.assert_true(not nox.strings.contains(second.body, "secret-token"), "token does not leak")
+
+print("request_isolation_test ok")

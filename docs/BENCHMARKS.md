@@ -11,7 +11,7 @@ Same workload, same machine, `wrk` load generator.
 
 Implementations:
 
-- **Aether QBE** — `noxc run benchmarks/aether/main.nox` (`dispatch_from_parts` / `handle_bare`; `AETHER_WORKERS=1`, `NOX_POOL_WORKERS=1`)
+- **Aether QBE** — `noxc run --backend qbe benchmarks/aether/main.nox` (`dispatch_from_parts` / `handle_bare`; `AETHER_WORKERS=1`, `NOX_POOL_WORKERS=1`). Plain `noxc run` is LLVM
 - **Aether `--release`** — `noxc build --release` (Nox 1.104.0 LLVM M:N, macOS/arm64; process-env `NOX_POOL_WORKERS`)
 - **NestJS** — `@nestjs/platform-express` (`benchmarks/nestjs`)
 - **Gin** — `github.com/gin-gonic/gin` release mode (`benchmarks/gin`)
@@ -40,6 +40,21 @@ Raw wrk logs land in `benchmarks/results/*.txt` (gitignored).
 - Default `AETHER_WORKERS=1` for fair single-process comparison. See `docs/PERF.md` for QBE vs `--release`.
 - Query/header validation and JWT are **not** on the ping/echo hot path.
 - `--release` is measured **after** stopping the QBE server (two Aether processes on one machine can SIGSEGV the LLVM binary).
+
+## Load record (2026-11-15)
+
+`scripts/smoke_load.sh`, `wrk -t4 -c40 -d30s --latency`, HTTP/1.1, `noxc` 2.1.186, this machine. `AETHER_JSON` stayed `std`. Non-2xx responses were 0. Socket read errors were 0 on Aether and on a bare Nox ping, so this run did not reproduce the older wrk read-error row. These numbers are not rows in the historical tables below.
+
+The first pass of this table was taken while other Nox processes were still running. The figures below are the rerun with no Nox server listening. One-minute load was still 3.8 at the start and 4.5 at the end, from the window server, Spotlight, Cursor, and Antigravity. It is not an idle-machine number.
+
+| Run | Ping req/s | Ping p99 | Echo req/s | Echo p99 |
+|-----|------------|----------|------------|----------|
+| LLVM, workers=1 | 212876 | 679us | 179556 | 760us |
+| LLVM, workers=4 | 176232 | 849us | 183973 | 780us |
+| `--release`, workers=1 | 150866 | 0.97ms | 144941 | 0.85ms |
+| QBE, workers=1 | 170588 | 777us | 146356 | 787us |
+
+Bare Nox ping on the same settings: LLVM 227633 req/s (p99 629us), `--release` 182344 (p99 672us), QBE 201561 (p99 523us). The workers=4 probe answered with one `boot_id`. Accept stayed on one worker. `scripts/smoke_worker_bind.sh` remains the check that more than one worker boots.
 
 ## Results
 

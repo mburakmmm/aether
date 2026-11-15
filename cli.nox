@@ -1,8 +1,13 @@
-# aether CLI - scaffold new apps from templates/app
+# aether CLI - scaffold new apps from templates/app.
+# `noxc run` compiles to a cache binary, so argv0 is not the package path.
+# Search the working directory and its parents, then AETHER_ROOT.
+# A compiled install with none of those falls back to cli_embed.
 
 import nox.os
 import nox.fs
 import nox.strings
+import nox.base64
+from aether.cli_embed import PACKAGE_VERSION, MAIN_NOX, WORKER_NOX, WS_NOX, NOX_JSON, RUN_SH, RUN_RELEASE_SH
 from nox.os import OsError
 
 def _usage() -> None:
@@ -12,35 +17,82 @@ def _usage() -> None:
 def _replace_all(text: str, needle: str, replacement: str) -> str:
     return nox.strings.replace(text, needle, replacement)
 
-def _copy_template_file(src: str, dst: str, app_name: str) -> None:
-    raw: str = nox.fs.read_to_string(src)
-    out: str = _replace_all(raw, "{{APP_NAME}}", app_name)
-    nox.fs.write_string(dst, out)
+def _parent(path: str) -> str:
+    if path == "/" or len(path) == 0:
+        return ""
+    end: int = len(path) - 1
+    while end > 0 and path[end] == "/":
+        end = end - 1
+    i: int = end
+    while i > 0 and path[i] != "/":
+        i = i - 1
+    if i <= 0:
+        return "/"
+    out: str = ""
+    k: int = 0
+    while k < i:
+        out = out + path[k]
+        k = k + 1
+    return out
 
-def _read_version() -> str:
-    candidates: list[str] = []
-    candidates.append("VERSION")
-    candidates.append("../VERSION")
-    i: int = 0
-    while i < len(candidates):
-        path: str = candidates[i]
-        if nox.fs.exists(path):
-            raw: str = nox.fs.read_to_string(path)
-            # trim trailing whitespace/newlines
-            out: str = ""
-            j: int = 0
-            while j < len(raw):
-                ch: str = raw[j]
-                if ch == "\n" or ch == "\r" or ch == " ":
-                    if len(out) > 0:
-                        return out
-                else:
-                    out = out + ch
-                j = j + 1
+def _has_templates(root: str) -> bool:
+    return nox.fs.exists(root + "/templates/app/main.nox")
+
+def _find_root() -> str:
+    env: str = ""
+    try:
+        env = nox.os.getenv("AETHER_ROOT")
+    except OsError as missing:
+        if len(missing.message) >= 0:
+            env = ""
+    if len(env) > 0 and _has_templates(env):
+        return env
+    here: str = nox.os.current_dir()
+    steps: int = 0
+    while steps < 8 and len(here) > 0:
+        if _has_templates(here):
+            return here
+        nxt: str = _parent(here)
+        if nxt == here or len(nxt) == 0:
+            return ""
+        here = nxt
+        steps = steps + 1
+    return ""
+
+def _trim_version(raw: str) -> str:
+    out: str = ""
+    j: int = 0
+    while j < len(raw):
+        ch: str = raw[j]
+        if ch == "\n" or ch == "\r" or ch == " ":
             if len(out) > 0:
                 return out
-        i = i + 1
-    return "0.3.0"
+        else:
+            out = out + ch
+        j = j + 1
+    return out
+
+def _read_version() -> str:
+    root: str = _find_root()
+    if len(root) > 0 and nox.fs.exists(root + "/VERSION"):
+        trimmed: str = _trim_version(nox.fs.read_to_string(root + "/VERSION"))
+        if len(trimmed) > 0:
+            return trimmed
+    return PACKAGE_VERSION
+
+def _write_scaffold(dst: str, raw: str, app_name: str) -> None:
+    nox.fs.write_string(dst, _replace_all(raw, "{{APP_NAME}}", app_name))
+
+def _copy_template_file(src: str, dst: str, app_name: str) -> None:
+    _write_scaffold(dst, nox.fs.read_to_string(src), app_name)
+
+def _write_embedded(name: str) -> None:
+    _write_scaffold(name + "/main.nox", nox.base64.decode(MAIN_NOX), name)
+    _write_scaffold(name + "/worker.nox", nox.base64.decode(WORKER_NOX), name)
+    _write_scaffold(name + "/nox.json", nox.base64.decode(NOX_JSON), name)
+    _write_scaffold(name + "/ws.nox", nox.base64.decode(WS_NOX), name)
+    _write_scaffold(name + "/run.sh", nox.base64.decode(RUN_SH), name)
+    _write_scaffold(name + "/run-release.sh", nox.base64.decode(RUN_RELEASE_SH), name)
 
 def cmd_new(name: str) -> None:
     if len(name) == 0:
@@ -50,19 +102,20 @@ def cmd_new(name: str) -> None:
         print("path already exists: " + name)
         nox.os.exit(1)
     nox.fs.create_dir(name)
-    template_root: str = "templates/app"
-    if not nox.fs.exists(template_root + "/main.nox"):
-        print("template not found: templates/app (run from aether package root)")
-        nox.os.exit(1)
-    _copy_template_file(template_root + "/main.nox", name + "/main.nox", name)
-    _copy_template_file(template_root + "/worker.nox", name + "/worker.nox", name)
-    _copy_template_file(template_root + "/nox.json", name + "/nox.json", name)
-    _copy_template_file(template_root + "/ws.nox", name + "/ws.nox", name)
-    _copy_template_file(template_root + "/run.sh", name + "/run.sh", name)
-    _copy_template_file(template_root + "/run-release.sh", name + "/run-release.sh", name)
+    root: str = _find_root()
+    if len(root) > 0:
+        template_root: str = root + "/templates/app"
+        _copy_template_file(template_root + "/main.nox", name + "/main.nox", name)
+        _copy_template_file(template_root + "/worker.nox", name + "/worker.nox", name)
+        _copy_template_file(template_root + "/nox.json", name + "/nox.json", name)
+        _copy_template_file(template_root + "/ws.nox", name + "/ws.nox", name)
+        _copy_template_file(template_root + "/run.sh", name + "/run.sh", name)
+        _copy_template_file(template_root + "/run-release.sh", name + "/run-release.sh", name)
+    else:
+        _write_embedded(name)
     print("created " + name)
     print("  cd " + name + " && noxc fetch && chmod +x run.sh run-release.sh && ./run.sh")
-    print("  production (Nox 1.104.0+, macOS/arm64): ./run-release.sh")
+    print("  production (Nox 2.1.186+): ./run-release.sh")
 
 def run() -> None:
     n: int = nox.os.arg_count()

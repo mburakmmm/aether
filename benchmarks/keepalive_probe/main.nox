@@ -1,0 +1,39 @@
+# One connection, many requests. The first request stores aether.jwt.
+# Later requests on that fiber must not see it.
+
+import nox.http
+from nox.http import HttpRequest, HttpResponse
+import aether.application
+import aether.server
+import aether.config
+from aether.application import Application
+from aether.config import Config
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+
+def who(ctx: HttpContext) -> HttpResponse:
+    seen: str = ctx.get_request_value("aether.jwt")
+    if ctx.header("x-mark") == "1":
+        ctx.set_request_value("aether.jwt", "secret-token")
+    return json_ok("{\"saw\":\"" + seen + "\"}")
+
+def build(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.get("/who", who)
+
+cfg: Config = aether.config.load()
+cfg.http2 = False
+cfg.workers = 1
+aether.application.boot_for_serve(cfg, build)
+
+def handle(req: HttpRequest) -> HttpResponse:
+    return aether.application.dispatch_from_parts(
+        req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build, req.conn
+    )
+
+aether.server.print_listen(cfg, "plain")
+try:
+    nox.http.serve(cfg.port, handle)
+finally:
+    aether.application.finalize_serve(cfg)

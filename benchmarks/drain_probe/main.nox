@@ -1,0 +1,49 @@
+# Drain probe. /slow stays in flight. POST /die calls request_shutdown,
+# which stops accept. SIGTERM does not write the file; finalize_serve does.
+
+import nox.http
+import nox.time
+from nox.http import HttpRequest, HttpResponse
+import aether.application
+import aether.lifecycle
+import aether.server
+import aether.config
+from aether.application import Application
+from aether.config import Config
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+
+def ping(ctx: HttpContext) -> HttpResponse:
+    return json_ok("{\"pong\":true}")
+
+def slow(ctx: HttpContext) -> HttpResponse:
+    nox.time.sleep_ms(3000)
+    return json_ok("{\"slow\":true}")
+
+cfg: Config = aether.config.load()
+cfg.http2 = False
+cfg.workers = 1
+
+def die_bound(ctx: HttpContext) -> HttpResponse:
+    aether.lifecycle.request_shutdown(cfg.port)
+    return json_ok("{\"die\":true}")
+
+def build_real(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.get("/ping", ping)
+    m.get("/slow", slow)
+    m.post("/die", die_bound)
+
+aether.application.boot_for_serve(cfg, build_real)
+
+def handle(req: HttpRequest) -> HttpResponse:
+    return aether.application.dispatch_from_parts(
+        req.method, req.target, req.body, req.headers, "", cfg, build_real, req.conn
+    )
+
+aether.server.print_listen(cfg, "plain")
+try:
+    nox.http.serve(cfg.port, handle)
+finally:
+    aether.application.finalize_serve(cfg)

@@ -1,0 +1,77 @@
+import nox.test
+import nox.time
+import aether.application
+import aether.config
+import aether.rate_limit
+import aether.testing
+from aether.application import Application
+from aether.config import Config
+from aether.context import HttpContext
+from aether.module import ModuleBuilder
+from aether.rate_limit import RateStore
+from aether.response import json_ok
+from nox.http import HttpResponse
+
+store: RateStore = RateStore(8)
+nox.test.assert_true(store.allow("a", 2, 60000), "first hit")
+nox.test.assert_true(store.allow("a", 2, 60000), "second hit")
+nox.test.assert_true(not store.allow("a", 2, 60000), "third hit blocked")
+
+short: RateStore = RateStore(8)
+nox.test.assert_true(short.allow("a", 1, 20), "short window first")
+nox.test.assert_true(not short.allow("a", 1, 20), "short window blocked")
+nox.time.sleep_ms(40)
+nox.test.assert_true(short.allow("a", 1, 20), "window elapsed on monotonic clock")
+
+tiny: RateStore = RateStore(1)
+nox.test.assert_true(tiny.allow("a", 1, 60000), "bucket a")
+nox.test.assert_true(not tiny.allow("a", 1, 60000), "a is full")
+nox.test.assert_true(tiny.allow("b", 1, 60000), "b replaces a")
+nox.test.assert_true(tiny.allow("a", 1, 60000), "a returns as its own bucket")
+nox.test.assert_true(not tiny.allow("a", 1, 60000), "a keeps its own count")
+
+def ping(ctx: HttpContext) -> HttpResponse:
+    return json_ok("{\"pong\":true}")
+
+def build(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.get("/ping", ping)
+
+cfg: Config = aether.config.defaults("test")
+cfg.log_requests = False
+cfg.metrics = False
+cfg.rate_limit_enabled = True
+cfg.rate_limit_max = 1
+cfg.rate_limit_window_ms = 60000
+cfg.trust_x_forwarded_for = False
+app: Application = aether.application.boot_with_config(cfg, build)
+
+spoof: dict[str, str] = {}
+spoof["X-Forwarded-For"] = "203.0.113.9"
+first: HttpResponse = aether.testing.request_peer(app, "GET", "/ping", "", spoof, "198.51.100.10")
+nox.test.assert_eq_int(first.status, 200, "peer one allowed")
+second: HttpResponse = aether.testing.request_peer(app, "GET", "/ping", "", spoof, "198.51.100.10")
+nox.test.assert_eq_int(second.status, 429, "same peer limited")
+other: HttpResponse = aether.testing.request_peer(app, "GET", "/ping", "", spoof, "198.51.100.11")
+nox.test.assert_eq_int(other.status, 200, "other peer is another bucket")
+unknown: HttpResponse = aether.testing.request_peer(app, "GET", "/ping", "", spoof, "")
+nox.test.assert_eq_int(unknown.status, 200, "empty peer skips the limiter")
+unknown2: HttpResponse = aether.testing.request_peer(app, "GET", "/ping", "", spoof, "")
+nox.test.assert_eq_int(unknown2.status, 200, "empty peer does not share a bucket")
+
+cfg2: Config = aether.config.defaults("test")
+cfg2.log_requests = False
+cfg2.metrics = False
+cfg2.rate_limit_enabled = True
+cfg2.rate_limit_max = 1
+cfg2.rate_limit_window_ms = 60000
+cfg2.trust_x_forwarded_for = True
+trusted: Application = aether.application.boot_with_config(cfg2, build)
+hop: dict[str, str] = {}
+hop["X-Forwarded-For"] = "203.0.113.9, 10.0.0.1"
+t1: HttpResponse = aether.testing.request_peer(trusted, "GET", "/ping", "", hop, "198.51.100.10")
+nox.test.assert_eq_int(t1.status, 200, "trusted first hop allowed")
+t2: HttpResponse = aether.testing.request_peer(trusted, "GET", "/ping", "", hop, "198.51.100.11")
+nox.test.assert_eq_int(t2.status, 429, "same first hop shares a bucket")
+
+print("rate_window_test ok")

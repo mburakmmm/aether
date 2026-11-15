@@ -1,9 +1,15 @@
 import nox.test
+import nox.strings
 import aether.config
+import aether.application
 import aether.server
 from aether.config import Config
+from aether.application import Application
 from aether.context import peer_host
 from aether.server import ServerError
+
+def _boot_ok(app: Application) -> None:
+    return
 
 nox.test.assert_eq_str(peer_host("198.51.100.10:4000"), "198.51.100.10", "ipv4 port stripped")
 nox.test.assert_eq_str(peer_host("198.51.100.10"), "198.51.100.10", "bare host")
@@ -73,5 +79,26 @@ nox.test.assert_true(rejected_rate, "http3 rate limit needs xff")
 h3.rate_limit_enabled = False
 aether.server.require_http3(h3)
 nox.test.assert_true(h3.http3, "http3 single-worker tls accepted")
+
+host: Config = aether.config.defaults("test")
+aether.server.require_listen_host(host)
+host.host = ""
+aether.server.require_listen_host(host)
+host.host = "127.0.0.1"
+rejected_host: bool = False
+try:
+    aether.server.require_listen_host(host)
+except ServerError as e6:
+    rejected_host = nox.strings.contains(e6.message, "AETHER_HOST")
+nox.test.assert_true(rejected_host, "host other than 0.0.0.0 is refused")
+host.host = "0.0.0.0"
+aether.application.boot_with_config(host, _boot_ok)
+host.host = "127.0.0.1"
+rejected_boot: bool = False
+try:
+    aether.application.boot_with_config(host, _boot_ok)
+except ServerError as e7:
+    rejected_boot = nox.strings.contains(e7.message, "AETHER_HOST")
+nox.test.assert_true(rejected_boot, "boot refuses a specific host")
 
 print("net_test ok")

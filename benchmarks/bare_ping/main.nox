@@ -1,0 +1,24 @@
+# Bare Nox ping. Same wrk shape as the Aether bench, without Aether.
+# A read error that appears here as well is the Nox keep-alive path.
+
+import nox.http
+import nox.os
+from nox.os import OsError
+from nox.http import HttpRequest, HttpResponse
+
+def handle(req: HttpRequest) -> HttpResponse:
+    headers: dict[str, str] = {}
+    headers["Content-Type"] = "application/json"
+    return HttpResponse(200, "{\"pong\":true}", headers)
+
+port: int = 34720
+try:
+    raw: str = nox.os.getenv("AETHER_PORT")
+    port = int(raw)
+except OsError as missing:
+    if len(missing.message) >= 0:
+        port = 34720
+
+nox.http.set_http2(False)
+print("bare ping :" + str(port))
+nox.http.serve(port, handle)

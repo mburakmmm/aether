@@ -1,0 +1,68 @@
+# workers=1 WebSocket room. A dropped connection leaves the room.
+# Rooms stay on this worker. HTTP/3 is not used.
+
+import nox.http
+import nox.os
+from nox.os import OsError
+from nox.http import HttpRequest, HttpResponse
+from nox.websocket import WebSocketServerConn
+import aether.application
+import aether.server
+import aether.config
+from aether.application import Application
+from aether.config import Config
+from aether.gateway import Gateway, allow_all_rooms, echo_handler, require_token_auth, run_connection_authed
+from aether.module import ModuleBuilder
+from aether.context import HttpContext
+from aether.response import json_ok
+
+gateway: Gateway = Gateway()
+gateway.enable_rooms()
+gateway.set_room_auth(allow_all_rooms())
+gateway.on("echo", echo_handler)
+gateway.max_message_bytes = 48
+
+deny: bool = False
+try:
+    mode: str = nox.os.getenv("AETHER_WS_MODE")
+    if mode == "deny":
+        deny = True
+except OsError as missing:
+    if len(missing.message) >= 0:
+        deny = False
+
+if deny:
+    gateway.set_auth(require_token_auth("secret"))
+
+def count_handler(conn: WebSocketServerConn, event: str, payload: str) -> None:
+    n: int = gateway.rooms.member_count("lobby")
+    conn.send_text("{\"event\":\"count\",\"payload\":{\"n\":" + str(n) + "}}")
+
+gateway.on("count", count_handler)
+
+def ping(ctx: HttpContext) -> HttpResponse:
+    return json_ok("{\"pong\":true}")
+
+def build(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.get("/ping", ping)
+
+cfg: Config = aether.config.load()
+cfg.http2 = False
+cfg.workers = 1
+cfg.ws_enabled = False
+aether.application.boot_for_serve(cfg, build)
+
+def handle(req: HttpRequest) -> HttpResponse:
+    return aether.application.dispatch_from_parts(
+        req.method, req.target, req.body, req.headers, "", cfg, build, req.conn
+    )
+
+def ws_handle(conn: WebSocketServerConn) -> None:
+    run_connection_authed(gateway, conn, "")
+
+aether.server.print_listen(cfg, "ws")
+try:
+    nox.http.serve_ws(cfg.port, handle, ws_handle)
+finally:
+    aether.application.finalize_serve(cfg)

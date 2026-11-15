@@ -20,18 +20,15 @@
 # boot_with_config auto-calls bind(app). Do not close over Application in handle
 # (Nox codegen rejects that with serve*).
 #
-# Dual runtime (Nox 2.0, LLVM is the default backend):
-#   LLVM (`noxc run` / `noxc build` / `noxc build --release`): shared M:N pool.
-#     `serve_multicore` flattens into that pool (`$nox_pool_serve`). Each slot
-#     opens its own SO_REUSEPORT socket; connection fibers are stealable.
-#     The pool size is fixed at process start from NOX_POOL_WORKERS (or the
-#     CPU count when the program contains serve_multicore and the variable
-#     is unset). In-process set_var cannot resize it. If the pool is smaller
-#     than AETHER_WORKERS, extra accept loops are dropped.
-#   QBE (`noxc run --backend qbe`): one OS thread per serve_multicore worker,
-#     each with its own SO_REUSEPORT socket. NOX_POOL_WORKERS is unused.
-#   Both: module globals (AppBind, Metrics, RateStore, closures) are per slot.
-#     Stolen tasks keep the globals of the slot that started them.
+# Dual runtime (Nox 2.1.112, hosted QBE uses the same M:N pool):
+#   LLVM is the default (`noxc run`, `noxc build`, `noxc build --release`).
+#   QBE is `noxc --backend qbe`. A program that spawns or calls
+#   `serve_multicore` takes `$nox_pool_serve` on both. The pool size is
+#   NOX_POOL_WORKERS, read once at process start (CPU count when that
+#   variable is unset and the program contains serve_multicore). set_var
+#   cannot resize it. Each slot opens its own SO_REUSEPORT socket.
+#   Module globals (AppBind, Metrics, RateStore, closures) stay per slot.
+#   Stolen tasks keep the globals of the slot that started them.
 #   See docs/SCOPE.md.
 #
 # Multicore:
@@ -105,9 +102,9 @@ def apply_pool_workers(cfg: Config) -> None:
     n: int = effective_workers(cfg)
     nox.os.set_var("NOX_POOL_WORKERS", str(n))
 
-# LLVM sizes the M:N pool before user code runs. workers>1 must already
-# see NOX_POOL_WORKERS equal to AETHER_WORKERS; a later set_var does not
-# add accept loops. QBE ignores the variable, so the same check is safe.
+# Both backends size the M:N pool before user code runs. workers>1 must
+# already see NOX_POOL_WORKERS equal to AETHER_WORKERS. set_var does not
+# add accept loops.
 def require_pool_env(cfg: Config) -> None:
     if not use_os_workers(cfg):
         return
@@ -118,7 +115,7 @@ def require_pool_env(cfg: Config) -> None:
         " requires NOX_POOL_WORKERS=" + pool_workers_wanted(cfg) +
         " in the environment before the process starts (saw '" +
         pool_workers_env() +
-        "'). LLVM reads the pool size at startup; set_var cannot resize it."
+        "'). The pool size is read at process start; set_var cannot resize it."
     )
     print(message)
     raise ServerError(message)
@@ -153,6 +150,18 @@ def http_ip_family(cfg: Config) -> int:
         return 2
     return 1
 
+# Nox serve* takes a port and listens on every interface. AETHER_HOST cannot
+# narrow that. An empty value and 0.0.0.0 mean "all interfaces". Any other
+# value is refused so 127.0.0.1 does not look bound while the socket is open
+# on 0.0.0.0.
+def require_listen_host(cfg: Config) -> None:
+    if len(cfg.host) == 0 or cfg.host == "0.0.0.0":
+        return
+    raise ServerError(
+        "AETHER_HOST cannot choose the listen address (Nox serve* binds every interface). Use 0.0.0.0 or leave AETHER_HOST empty (got " +
+        cfg.host + ")"
+    )
+
 # HTTP/3 is one UDP socket inside serve_tls / serve_fd_tls, not SO_REUSEPORT.
 # workers>1 would make every extra worker fail that bind. peer_addr is empty
 # on QUIC, so a rate limit without a trusted XFF header cannot see a client.
@@ -183,6 +192,7 @@ def listen_v6_fd(cfg: Config) -> int:
 # Process-wide Nox server limits. 0 keeps that knob's current Nox default.
 # Call once before serve* (boot_for_serve does). Safe to repeat with the same cfg.
 def apply_http_server(cfg: Config) -> None:
+    require_listen_host(cfg)
     nox.http.configure(
         cfg.max_body_bytes,
         cfg.max_header_bytes,

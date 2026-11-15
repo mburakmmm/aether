@@ -9,10 +9,16 @@ from aether.module import RouteDef
 from aether.dto import DtoSchema, Field
 from aether.config import Config
 
+# DTO kinds use "bool". OpenAPI 3 calls that type "boolean".
+def _schema_type(kind: str) -> str:
+    if kind == "bool":
+        return "boolean"
+    return kind
+
 def _field_schema_json(field: Field, nested_ref: bool) -> str:
     if field.kind == "object" and len(field.description) > 0 and nested_ref:
         return "{\"$ref\":\"#/components/schemas/" + field.description + "\"}"
-    body: str = "{\"type\":" + nox.json.dump_string(field.kind)
+    body: str = "{\"type\":" + nox.json.dump_string(_schema_type(field.kind))
     if len(field.format_name) > 0:
         body = body + ",\"format\":" + nox.json.dump_string(field.format_name)
     if len(field.pattern) > 0:
@@ -27,7 +33,7 @@ def _field_schema_json(field: Field, nested_ref: bool) -> str:
         if field.has_max:
             body = body + ",\"maximum\":" + str(field.maximum)
     if field.kind == "array" and len(field.item_kind) > 0:
-        body = body + ",\"items\":{\"type\":" + nox.json.dump_string(field.item_kind) + "}"
+        body = body + ",\"items\":{\"type\":" + nox.json.dump_string(_schema_type(field.item_kind)) + "}"
     body = body + "}"
     return body
 
@@ -172,15 +178,7 @@ def _schema_ref_or_inline(schema: DtoSchema) -> str:
     return _dto_schema_json(schema)
 
 def _method_key(method: str) -> str:
-    if method == "GET":
-        return "get"
-    if method == "POST":
-        return "post"
-    if method == "PUT":
-        return "put"
-    if method == "DELETE":
-        return "delete"
-    return "get"
+    return nox.strings.lower(method)
 
 def _operation_json(route: RouteDef) -> str:
     body: str = "{"

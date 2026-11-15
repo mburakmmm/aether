@@ -1,0 +1,46 @@
+import nox.test
+import aether.application
+import aether.config
+import aether.engine_lz4
+import aether.lifecycle
+import aether.testing
+from aether.application import Application
+from aether.config import Config
+from aether.context import HttpContext
+from aether.dto import DtoSchema
+from aether.module import ModuleBuilder
+from aether.response import json_ok
+from nox.http import HttpResponse
+
+def ping(ctx: HttpContext) -> HttpResponse:
+    return json_ok("{\"pong\":true}")
+
+def build(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    echo_in: DtoSchema = DtoSchema("EchoIn")
+    echo_in.require("msg", "string")
+    echo_out: DtoSchema = DtoSchema("EchoOut")
+    echo_out.require("msg", "string")
+    m.get("/ping", ping)
+    m.post_body("/echo", ping, "Echo", echo_in, echo_out)
+
+cfg: Config = aether.config.defaults("test")
+cfg.port = 39991
+cfg.log_requests = False
+cfg.metrics = False
+cfg.body_codecs = "lz4"
+app: Application = aether.application.boot_with_config(cfg, build)
+
+bad: dict[str, str] = {}
+bad["Content-Encoding"] = "gzip"
+open_body: HttpResponse = aether.testing.post_headers(app, "/echo", "not-gzip", bad)
+nox.test.assert_eq_int(open_body.status, 415, "bad encoding is 415 while serving")
+
+aether.lifecycle.begin_shutdown(cfg.port)
+draining: HttpResponse = aether.testing.post_headers(app, "/echo", "not-gzip", bad)
+nox.test.assert_eq_int(draining.status, 503, "drain wins over content-encoding")
+ping_resp: HttpResponse = aether.testing.get(app, "/ping")
+nox.test.assert_eq_int(ping_resp.status, 503, "ping is 503 while draining")
+
+aether.lifecycle.clear_shutdown(cfg.port)
+print("drain_order_test ok")

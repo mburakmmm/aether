@@ -52,6 +52,5 @@ See README for the full module table.
 - OpenAPI built once at boot
 - `dispatch_from_parts(...)` when serving; export `NOX_POOL_WORKERS` before exec
 - Default `AETHER_WORKERS=1`
-- QBE (`noxc run`): shared-nothing `serve_multicore` (SO_REUSEPORT when `workers>1`)
-- `--release` (`noxc build --release`, macOS/arm64): shared M:N heap + stealable connection fibers; **module globals / Application remain per worker slot**
+- LLVM is the default (`noxc run`). QBE is `noxc run --backend qbe`. Since Nox 2.1.112 both use the M:N pool when the program spawns or calls `serve_multicore`. Each worker still opens its own socket. **Module globals / Application remain per worker slot**
 - In-memory `RateStore` / `Metrics` / closure services are **worker-local** (not process-wide). See [SCOPE.md](SCOPE.md).

@@ -98,6 +98,21 @@ jobs:
           chmod +x scripts/smoke_package.sh
           ./scripts/smoke_package.sh
 
+      - name: Keep-alive isolation
+        run: |
+          chmod +x scripts/smoke_keepalive.sh
+          AETHER_PORT=34721 ./scripts/smoke_keepalive.sh
+
+      - name: WebSocket reconnect
+        run: |
+          chmod +x scripts/smoke_ws.sh
+          AETHER_PORT=34722 ./scripts/smoke_ws.sh
+
+      - name: Drain signal and timeout
+        run: |
+          chmod +x scripts/smoke_drain_signal.sh
+          AETHER_PORT=34723 ./scripts/smoke_drain_signal.sh
+
   release-smoke:
     runs-on: macos-latest
     steps:

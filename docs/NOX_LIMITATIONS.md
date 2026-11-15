@@ -1,6 +1,6 @@
 # Nox limitations
 
-Aether **0.11.0** requires **Nox ≥ 2.1.186**. The sections below the 0.11 note are the 2026-11-11 recheck on `noxc 2.1.52`. They were not re-run for this floor. `serve_multicore` still gives each worker its own module globals; Nox 2.1.120–2.1.140 did not change that factory model.
+Aether **0.12.0** requires **Nox ≥ 2.1.186**. The sections below the 0.11 note are the 2026-11-11 recheck on `noxc 2.1.52`. They were not re-run for this floor. `serve_multicore` still gives each worker its own module globals; Nox 2.1.120–2.1.140 did not change that factory model.
 
 ## 0.11.0 choices
 
@@ -13,7 +13,7 @@ This note is the recheck of the gaps that still shape Aether. Each older item ha
 
 Checked **2026-11-11** with the installed compiler `noxc 2.1.52`. GitHub release `v2.1.52` has `nox-lang-v2.1.52-macos-arm64.tar.gz`, the Linux archives, and the Windows archives. The local clone’s tag `v2.1.52` is `b1debe1e7af0a83c720b6c465c3e29d00fcd5a27`. Tags `v2.1.53`–`v2.1.55` do not change this surface (freestanding, WASM import notes, FFI notes).
 
-LLVM is the default backend. QBE is `noxc --backend qbe`. `AETHER_WORKERS>1` calls `serve_multicore*` on both. On LLVM the pool size is `NOX_POOL_WORKERS`, read once at process start, and `require_pool_env` refuses a mismatch. A program that contains `serve_multicore` anywhere, including a dead branch, makes the default pool the CPU count. QBE ignores the pool variable.
+LLVM is the default backend. QBE is `noxc --backend qbe`. Since Nox 2.1.112 a hosted QBE program that spawns or calls `serve_multicore` uses the same M:N pool as LLVM. `AETHER_WORKERS>1` calls `serve_multicore*` on both, and `require_pool_env` refuses a `NOX_POOL_WORKERS` mismatch on both. A program that contains `serve_multicore` anywhere, including a dead branch, makes the default pool the CPU count. The pool size is read once at process start.
 
 ## Closed on this recheck
 

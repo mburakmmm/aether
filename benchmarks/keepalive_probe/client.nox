@@ -1,0 +1,39 @@
+import nox.http
+import nox.os
+import nox.strings
+from nox.os import OsError
+from nox.http import HttpResponse
+
+port: str = "34721"
+try:
+    port = nox.os.getenv("AETHER_PORT")
+except OsError as missing:
+    if len(missing.message) >= 0:
+        port = "34721"
+
+nox.http.client_pool(1, 60000)
+url: str = "http://127.0.0.1:" + port + "/who"
+mark: dict[str, str] = {}
+mark["X-Mark"] = "1"
+empty: dict[str, str] = {}
+
+first: HttpResponse = nox.http.get(url, mark)
+if first.status != 200:
+    print("first status " + str(first.status))
+    nox.os.exit(1)
+if not nox.strings.contains(first.body, "\"saw\":\"\""):
+    print("first body " + first.body)
+    nox.os.exit(1)
+
+n: int = 0
+while n < 200:
+    nxt: HttpResponse = nox.http.get(url, empty)
+    if nxt.status != 200:
+        print("status " + str(nxt.status) + " at " + str(n))
+        nox.os.exit(1)
+    if nox.strings.contains(nxt.body, "secret-token"):
+        print("leaked at " + str(n) + " " + nxt.body)
+        nox.os.exit(1)
+    n = n + 1
+
+print("keepalive_client ok")

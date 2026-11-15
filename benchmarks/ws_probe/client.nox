@@ -1,0 +1,74 @@
+import nox.http
+import nox.os
+import nox.strings
+import nox.time
+import nox.websocket
+from nox.os import OsError
+from nox.websocket import WebSocketClient
+
+port: str = "34722"
+try:
+    port = nox.os.getenv("AETHER_PORT")
+except OsError as missing:
+    if len(missing.message) >= 0:
+        port = "34722"
+
+mode: str = ""
+try:
+    mode = nox.os.getenv("AETHER_WS_MODE")
+except OsError as missing_mode:
+    if len(missing_mode.message) >= 0:
+        mode = ""
+
+url: str = "ws://127.0.0.1:" + port + "/"
+
+if mode == "deny":
+    denied: WebSocketClient = nox.websocket.connect(url)
+    bad: str = denied.recv()
+    if not nox.strings.contains(bad, "unauthorized"):
+        print("deny body " + bad)
+        nox.os.exit(1)
+    denied.close()
+    print("ws_client deny ok")
+else:
+    first: WebSocketClient = nox.websocket.connect(url)
+    first.send_text("{\"event\":\"join\",\"payload\":{\"room\":\"lobby\"}}")
+    joined: str = first.recv()
+    if not nox.strings.contains(joined, "joined"):
+        print("join " + joined)
+        nox.os.exit(1)
+    first.send_text("{\"event\":\"count\",\"payload\":{}}")
+    counted: str = first.recv()
+    if not nox.strings.contains(counted, "\"n\":1"):
+        print("count " + counted)
+        nox.os.exit(1)
+    first.close()
+    nox.time.sleep_ms(50)
+    second: WebSocketClient = nox.websocket.connect(url)
+    second.send_text("{\"event\":\"join\",\"payload\":{\"room\":\"lobby\"}}")
+    joined2: str = second.recv()
+    if not nox.strings.contains(joined2, "joined"):
+        print("rejoin " + joined2)
+        nox.os.exit(1)
+    second.send_text("{\"event\":\"count\",\"payload\":{}}")
+    counted2: str = second.recv()
+    if not nox.strings.contains(counted2, "\"n\":1"):
+        print("after drop " + counted2)
+        nox.os.exit(1)
+    second.send_text("{\"event\":\"echo\",\"payload\":\"hi\"}")
+    echoed: str = second.recv()
+    if not nox.strings.contains(echoed, "hi"):
+        print("echo " + echoed)
+        nox.os.exit(1)
+    second.send_text("012345678901234567890123456789012345678901234567890123456789")
+    large: str = second.recv()
+    if not nox.strings.contains(large, "message too large"):
+        print("large " + large)
+        nox.os.exit(1)
+    second.send_text("{\"event\":\"echo\",\"payload\":\"again\"}")
+    echoed2: str = second.recv()
+    if not nox.strings.contains(echoed2, "again"):
+        print("after large " + echoed2)
+        nox.os.exit(1)
+    second.close()
+    print("ws_client ok")

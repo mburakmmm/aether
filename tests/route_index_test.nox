@@ -5,7 +5,7 @@ import aether.application
 import aether.testing
 from aether.config import Config
 from aether.application import Application
-from aether.module import ModuleBuilder
+from aether.module import ModuleBuilder, RouteOptions
 from aether.context import HttpContext
 from aether.response import json_ok
 from aether.pipeline import find_route_indexed, MatchResult
@@ -15,6 +15,7 @@ class RoutesMod:
     def configure(self: RoutesMod, m: ModuleBuilder) -> None:
         m.get("/ping", self._ping())
         m.get("/users/:id", self._user())
+        m.route("PATCH", "/users/:id", self._patch_user(), RouteOptions())
 
     def _ping(self: RoutesMod) -> (HttpContext) -> HttpResponse:
         def ping(ctx: HttpContext) -> HttpResponse:
@@ -25,6 +26,11 @@ class RoutesMod:
         def user(ctx: HttpContext) -> HttpResponse:
             return json_ok("{\"id\":\"" + ctx.param("id") + "\"}")
         return user
+
+    def _patch_user(self: RoutesMod) -> (HttpContext) -> HttpResponse:
+        def patch_user(ctx: HttpContext) -> HttpResponse:
+            return json_ok("{\"patched\":\"" + ctx.param("id") + "\"}")
+        return patch_user
 
 def build(app: Application) -> None:
     RoutesMod().configure(app.module())
@@ -56,5 +62,14 @@ nox.test.assert_eq_int(r.status, 200, "ping ok")
 r2: HttpResponse = aether.testing.get(app, "/users/7")
 nox.test.assert_eq_int(r2.status, 200, "user ok")
 nox.test.assert_true(nox.strings.contains(r2.body, "7"), "user body")
+
+patched: HttpResponse = aether.testing.request(app, "PATCH", "/users/7", "")
+nox.test.assert_eq_int(patched.status, 200, "patch user ok")
+nox.test.assert_true(nox.strings.contains(patched.body, "patched"), "patch handler")
+traced: HttpResponse = aether.testing.request(app, "TRACE", "/users/7", "")
+nox.test.assert_eq_int(traced.status, 405, "trace does not run patch")
+nox.test.assert_true(not nox.strings.contains(traced.body, "patched"), "trace body is not the patch handler")
+posted: HttpResponse = aether.testing.post(app, "/users/7", "")
+nox.test.assert_eq_int(posted.status, 405, "post on get path stays 405")
 
 print("route_index_test ok")

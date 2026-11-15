@@ -1,0 +1,54 @@
+import nox.test
+import nox.fs
+import nox.base64
+from aether.cli_embed import PACKAGE_VERSION, MAIN_NOX, WORKER_NOX, WS_NOX, NOX_JSON, RUN_SH, RUN_RELEASE_SH
+
+def _trim(raw: str) -> str:
+    out: str = ""
+    j: int = 0
+    while j < len(raw):
+        ch: str = raw[j]
+        if ch == "\n" or ch == "\r" or ch == " ":
+            if len(out) > 0:
+                return out
+        else:
+            out = out + ch
+        j = j + 1
+    return out
+
+ver: str = _trim(nox.fs.read_to_string("VERSION"))
+nox.test.assert_eq_str(PACKAGE_VERSION, ver, "embedded version matches VERSION")
+nox.test.assert_true(ver != "0.3.0", "version is not the old fallback")
+
+nox.test.assert_eq_str(
+    nox.base64.decode(MAIN_NOX),
+    nox.fs.read_to_string("templates/app/main.nox"),
+    "main.nox embed"
+)
+nox.test.assert_eq_str(
+    nox.base64.decode(WORKER_NOX),
+    nox.fs.read_to_string("templates/app/worker.nox"),
+    "worker.nox embed"
+)
+nox.test.assert_eq_str(
+    nox.base64.decode(WS_NOX),
+    nox.fs.read_to_string("templates/app/ws.nox"),
+    "ws.nox embed"
+)
+nox.test.assert_eq_str(
+    nox.base64.decode(NOX_JSON),
+    nox.fs.read_to_string("templates/app/nox.json"),
+    "nox.json embed"
+)
+nox.test.assert_eq_str(
+    nox.base64.decode(RUN_SH),
+    nox.fs.read_to_string("templates/app/run.sh"),
+    "run.sh embed"
+)
+nox.test.assert_eq_str(
+    nox.base64.decode(RUN_RELEASE_SH),
+    nox.fs.read_to_string("templates/app/run-release.sh"),
+    "run-release.sh embed"
+)
+
+print("cli_embed_test ok")

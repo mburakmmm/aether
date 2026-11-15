@@ -51,19 +51,21 @@ class MatchResult:
         self.route = route
         self.params = params
 
-def _find_in(routes: list[RouteDef], path: str) -> MatchResult | None:
-    # A1: static exact match first (no split); then param patterns.
+def _find_in(routes: list[RouteDef], method: str, path: str) -> MatchResult | None:
+    # Static exact match first (no split); then param patterns.
+    # other_routes holds every method outside GET/POST/PUT/DELETE, so the
+    # method has to be checked or PATCH would answer TRACE on the same path.
     i: int = 0
     while i < len(routes):
         route: RouteDef = routes[i]
-        if route.is_static:
+        if route.method == method and route.is_static:
             if route.pattern == path:
                 return MatchResult(route, EMPTY_PARAMS)
         i = i + 1
     i = 0
     while i < len(routes):
         route2: RouteDef = routes[i]
-        if not route2.is_static:
+        if route2.method == method and not route2.is_static:
             params: dict[str, str] | None = match_path(route2.pattern, path)
             if params != None:
                 return MatchResult(route2, params)
@@ -90,14 +92,14 @@ def find_route(routes: list[RouteDef], method: str, path: str) -> MatchResult | 
 # path must already be normalized (A2 — caller normalizes once).
 def find_route_indexed(table: RouteTable, method: str, path: str) -> MatchResult | None:
     if method == "GET":
-        return _find_in(table.get_routes, path)
+        return _find_in(table.get_routes, method, path)
     if method == "POST":
-        return _find_in(table.post_routes, path)
+        return _find_in(table.post_routes, method, path)
     if method == "PUT":
-        return _find_in(table.put_routes, path)
+        return _find_in(table.put_routes, method, path)
     if method == "DELETE":
-        return _find_in(table.delete_routes, path)
-    return _find_in(table.other_routes, path)
+        return _find_in(table.delete_routes, method, path)
+    return _find_in(table.other_routes, method, path)
 
 def path_exists(routes: list[RouteDef], path: str) -> bool:
     # path already normalized by dispatch.

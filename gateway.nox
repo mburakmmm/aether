@@ -84,6 +84,9 @@ class RoomHub:
                 return
             j = j + 1
         bucket2.append(conn_id)
+        # List assignment copies. The append is on that copy, so the room
+        # list has to be stored again or a second join never sticks.
+        self._member_ids[idx] = bucket2
 
     def leave(self: RoomHub, room: str, conn_id: str) -> None:
         idx: int = self._room_index(room)

@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.11.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
+**Version:** 0.12.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.11.0"
+      "ref": "v0.12.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.11.0
+noxc install github.com/mburakmmm/aether@v0.12.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -124,6 +124,10 @@ Nox floor **2.1.52**. This revision is local until it is tagged. Multicore entry
 ## What’s new in 0.9.0
 
 Nox floor **2.0.186**. `boot_for_serve` applies `nox.http.configure` and `set_http2`. The full `handle` passes `req.conn`, so a handler can `ctx.sse()` / `ctx.stream()` and the bytes go out on that connection. `with_cookie` / `expire_cookie` emit one `Set-Cookie` per cookie. Production responses gain `nosniff`, `DENY`, and `no-referrer` unless the handler already set them. `POST /__aether/shutdown` keeps listening and answers 503. `request_shutdown` writes the drain file and stops accept. SIGTERM stops accept without the file; `finalize_serve` writes it when `serve*` returns. Benchmarks stay on HTTP/1.1.
+
+## What’s new in 0.12.0
+
+Nox floor stays **2.1.186**. `PATCH` no longer answers another method on the same path. `AETHER_HOST` must be empty or `0.0.0.0`. OpenAPI writes `boolean` and keeps `patch`. Every request clears TaskLocal state. `aether new` and `aether version` work outside the package tree. A draining server answers 503 before it opens a compressed body. Joining a WebSocket room a second time stays in that room. Hosted QBE uses the same M:N pool as LLVM when the program spawns or calls `serve_multicore`. `NOX_POOL_WORKERS` is read at process start on both.
 
 ## What’s new in 0.8.2
 
@@ -278,7 +282,7 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 | Env | Default (dev) | Notes |
 |-----|---------------|--------|
 | `AETHER_ENV` | `development` | `development` \| `test` \| `production` |
-| `AETHER_HOST` / `AETHER_PORT` | `0.0.0.0` / `3000` | Bind |
+| `AETHER_HOST` / `AETHER_PORT` | `0.0.0.0` / `3000` | Port is the listen port. `serve*` binds every interface. `AETHER_HOST` must be empty or `0.0.0.0`; any other value fails boot |
 | `AETHER_WORKERS` | `1` | Set `>1` for multicore. Also export `NOX_POOL_WORKERS` to the same value **before** launching (`./run.sh`) |
 | `NOX_POOL_WORKERS` | (unset) | Nox `--release` `$main` pool size. Read at process start — `set_var` in `main` is too late |
 | `AETHER_REQUEST_ID` | on | `0` skips `uuid4` + `X-Request-Id` |

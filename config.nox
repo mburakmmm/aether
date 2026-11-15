@@ -197,7 +197,7 @@ def defaults(env: str) -> Config:
         log_req,
         openapi_on,
         "Aether API",
-        "0.11.0",
+        "0.12.0",
         jobs,
         "",
         "",

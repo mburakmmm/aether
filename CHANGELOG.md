@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.0 — 2026-11-15
+
+Nox floor stays **2.1.186**.
+
+- `find_route_indexed` checks the method on routes outside GET, POST, PUT, and DELETE. `TRACE` on a `PATCH` path is 405. GET, POST, PUT, and DELETE are unchanged
+- `AETHER_HOST` must be empty or `0.0.0.0`. Any other value fails boot. `serve*` still binds every interface
+- OpenAPI schema type `bool` is `boolean`. Operation keys are the lowercased method, so `PATCH` is `patch` and does not collide with `get`
+- `dispatch` calls `begin` and `finish` on every request. Request-id minting and the request log stay behind their own flags
+- `aether new` and `aether version` work from a directory that is not the package root. The CLI searches the working directory, its parents, and `AETHER_ROOT`, then writes the embedded scaffold. The version is never `0.3.0`
+- A draining server returns 503 before it decompresses the body. A bad `Content-Encoding` during drain is 503
+- `RoomHub.join` stores the updated member list. List assignment copies, so a second join on an existing room was dropped
+- Since Nox 2.1.112, hosted QBE uses the same M:N pool as LLVM when the program spawns or calls `serve_multicore`. Aether already sends `workers>1` through `serve_multicore` on both backends and requires `NOX_POOL_WORKERS` to match. Comments that said QBE ignores that variable are corrected
+- `docs/BENCHMARKS.md` records a 30-second HTTP/1.1 load on this machine. Those numbers are not mixed into the historical tables
+
 ## 0.11.0 — 2026-11-15
 
 Nox floor **2.1.186** (published compiler; macOS arm64, Linux, and Windows archives exist). `nox.json.dump` of a parsed `1.0` now writes `1.0`. The suite was run with the installed `noxc 2.1.186`.
