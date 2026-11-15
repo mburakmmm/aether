@@ -243,6 +243,7 @@ class HttpContext:
     _scalar_val: str
     security_headers: bool
     cors_origins: str
+    json_engine: str
     _stream_status: int
 
     def __init__(
@@ -255,7 +256,8 @@ class HttpContext:
         trust_xff: bool,
         path: str,
         security_headers: bool = False,
-        cors_origins: str = ""
+        cors_origins: str = "",
+        json_engine: str = "std"
     ) -> None:
         empty_q: dict[str, str] = {}
         self.request = request
@@ -276,6 +278,7 @@ class HttpContext:
         self._scalar_val = ""
         self.security_headers = security_headers
         self.cors_origins = cors_origins
+        self.json_engine = json_engine
         self._stream_status = 200
 
     def ensure_query(self: HttpContext) -> None:

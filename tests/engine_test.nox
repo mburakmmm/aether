@@ -1,0 +1,70 @@
+import nox.json
+import nox.strings
+import nox.test
+from nox.http import HttpResponse
+from nox.json import JsonValue
+import aether.application
+import aether.config
+import aether.engine_yyjson
+import aether.engines
+import aether.testing
+from aether.application import Application
+from aether.body import ValidatedBody
+from aether.config import Config
+from aether.context import HttpContext
+from aether.dto import DtoSchema
+from aether.errors import ValidationError
+from aether.module import ModuleBuilder
+from aether.response import json_ok_field
+
+def echo_handler(ctx: HttpContext) -> HttpResponse:
+    return json_ok_field("msg", ctx.input_str("msg"))
+
+def build(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    echo_in: DtoSchema = DtoSchema("EchoIn")
+    echo_in.require("msg", "string")
+    echo_out: DtoSchema = DtoSchema("EchoOut")
+    echo_out.require("msg", "string")
+    m.post_body("/echo", echo_handler, "Echo", echo_in, echo_out)
+
+one: JsonValue = nox.json.parse("1.0")
+nox.test.assert_eq_str(nox.json.dump(one), "1.0", "dump keeps 1.0")
+
+cfg: Config = aether.config.defaults("test")
+app: Application = aether.application.boot_with_config(cfg, build)
+std_ok: HttpResponse = aether.testing.post(app, "/echo", "{\"msg\":\"hello\"}")
+nox.test.assert_eq_int(std_ok.status, 200, "std echo")
+
+cfg_fast: Config = aether.config.defaults("test")
+cfg_fast.json_engine = "yyjson"
+app_fast: Application = aether.application.boot_with_config(cfg_fast, build)
+fast: HttpResponse = aether.testing.post(app_fast, "/echo", "{\"msg\":\"hello\"}")
+nox.test.assert_eq_int(fast.status, 200, "yyjson echo")
+nox.test.assert_true(nox.strings.index_of(fast.body, "hello") >= 0, "yyjson echo body")
+
+dup: HttpResponse = aether.testing.post(app_fast, "/echo", "{\"msg\":\"a\",\"msg\":\"b\"}")
+nox.test.assert_eq_int(dup.status, 422, "yyjson duplicate key")
+nox.test.assert_true(nox.strings.index_of(dup.body, "invalid JSON") >= 0, "duplicate sentence")
+
+bad: HttpResponse = aether.testing.post(app_fast, "/echo", "{")
+nox.test.assert_eq_int(bad.status, 422, "yyjson invalid json")
+
+row: DtoSchema = DtoSchema("Row")
+row.require("name", "string")
+row.require("n", "number")
+row.require("ok", "bool")
+parsed: ValidatedBody = aether.engines.accept_scalar("{\"name\":\"ada\",\"n\":3,\"ok\":true}", row, "yyjson")
+nox.test.assert_eq_str(parsed.get_str("name"), "ada", "yyjson string")
+nox.test.assert_eq_int(parsed.get_int("n"), 3, "yyjson number")
+nox.test.assert_true(parsed.get_bool("ok"), "yyjson bool")
+nox.test.assert_eq_str(parsed.get_str_or("missing", "d"), "d", "yyjson default")
+
+missed: bool = False
+try:
+    aether.engines.accept_scalar("{\"name\":\"ada\"}", row, "yyjson")
+except ValidationError as e:
+    missed = len(e.message) > 0
+nox.test.assert_true(missed, "yyjson missing field")
+
+print("engine_test ok")

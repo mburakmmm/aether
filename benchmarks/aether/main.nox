@@ -5,6 +5,10 @@
 
 import nox.http
 from nox.http import HttpRequest, HttpResponse
+# Opt-in only: links nox.yyjson into this bench binary. Default AETHER_JSON
+# stays std, so the historical ping/echo path does not switch parsers.
+# AETHER_JSON=yyjson uses the scalar fast path (POST /echo is one string).
+import aether.engine_yyjson
 import aether.application
 import aether.server
 import aether.config

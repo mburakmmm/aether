@@ -9,6 +9,7 @@ from aether.context import HttpContext
 import aether.dto
 from aether.dto import DtoSchema, Field, parse_value_or_raise, validate_json_str
 import aether.body
+import aether.engines
 from aether.errors import ValidationError
 
 def run_pipes(pipes: list[(HttpContext) -> None], ctx: HttpContext) -> None:
@@ -23,10 +24,10 @@ def validation_pipe(schema: DtoSchema) -> (HttpContext) -> None:
         if schema.scalar and len(schema.fields) == 1:
             only: Field = schema.fields[0]
             if only.required and only.kind == "string":
-                ctx.set_scalar_string(raw, only.name, aether.body.take_required_string(raw, only.name))
+                ctx.set_scalar_string(raw, only.name, aether.engines.take_required_string(raw, only.name, ctx.json_engine))
                 return
         if schema.scalar:
-            ctx.set_validated_body(aether.body.accept_scalar(raw, schema))
+            ctx.set_validated_body(aether.engines.accept_scalar(raw, schema, ctx.json_engine))
         else:
             v: JsonValue = parse_value_or_raise(raw, schema)
             ctx.set_validated_body(aether.body.from_decoded(raw, v))

@@ -44,6 +44,11 @@ class ConflictError(HttpError):
         details: list[str] = []
         super().__init__(409, "conflict", message, details)
 
+class UnsupportedMediaTypeError(HttpError):
+    def __init__(self: UnsupportedMediaTypeError, message: str) -> None:
+        details: list[str] = []
+        super().__init__(415, "unsupported_media_type", message, details)
+
 class PayloadTooLargeError(HttpError):
     def __init__(self: PayloadTooLargeError, message: str) -> None:
         details: list[str] = []

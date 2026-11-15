@@ -1,13 +1,13 @@
 # Aether scopes: Application / Worker / Request
 
-Proven against Nox ≥ 2.1.52 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). LLVM is the default backend. `serve_multicore` accept loops stay on the worker that opened them; stolen connection fibers keep that slot’s globals. Module globals are still per worker.
+Proven against Nox ≥ 2.1.52 (`globals_blocks[g_worker_slot]` + `scripts/smoke_worker_bind.sh`). LLVM is the default backend. `serve_multicore` accept loops stay on the worker that opened them; stolen connection fibers keep that slot’s globals. Module globals are still per worker. Nox 2.1.120–2.1.140 shared module state is for programs that do not use `serve_multicore`. The factory model is unchanged, so `AppBind`, rate limit, metrics, and the engine hooks stay per worker.
 
 ## Scopes
 
 | Scope | Lifetime | Examples |
 |-------|----------|----------|
 | **Process** | Whole OS process | Listen sockets, env, SQLite files, external DBs, lifecycle drain flag |
-| **Worker** | One Nox worker slot (OS thread / pool member) | `AppBind`, `Application`, in-memory services, `Metrics`, `RateStore`, WS hubs |
+| **Worker** | One Nox worker slot (OS thread / pool member) | `AppBind`, `Application`, in-memory services, `Metrics`, `RateStore`, WS hubs, armed `aether.engine_*` hooks |
 | **Request** | Single HTTP dispatch | `HttpContext`, TaskLocal values, validated body |
 
 **Singleton in Aether ≠ process singleton.** A closure-captured `UserService` is **worker-local**: two workers can hold two independent instances.

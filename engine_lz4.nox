@@ -1,0 +1,21 @@
+# aether.engine_lz4 - opt-in Content-Encoding: lz4 (LZ4 frame).
+# Import from the serve entry, then set AETHER_BODY_CODECS=lz4.
+
+import nox.lz4
+from nox.lz4 import Lz4Error
+import aether.engines
+from aether.errors import BadRequestError, PayloadTooLargeError
+
+def _open(data: str, limit: int) -> str:
+    try:
+        out: str = nox.lz4.decompress(data)
+        if limit > 0 and len(out) > limit:
+            raise PayloadTooLargeError("request body too large")
+        return out
+    except Lz4Error as e:
+        raise BadRequestError("invalid lz4 body: " + e.message)
+
+if nox.lz4.is_supported():
+    aether.engines.arm_lz4(_open)
+else:
+    aether.engines.arm_lz4_unavailable()

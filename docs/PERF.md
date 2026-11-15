@@ -4,7 +4,8 @@
 
 - Development / test: `AETHER_WORKERS=1` (single `nox.http.serve`). `noxc run` uses LLVM unless `--backend qbe`.
 - Production: `AETHER_WORKERS` defaults to **1**. Set `AETHER_WORKERS>1` for multicore.
-- Production binary (Nox 2.1.52+, macOS/arm64): `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app` (`--release` is the same LLVM backend with optimizations)
+- Production binary (Nox 2.1.186+, macOS/arm64): `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app` (`--release` is the same LLVM backend with optimizations)
+- `AETHER_JSON=yyjson` (import `aether.engine_yyjson` in the bench or serve entry) parses the scalar echo body with yyjson. The default bench stays on `std`. `GET /ping` does not parse JSON. `AETHER_BODY_CODECS` is empty unless the bench sends a compressed body, so the header is not read on the default path
 - Prefer `handle` that reads `req.method/target/body/headers` and calls `dispatch_from_parts` (do not pass `req` — that disables Nox header-skip). Pass `req.conn` from that handle. `handle_bare` does not read `conn`
 - Export `NOX_POOL_WORKERS` **before** exec (`scripts/aether_env.sh`, `./run.sh`). `apply_pool_workers` cannot resize the LLVM `$main` pool.
 - Production CORS is **off** unless `AETHER_CORS_ORIGINS` is set (largest hot-path win)

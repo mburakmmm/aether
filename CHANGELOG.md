@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.0 — 2026-11-15
+
+Nox floor **2.1.186** (published compiler; macOS arm64, Linux, and Windows archives exist). `nox.json.dump` of a parsed `1.0` now writes `1.0`. The suite was run with the installed `noxc 2.1.186`.
+
+- `AETHER_HTTP3=1` calls `nox.http.set_http3` before `serve_tls` / `serve_fd_tls`. QUIC listens on the same port and uses the same handler. OpenSSL 3.5 or newer is loaded at run time; without it Nox keeps HTTP/1.1 and HTTP/2. The flag requires TLS paths, `AETHER_WORKERS=1` (the UDP socket is not SO_REUSEPORT), and `AETHER_WS` off. `req.peer_addr` is empty on HTTP/3, so `AETHER_RATE_LIMIT` also requires `AETHER_TRUST_X_FORWARDED_FOR`. Benchmarks stay on HTTP/1.1
+- Optional accelerators are separate modules. The core does not import them, so `noxclibs` is linked only by a program that imports the module. `import aether.engine_yyjson` plus `AETHER_JSON=yyjson` parses scalar request bodies with yyjson (the single-string echo path and flat string/number/bool objects). Nested, format, range, and pattern schemas stay on `nox.json` / `nox.validate` / `nox.regex`. Duplicate keys are still rejected. `import aether.engine_brotli`, `aether.engine_zstd`, or `aether.engine_lz4` plus `AETHER_BODY_CODECS=br,zstd,lz4` decompresses `Content-Encoding` before validation. With the list empty, dispatch does not look at that header. `nox.pcre2` is not wired: DTO patterns stay on `nox.regex`, and PCRE2’s dialect plus `dynamic_code` would change 422 sentences
+- The benchmark entry imports `aether.engine_yyjson` so `AETHER_JSON=yyjson` can be measured. The default remains `std`
+
 ## 0.10.1 — 2026-11-12
 
 Nox floor stays **2.1.52**.

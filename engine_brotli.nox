@@ -1,0 +1,19 @@
+# aether.engine_brotli - opt-in Content-Encoding: br.
+# Import from the serve entry, then set AETHER_BODY_CODECS=br.
+# The core does not import this file, so noxclibs stays out of apps that do not ask.
+
+import nox.brotli
+from nox.brotli import BrotliError
+import aether.engines
+from aether.errors import BadRequestError
+
+def _open(data: str, limit: int) -> str:
+    try:
+        return nox.brotli.decompress(data, limit)
+    except BrotliError as e:
+        raise BadRequestError("invalid brotli body: " + e.message)
+
+if nox.brotli.is_supported():
+    aether.engines.arm_brotli(_open)
+else:
+    aether.engines.arm_brotli_unavailable()

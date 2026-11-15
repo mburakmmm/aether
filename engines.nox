@@ -1,0 +1,224 @@
+# aether.engines - optional accelerators. The core does not import them.
+#
+# Nox links noxclibs only into a program that imports the C module.
+# `import aether.application` therefore stays on nox.json. An application
+# that wants yyjson, brotli, zstd, or lz4 imports the matching
+# `aether.engine_*` module from its serve entry. That import runs again
+# in each serve_multicore worker and arms the hook on that worker's
+# own module globals. Config then chooses the hook. The framework
+# currency stays JsonValue: yyjson fills scalar field caches and does
+# not replace DTO, OpenAPI, JWT, or the queue. Nested, format, and
+# pattern schemas stay on nox.json / nox.validate / nox.regex.
+# pcre2 is not wired. Its dialect and the dynamic_code capability
+# would change 422 sentences. An app that wants lookahead calls
+# nox.pcre2 itself.
+
+import nox.strings
+import nox.web
+from nox.http import HttpRequest
+import aether.body
+import aether.config
+import aether.dto
+from aether.body import ValidatedBody
+from aether.config import Config, ConfigError
+from aether.dto import DtoSchema
+from aether.errors import PayloadTooLargeError, UnsupportedMediaTypeError
+
+class EngineSlot:
+    yy_ready: bool
+    yy_missing: bool
+    yy_accept: (str, DtoSchema) -> ValidatedBody
+    yy_take: (str, str) -> str
+    br_ready: bool
+    br_missing: bool
+    br_open: (str, int) -> str
+    zstd_ready: bool
+    zstd_missing: bool
+    zstd_open: (str, int) -> str
+    lz4_ready: bool
+    lz4_missing: bool
+    lz4_open: (str, int) -> str
+
+    def __init__(
+        self: EngineSlot,
+        yy_accept: (str, DtoSchema) -> ValidatedBody,
+        yy_take: (str, str) -> str,
+        br_open: (str, int) -> str,
+        zstd_open: (str, int) -> str,
+        lz4_open: (str, int) -> str
+    ) -> None:
+        self.yy_ready = False
+        self.yy_missing = False
+        self.yy_accept = yy_accept
+        self.yy_take = yy_take
+        self.br_ready = False
+        self.br_missing = False
+        self.br_open = br_open
+        self.zstd_ready = False
+        self.zstd_missing = False
+        self.zstd_open = zstd_open
+        self.lz4_ready = False
+        self.lz4_missing = False
+        self.lz4_open = lz4_open
+
+def _yy_unset(raw: str, schema: DtoSchema) -> ValidatedBody:
+    raise ConfigError("AETHER_JSON=yyjson requires import aether.engine_yyjson in the serve entry")
+
+def _take_unset(raw: str, name: str) -> str:
+    raise ConfigError("AETHER_JSON=yyjson requires import aether.engine_yyjson in the serve entry")
+
+def _codec_unset(data: str, limit: int) -> str:
+    raise ConfigError("body codec is not armed")
+
+_slot: EngineSlot = EngineSlot(_yy_unset, _take_unset, _codec_unset, _codec_unset, _codec_unset)
+
+def arm_yyjson(
+    accept: (str, DtoSchema) -> ValidatedBody,
+    take: (str, str) -> str
+) -> None:
+    _slot.yy_ready = True
+    _slot.yy_missing = False
+    _slot.yy_accept = accept
+    _slot.yy_take = take
+
+def arm_yyjson_unavailable() -> None:
+    _slot.yy_ready = False
+    _slot.yy_missing = True
+
+def arm_brotli(open_fn: (str, int) -> str) -> None:
+    _slot.br_ready = True
+    _slot.br_missing = False
+    _slot.br_open = open_fn
+
+def arm_brotli_unavailable() -> None:
+    _slot.br_ready = False
+    _slot.br_missing = True
+
+def arm_zstd(open_fn: (str, int) -> str) -> None:
+    _slot.zstd_ready = True
+    _slot.zstd_missing = False
+    _slot.zstd_open = open_fn
+
+def arm_zstd_unavailable() -> None:
+    _slot.zstd_ready = False
+    _slot.zstd_missing = True
+
+def arm_lz4(open_fn: (str, int) -> str) -> None:
+    _slot.lz4_ready = True
+    _slot.lz4_missing = False
+    _slot.lz4_open = open_fn
+
+def arm_lz4_unavailable() -> None:
+    _slot.lz4_ready = False
+    _slot.lz4_missing = True
+
+def _trim(token: str) -> str:
+    out: str = ""
+    i: int = 0
+    while i < len(token):
+        ch: str = token[i]
+        if ch != " ":
+            out = out + ch
+        i = i + 1
+    return out
+
+def _codec_list(raw: str) -> list[str]:
+    out: list[str] = []
+    if len(raw) == 0:
+        return out
+    parts: list[str] = nox.strings.split(raw, ",")
+    i: int = 0
+    while i < len(parts):
+        token: str = _trim(parts[i])
+        if len(token) > 0:
+            out.append(token)
+        i = i + 1
+    return out
+
+def _require_codec(token: str, ready: bool, missing: bool, module_name: str) -> None:
+    if missing:
+        raise ConfigError("AETHER_BODY_CODECS=" + token + ": " + module_name + " is not available on this target")
+    if not ready:
+        raise ConfigError(
+            "AETHER_BODY_CODECS=" + token +
+            " requires import aether." + module_name +
+            " in the serve entry (the core does not link it)"
+        )
+
+# Called from boot_with_config, including each worker factory.
+# Selection stays on this Config. The hooks stay on the worker slot.
+def prepare(cfg: Config) -> None:
+    name: str = cfg.json_engine
+    if name != "std" and name != "yyjson":
+        raise ConfigError("invalid AETHER_JSON: " + name + " (std|yyjson)")
+    if name == "yyjson":
+        if _slot.yy_missing:
+            raise ConfigError("AETHER_JSON=yyjson: nox.yyjson is not available on this target")
+        if not _slot.yy_ready:
+            raise ConfigError("AETHER_JSON=yyjson requires import aether.engine_yyjson in the serve entry (the core does not link it)")
+    cfg.use_br = False
+    cfg.use_zstd = False
+    cfg.use_lz4 = False
+    parts: list[str] = _codec_list(cfg.body_codecs)
+    i: int = 0
+    while i < len(parts):
+        token: str = parts[i]
+        if token == "br":
+            _require_codec(token, _slot.br_ready, _slot.br_missing, "engine_brotli")
+            cfg.use_br = True
+        else:
+            if token == "zstd":
+                _require_codec(token, _slot.zstd_ready, _slot.zstd_missing, "engine_zstd")
+                cfg.use_zstd = True
+            else:
+                if token == "lz4":
+                    _require_codec(token, _slot.lz4_ready, _slot.lz4_missing, "engine_lz4")
+                    cfg.use_lz4 = True
+                else:
+                    raise ConfigError("invalid AETHER_BODY_CODECS token: " + token + " (br|zstd|lz4)")
+        i = i + 1
+
+def accept_scalar(raw: str, schema: DtoSchema, engine: str) -> ValidatedBody:
+    if engine == "yyjson":
+        if not _slot.yy_ready:
+            raise ConfigError("AETHER_JSON=yyjson requires import aether.engine_yyjson in the serve entry")
+        return _slot.yy_accept(raw, schema)
+    return aether.body.accept_scalar(raw, schema)
+
+def take_required_string(raw: str, name: str, engine: str) -> str:
+    if engine == "yyjson":
+        if not _slot.yy_ready:
+            raise ConfigError("AETHER_JSON=yyjson requires import aether.engine_yyjson in the serve entry")
+        return _slot.yy_take(raw, name)
+    return aether.body.take_required_string(raw, name)
+
+def inflate(req: HttpRequest, cfg: Config) -> HttpRequest:
+    if not cfg.use_br and not cfg.use_zstd and not cfg.use_lz4:
+        return req
+    enc: str = ""
+    if len(req.headers) > 0:
+        enc = nox.strings.lower(nox.web.header(req, "Content-Encoding"))
+    if len(enc) == 0 or enc == "identity":
+        return req
+    if cfg.max_body_bytes > 0 and len(req.body) > cfg.max_body_bytes:
+        raise PayloadTooLargeError("request body too large")
+    opened: str = ""
+    if enc == "br":
+        if not cfg.use_br:
+            raise UnsupportedMediaTypeError("content-encoding br is not enabled")
+        opened = _slot.br_open(req.body, cfg.max_body_bytes)
+    else:
+        if enc == "zstd":
+            if not cfg.use_zstd:
+                raise UnsupportedMediaTypeError("content-encoding zstd is not enabled")
+            opened = _slot.zstd_open(req.body, cfg.max_body_bytes)
+        else:
+            if enc == "lz4":
+                if not cfg.use_lz4:
+                    raise UnsupportedMediaTypeError("content-encoding lz4 is not enabled")
+                opened = _slot.lz4_open(req.body, cfg.max_body_bytes)
+            else:
+                raise UnsupportedMediaTypeError("unsupported content-encoding: " + enc)
+    if cfg.max_body_bytes > 0 and len(opened) > cfg.max_body_bytes:
+        raise PayloadTooLargeError("request body too large")
+    return HttpRequest(req.method, req.target, opened, req.headers, req.peer_addr, req.conn)

@@ -5,7 +5,7 @@
 **[Nox](https://github.com/mburakmmm/nox-lang) için NestJS esintili API / backend framework’ü.**  
 Pythonic modüller, closure tabanlı DI, guard / pipe / interceptor, typed DTO, OpenAPI + Swagger UI, WebSocket gateway ve SQLite iş kuyrukları.
 
-**Sürüm:** 0.10.1 · **Lisans:** MIT · **Nox ≥ 2.1.52**  
+**Sürüm:** 0.11.0 · **Lisans:** MIT · **Nox ≥ 2.1.186**  
 Paket: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > [Nyx](https://github.com/mburakmmm/nyx)’ten bağımsızdır (Rails tarzı full-stack). HTTP API için **Aether**; HTML monolit için **Nyx**.
@@ -24,7 +24,7 @@ Uygulama `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.10.1"
+      "ref": "v0.11.0"
     }
   ]
 }
@@ -44,12 +44,16 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI iskelet
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.10.1
+noxc install github.com/mburakmmm/aether@v0.11.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
 
 ---
+
+## 0.11.0
+
+Nox tabanı **2.1.186**. `AETHER_HTTP3=1` TLS’in yanında QUIC açar (`AETHER_WORKERS=1`, WebSocket kapalı). `AETHER_JSON=yyjson` için serve girişinde `import aether.engine_yyjson` gerekir; skaler gövde bu yoldan okunur. `AETHER_BODY_CODECS=br,zstd,lz4` eşleşen `aether.engine_*` importunu ister. Çekirdek bu C kütüphanelerini bağalmaz. DTO kalıpları `nox.regex` üzerinde kalır.
 
 ## 0.10.1
 

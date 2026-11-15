@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.10.1 · **License:** MIT · **Requires Nox ≥ 2.1.52**  
+**Version:** 0.11.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.10.1"
+      "ref": "v0.11.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.10.1
+noxc install github.com/mburakmmm/aether@v0.11.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -108,6 +108,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.11.0
+
+Nox floor **2.1.186**. `AETHER_HTTP3=1` turns on QUIC beside TLS when `AETHER_WORKERS=1` and WebSocket is off. `AETHER_JSON=yyjson` needs `import aether.engine_yyjson` in the serve entry and speeds the scalar body path. `AETHER_BODY_CODECS=br,zstd,lz4` needs the matching `aether.engine_*` import. The core does not link those C libraries. DTO patterns stay on `nox.regex`.
 
 ## What’s new in 0.10.1
 
@@ -245,6 +249,7 @@ safer WS room defaults, OpenAPI 4xx/5xx + security schemes.
 | Provider **name** registry | `aether.container` |
 | Context (query / header / IP) | `aether.context` |
 | Guards / pipes / interceptors | `aether.guard`, `pipe`, `interceptor` |
+| Optional yyjson / brotli / zstd / lz4 | `aether.engine_yyjson`, `engine_brotli`, `engine_zstd`, `engine_lz4` |
 | JWT HS256 | `aether.jwt`, `jwt_bearer` |
 | Base64 (URL) | `aether.base64` |
 | DTO validation (`pattern`, length) | `aether.dto` |
@@ -292,6 +297,9 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 | `AETHER_MAX_CONNECTIONS` | `4096` | Extra connections get Nox’s 503 |
 | `AETHER_DRAIN_TIMEOUT_MS` | `10000` | How long `nox.http.shutdown` waits for in-flight requests |
 | `AETHER_HTTP2` | on | `0` in benchmarks (wrk is HTTP/1.1) |
+| `AETHER_HTTP3` | off | TLS only, `AETHER_WORKERS=1`, `AETHER_WS` off. Empty QUIC peer; rate limit needs `AETHER_TRUST_X_FORWARDED_FOR` |
+| `AETHER_JSON` | `std` | `yyjson` requires `import aether.engine_yyjson` in the serve entry. Scalar bodies only |
+| `AETHER_BODY_CODECS` | empty | Comma list `br`, `zstd`, `lz4`. Each token requires its `aether.engine_*` import. Empty skips the header |
 | `AETHER_SECURITY_HEADERS` | off (on in production) | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` |
 | `AETHER_LOG_LEVEL` | empty | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` \| `OFF`. Empty does not call `nox.log.set_level` |
 
@@ -317,7 +325,7 @@ Do **not** close over `Application` (`dispatch(app, req)`). The factory calls `b
 handle so Nox skips the peer-string retain. `dispatch_ensure` still boots an empty slot when the entry used a bare `handle`. See [docs/SCOPE.md](docs/SCOPE.md).
 
 Production: `AETHER_WORKERS=4 NOX_POOL_WORKERS=4 noxc build -o app && ./app`
-(Nox ≥ 2.1.52, macOS/arm64). `--release` aynı LLVM backend’inin optimize halidir. Dev: `./run.sh`. `AETHER_IPV6=1` with one worker uses `listen_v6`. With `AETHER_WORKERS>1` the same flag is `ip_family` on `serve_multicore*`. Pass `req.conn` from the full `handle`. `handle_bare` leaves `conn` at 0.
+(Nox ≥ 2.1.186, macOS/arm64). `--release` aynı LLVM backend’inin optimize halidir. Dev: `./run.sh`. `AETHER_IPV6=1` with one worker uses `listen_v6`. With `AETHER_WORKERS>1` the same flag is `ip_family` on `serve_multicore*`. Pass `req.conn` from the full `handle`. `handle_bare` leaves `conn` at 0.
 
 ## License
 

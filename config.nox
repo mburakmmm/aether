@@ -40,6 +40,12 @@ class Config:
     http2: bool
     security_headers: bool
     log_level: str
+    http3: bool
+    json_engine: str
+    body_codecs: str
+    use_br: bool
+    use_zstd: bool
+    use_lz4: bool
 
     def __init__(
         self: Config,
@@ -74,7 +80,10 @@ class Config:
         drain_timeout_ms: int,
         http2: bool,
         security_headers: bool,
-        log_level: str
+        log_level: str,
+        http3: bool,
+        json_engine: str,
+        body_codecs: str
     ) -> None:
         self.env = env
         self.host = host
@@ -108,6 +117,12 @@ class Config:
         self.http2 = http2
         self.security_headers = security_headers
         self.log_level = log_level
+        self.http3 = http3
+        self.json_engine = json_engine
+        self.body_codecs = body_codecs
+        self.use_br = False
+        self.use_zstd = False
+        self.use_lz4 = False
 
     def is_development(self: Config) -> bool:
         return self.env == "development"
@@ -182,7 +197,7 @@ def defaults(env: str) -> Config:
         log_req,
         openapi_on,
         "Aether API",
-        "0.10.1",
+        "0.11.0",
         jobs,
         "",
         "",
@@ -206,6 +221,9 @@ def defaults(env: str) -> Config:
         10000,
         True,
         security,
+        "",
+        False,
+        "std",
         ""
     )
 
@@ -243,8 +261,17 @@ def from_env() -> Config:
     cfg.http2 = _env_bool("AETHER_HTTP2", cfg.http2)
     cfg.security_headers = _env_bool("AETHER_SECURITY_HEADERS", cfg.security_headers)
     cfg.log_level = _env_or("AETHER_LOG_LEVEL", cfg.log_level)
+    cfg.http3 = _env_bool("AETHER_HTTP3", cfg.http3)
+    cfg.json_engine = _env_or("AETHER_JSON", cfg.json_engine)
+    cfg.body_codecs = _env_or("AETHER_BODY_CODECS", cfg.body_codecs)
     _validate_log_level(cfg.log_level)
+    _validate_json_engine(cfg.json_engine)
     return cfg
+
+def _validate_json_engine(name: str) -> None:
+    if name == "std" or name == "yyjson":
+        return
+    raise ConfigError("invalid AETHER_JSON: " + name + " (std|yyjson)")
 
 def _validate_log_level(level: str) -> None:
     if len(level) == 0:

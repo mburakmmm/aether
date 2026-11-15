@@ -1,6 +1,6 @@
 # Aether Architecture
 
-Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 2.1.52).
+Aether is a NestJS-inspired API/backend framework for [Nox](https://github.com/mburakmmm/nox-lang) (≥ 2.1.186).
 It is independent of Nyx (the Rails-style full-stack framework).
 
 ## Design
@@ -26,6 +26,23 @@ It is independent of Nyx (the Rails-style full-stack framework).
 ## Package layout
 
 Flat root `.nox` modules (`import aether.application`). Shared mutable route/hook state lives in `RouteTable` and `HookState` (list assignment does not share across holders in Nox).
+
+## Optional C libraries
+
+`nox.yyjson`, `nox.brotli`, `nox.lz4`, and `nox.zstd.compress` live in `noxclibs`. Nox links that archive only when the program imports the module. Aether’s core imports none of them.
+
+The serve entry opts in:
+
+```nox
+import aether.engine_yyjson
+import aether.engine_brotli
+```
+
+Module init arms a hook on that worker’s globals. `serve_multicore` re-runs init, so each worker arms its own hook. `AETHER_JSON` and `AETHER_BODY_CODECS` choose the hook per `Config`. The choice is not a process-wide mutable flag.
+
+yyjson covers the scalar body path (one required string, or a flat string/number/bool object) and stores the fields in `ValidatedBody` caches. It does not become the framework’s JSON type. OpenAPI, JWT, the queue, and nested or pattern schemas stay on `nox.json` / `nox.validate` / `nox.regex`. `nox.pcre2` stays an application import for the same reason: a second pattern dialect would change 422 sentences and asks for the `dynamic_code` capability.
+
+`AETHER_HTTP3=1` is `nox.http.set_http3` before TLS serve. It is one UDP socket, so `AETHER_WORKERS` stays 1. WebSocket is not carried on HTTP/3. `peer_addr` is empty on QUIC.
 
 See README for the full module table.
 

@@ -36,6 +36,7 @@ Raw wrk logs land in `benchmarks/results/*.txt` (gitignored).
 - Axum `POST /echo` uses the `Json` extractor. A missing `msg` is **422**, same class as Gin’s `binding:"required"`.
 - Historical result tables below do not include Axum until a same-session run.
 - Aether runs with `AETHER_OPENAPI=0`, `AETHER_LOG_REQUESTS=0`, production CORS default off, route metrics off.
+- The Aether bench binary imports `aether.engine_yyjson`. `AETHER_JSON` still defaults to `std`. Set `AETHER_JSON=yyjson` to time the scalar echo parser. `GET /ping` does not use it. Do not compare that run with the historical `std` tables. `AETHER_HTTP3` stays off; wrk is HTTP/1.1.
 - Default `AETHER_WORKERS=1` for fair single-process comparison. See `docs/PERF.md` for QBE vs `--release`.
 - Query/header validation and JWT are **not** on the ping/echo hot path.
 - `--release` is measured **after** stopping the QBE server (two Aether processes on one machine can SIGSEGV the LLVM binary).

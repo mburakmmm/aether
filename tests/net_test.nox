@@ -33,4 +33,45 @@ except ServerError as e:
     rejected = len(e.message) > 0
 nox.test.assert_true(rejected, "single-worker websocket stays ipv4")
 
+h3: Config = aether.config.defaults("test")
+h3.http3 = True
+rejected_tls: bool = False
+try:
+    aether.server.require_http3(h3)
+except ServerError as e2:
+    rejected_tls = len(e2.message) > 0
+nox.test.assert_true(rejected_tls, "http3 requires tls paths")
+
+h3.tls_cert_path = "cert.pem"
+h3.tls_key_path = "key.pem"
+h3.ws_enabled = True
+rejected_ws: bool = False
+try:
+    aether.server.require_http3(h3)
+except ServerError as e3:
+    rejected_ws = len(e3.message) > 0
+nox.test.assert_true(rejected_ws, "http3 rejects websocket")
+
+h3.ws_enabled = False
+h3.workers = 4
+rejected_workers: bool = False
+try:
+    aether.server.require_http3(h3)
+except ServerError as e4:
+    rejected_workers = len(e4.message) > 0
+nox.test.assert_true(rejected_workers, "http3 rejects multicore")
+
+h3.workers = 1
+h3.rate_limit_enabled = True
+rejected_rate: bool = False
+try:
+    aether.server.require_http3(h3)
+except ServerError as e5:
+    rejected_rate = len(e5.message) > 0
+nox.test.assert_true(rejected_rate, "http3 rate limit needs xff")
+
+h3.rate_limit_enabled = False
+aether.server.require_http3(h3)
+nox.test.assert_true(h3.http3, "http3 single-worker tls accepted")
+
 print("net_test ok")

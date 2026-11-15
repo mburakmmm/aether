@@ -1,0 +1,97 @@
+import nox.lz4
+import nox.strings
+import nox.test
+import nox.zstd
+from nox.http import HttpResponse
+import aether.application
+import aether.config
+import aether.engine_brotli
+import aether.engine_lz4
+import aether.engine_zstd
+import aether.testing
+from aether.application import Application
+from aether.config import Config
+from aether.context import HttpContext
+from aether.dto import DtoSchema
+from aether.module import ModuleBuilder
+from aether.response import json_ok_field
+
+def echo_handler(ctx: HttpContext) -> HttpResponse:
+    return json_ok_field("msg", ctx.input_str("msg"))
+
+def build(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    echo_in: DtoSchema = DtoSchema("EchoIn")
+    echo_in.require("msg", "string")
+    echo_out: DtoSchema = DtoSchema("EchoOut")
+    echo_out.require("msg", "string")
+    m.post_body("/echo", echo_handler, "Echo", echo_in, echo_out)
+
+def _bytes(xs: list[int]) -> str:
+    out: str = ""
+    i: int = 0
+    while i < len(xs):
+        out = out + nox.strings.char_from_byte(xs[i])
+        i = i + 1
+    return out
+
+plain: str = "{\"msg\":\"hi\"}"
+
+cfg_lz4: Config = aether.config.defaults("test")
+cfg_lz4.body_codecs = "lz4"
+app_lz4: Application = aether.application.boot_with_config(cfg_lz4, build)
+lz4_headers: dict[str, str] = {}
+lz4_headers["Content-Encoding"] = "lz4"
+lz4_body: str = nox.lz4.compress(plain)
+lz4_ok: HttpResponse = aether.testing.post_headers(app_lz4, "/echo", lz4_body, lz4_headers)
+nox.test.assert_eq_int(lz4_ok.status, 200, "lz4 echo")
+nox.test.assert_true(nox.strings.index_of(lz4_ok.body, "hi") >= 0, "lz4 decoded")
+
+gzip_headers: dict[str, str] = {}
+gzip_headers["Content-Encoding"] = "gzip"
+gzip_resp: HttpResponse = aether.testing.post_headers(app_lz4, "/echo", plain, gzip_headers)
+nox.test.assert_eq_int(gzip_resp.status, 415, "unlisted encoding")
+
+cfg_zstd: Config = aether.config.defaults("test")
+cfg_zstd.body_codecs = "zstd"
+app_zstd: Application = aether.application.boot_with_config(cfg_zstd, build)
+zstd_headers: dict[str, str] = {}
+zstd_headers["Content-Encoding"] = "zstd"
+zstd_body: str = nox.zstd.compress(plain)
+zstd_ok: HttpResponse = aether.testing.post_headers(app_zstd, "/echo", zstd_body, zstd_headers)
+nox.test.assert_eq_int(zstd_ok.status, 200, "zstd echo")
+
+# brotli("{\"msg\":\"hi\"}") from the brotli CLI. Built at runtime because
+# a source literal cannot hold the high bytes.
+br_bytes: list[int] = []
+br_bytes.append(143)
+br_bytes.append(5)
+br_bytes.append(128)
+br_bytes.append(123)
+br_bytes.append(34)
+br_bytes.append(109)
+br_bytes.append(115)
+br_bytes.append(103)
+br_bytes.append(34)
+br_bytes.append(58)
+br_bytes.append(34)
+br_bytes.append(104)
+br_bytes.append(105)
+br_bytes.append(34)
+br_bytes.append(125)
+br_bytes.append(3)
+cfg_br: Config = aether.config.defaults("test")
+cfg_br.body_codecs = "br, lz4"
+app_br: Application = aether.application.boot_with_config(cfg_br, build)
+br_headers: dict[str, str] = {}
+br_headers["Content-Encoding"] = "br"
+br_ok: HttpResponse = aether.testing.post_headers(app_br, "/echo", _bytes(br_bytes), br_headers)
+nox.test.assert_eq_int(br_ok.status, 200, "brotli echo")
+nox.test.assert_true(nox.strings.index_of(br_ok.body, "hi") >= 0, "brotli decoded")
+
+bad_headers: dict[str, str] = {}
+bad_headers["Content-Encoding"] = "br"
+bad: HttpResponse = aether.testing.post_headers(app_br, "/echo", "not-brotli", bad_headers)
+nox.test.assert_eq_int(bad.status, 400, "truncated brotli")
+
+print("codec_test ok")

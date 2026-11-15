@@ -1,6 +1,15 @@
 # Nox limitations
 
-Aether **0.10.1** requires **Nox ≥ 2.1.52**. This note is the recheck of the gaps that still shape Aether. Each item has the command that was run and the output that command printed.
+Aether **0.11.0** requires **Nox ≥ 2.1.186**. The sections below the 0.11 note are the 2026-11-11 recheck on `noxc 2.1.52`. They were not re-run for this floor. `serve_multicore` still gives each worker its own module globals; Nox 2.1.120–2.1.140 did not change that factory model.
+
+## 0.11.0 choices
+
+- `AETHER_HTTP3=1` is refused without TLS paths, with `AETHER_WS`, with `AETHER_WORKERS>1`, and with `AETHER_RATE_LIMIT` unless `AETHER_TRUST_X_FORWARDED_FOR` is set. QUIC `peer_addr` is empty. The UDP listener is one socket inside `serveImpl`, not one socket per worker.
+- `aether.engine_yyjson` is imported by the serve entry, not by `aether.application`. Scalar bodies use it when `AETHER_JSON=yyjson`. A parsed `1.0` dumps as `1.0` (`tests/engine_test.nox`). Duplicate keys still fail with `invalid JSON`. Nested and pattern schemas stay on `nox.json`. yyjson has no 32-level depth cap; a scalar document that is only deep nesting can diverge from `std`.
+- `nox.pcre2` is not an Aether pattern engine.
+- Body codecs (`br`, `zstd`, `lz4`) run only when `AETHER_BODY_CODECS` lists them and the matching module is imported. An empty list does not read `Content-Encoding`.
+
+This note is the recheck of the gaps that still shape Aether. Each older item has the command that was run and the output that command printed.
 
 Checked **2026-11-11** with the installed compiler `noxc 2.1.52`. GitHub release `v2.1.52` has `nox-lang-v2.1.52-macos-arm64.tar.gz`, the Linux archives, and the Windows archives. The local clone’s tag `v2.1.52` is `b1debe1e7af0a83c720b6c465c3e29d00fcd5a27`. Tags `v2.1.53`–`v2.1.55` do not change this surface (freestanding, WASM import notes, FFI notes).
 

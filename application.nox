@@ -20,6 +20,7 @@ import aether.metrics
 import aether.swagger
 import aether.lifecycle
 import aether.server
+import aether.engines
 import aether.logx
 from aether.config import Config
 from aether.container import Container
@@ -314,6 +315,7 @@ def boot(build: (Application) -> None) -> Application:
     return boot_with_config(cfg, build)
 
 def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
+    aether.engines.prepare(cfg)
     container: Container = Container()
     table: RouteTable = RouteTable()
     hooks: HookState = HookState()
@@ -415,6 +417,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
     route_key: str = ""
     try:
         try:
+            live: HttpRequest = aether.engines.inflate(req, app.config)
             if app._closed:
                 raise ServiceUnavailableError("shutting down")
             allow_shutdown_post: bool = False
@@ -423,24 +426,24 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                     allow_shutdown_post = True
                 if allow_shutdown_post == False:
                     raise ServiceUnavailableError("shutting down")
-            if app.config.max_body_bytes > 0 and len(req.body) > app.config.max_body_bytes:
+            if app.config.max_body_bytes > 0 and len(live.body) > app.config.max_body_bytes:
                 raise PayloadTooLargeError("request body too large")
-            if req.method == "OPTIONS" and len(app.config.cors_origins) > 0:
+            if live.method == "OPTIONS" and len(app.config.cors_origins) > 0:
                 origin: str = ""
                 if app.config.cors_origins != "*":
-                    origin = aether.cors.read_origin(req)
+                    origin = aether.cors.read_origin(live)
                 resp_opt = aether.cors.preflight_response(app.config.cors_origins, origin)
             else:
-                matched: MatchResult | None = find_route_indexed(app.route_table, req.method, path)
+                matched: MatchResult | None = find_route_indexed(app.route_table, live.method, path)
                 if matched == None:
                     if path_exists(app.route_table.routes, path):
-                        raise MethodNotAllowedError("method not allowed: " + req.method + " " + path)
-                    raise NotFoundError("route not found: " + req.method + " " + path)
+                        raise MethodNotAllowedError("method not allowed: " + live.method + " " + path)
+                    raise NotFoundError("route not found: " + live.method + " " + path)
                 else:
                     hit: MatchResult = matched
                     route_key = hit.route.route_key
                     ctx: HttpContext = HttpContext(
-                        req,
+                        live,
                         hit.params,
                         app.container,
                         rid,
@@ -448,7 +451,8 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                         app.config.trust_x_forwarded_for,
                         path,
                         app.config.security_headers,
-                        app.config.cors_origins
+                        app.config.cors_origins,
+                        app.config.json_engine
                     )
                     resp_opt = execute(
                         hit.route,

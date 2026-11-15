@@ -1,0 +1,21 @@
+# aether.engine_zstd - opt-in Content-Encoding: zstd.
+# Import from the serve entry, then set AETHER_BODY_CODECS=zstd.
+# Only decompress is called. nox.zstd.compress is the noxclibs generic and is not used here.
+
+import nox.zstd
+from nox.zstd import ZstdError
+import aether.engines
+from aether.errors import BadRequestError, PayloadTooLargeError
+
+def _open(data: str, limit: int) -> str:
+    try:
+        out: str = nox.zstd.decompress(data)
+        if limit > 0 and len(out) > limit:
+            raise PayloadTooLargeError("request body too large")
+        return out
+    except ZstdError as e:
+        raise BadRequestError("invalid zstd body: " + e.message)
+
+# nox.zstd.decompress lives in the runtime. There is no is_supported flag.
+# Importing this module is the opt-in. compress (noxclibs) is not called.
+aether.engines.arm_zstd(_open)

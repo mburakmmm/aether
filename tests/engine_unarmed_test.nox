@@ -1,0 +1,29 @@
+import nox.strings
+import nox.test
+import aether.application
+import aether.config
+from aether.application import Application
+from aether.config import Config, ConfigError
+
+def build(app: Application) -> None:
+    app.config.env = app.config.env + ""
+
+cfg: Config = aether.config.defaults("test")
+cfg.json_engine = "yyjson"
+rejected_json: bool = False
+try:
+    aether.application.boot_with_config(cfg, build)
+except ConfigError as e:
+    rejected_json = nox.strings.index_of(e.message, "engine_yyjson") >= 0
+nox.test.assert_true(rejected_json, "yyjson without import is refused")
+
+cfg_codec: Config = aether.config.defaults("test")
+cfg_codec.body_codecs = "br"
+rejected_br: bool = False
+try:
+    aether.application.boot_with_config(cfg_codec, build)
+except ConfigError as e2:
+    rejected_br = nox.strings.index_of(e2.message, "engine_brotli") >= 0
+nox.test.assert_true(rejected_br, "brotli without import is refused")
+
+print("engine_unarmed_test ok")

@@ -153,6 +153,22 @@ def http_ip_family(cfg: Config) -> int:
         return 2
     return 1
 
+# HTTP/3 is one UDP socket inside serve_tls / serve_fd_tls, not SO_REUSEPORT.
+# workers>1 would make every extra worker fail that bind. peer_addr is empty
+# on QUIC, so a rate limit without a trusted XFF header cannot see a client.
+# WebSocket is not carried on HTTP/3.
+def require_http3(cfg: Config) -> None:
+    if not cfg.http3:
+        return
+    if not has_tls(cfg):
+        raise ServerError("AETHER_HTTP3 requires AETHER_TLS_CERT and AETHER_TLS_KEY; QUIC listens beside serve_tls")
+    if cfg.ws_enabled:
+        raise ServerError("AETHER_HTTP3 does not carry WebSocket; leave AETHER_WS off")
+    if use_os_workers(cfg):
+        raise ServerError("AETHER_HTTP3 listens on one UDP socket; set AETHER_WORKERS=1")
+    if cfg.rate_limit_enabled and not cfg.trust_x_forwarded_for:
+        raise ServerError("AETHER_HTTP3 leaves peer_addr empty; AETHER_RATE_LIMIT requires AETHER_TRUST_X_FORWARDED_FOR")
+
 # Single-worker WebSocket listen is AF_INET. Multicore WebSocket follows ip_family.
 def require_ipv6_listen(cfg: Config) -> None:
     if not cfg.ipv6:
@@ -176,6 +192,8 @@ def apply_http_server(cfg: Config) -> None:
         http_ip_family(cfg)
     )
     nox.http.set_http2(cfg.http2)
+    require_http3(cfg)
+    nox.http.set_http3(cfg.http3)
     if len(cfg.log_level) > 0:
         nox.log.set_level(cfg.log_level)
 
@@ -187,10 +205,39 @@ def print_listen(cfg: Config, mode: str) -> None:
         listen = "v6"
     if use_os_workers(cfg):
         listen = "multicore"
+    http3: str = "0"
+    if cfg.http3:
+        http3 = "1"
+    codecs: str = ""
+    if cfg.use_br:
+        codecs = codecs + ",br"
+    if cfg.use_zstd:
+        codecs = codecs + ",zstd"
+    if cfg.use_lz4:
+        codecs = codecs + ",lz4"
+    if len(codecs) == 0:
+        codecs = "-"
+    else:
+        codecs = _substr_comma(codecs)
     print(
         "aether listening on :" + str(cfg.port) +
         " env=" + cfg.env +
         " mode=" + mode +
         " workers=" + str(workers) +
-        " listen=" + listen
+        " listen=" + listen +
+        " http3=" + http3 +
+        " json=" + cfg.json_engine +
+        " codecs=" + codecs
     )
+
+def _substr_comma(s: str) -> str:
+    if len(s) == 0:
+        return s
+    if s[0] == ",":
+        out: str = ""
+        i: int = 1
+        while i < len(s):
+            out = out + s[i]
+            i = i + 1
+        return out
+    return s
