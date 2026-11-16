@@ -119,12 +119,21 @@ headers2["X-Forwarded-For"] = "203.0.113.9, 10.0.0.1"
 headers2["X-Custom"] = "hello"
 r10: HttpResponse = aether.testing.request_peer(app2, "GET", "/ip?q=1", "", headers2, "198.51.100.10")
 nox.test.assert_eq_int(r10.status, 200, "ip status")
-nox.test.assert_true(nox.strings.contains(r10.body, "203.0.113.9"), "xff ip")
+nox.test.assert_true(nox.strings.contains(r10.body, "\"ip\":\"10.0.0.1\""), "rightmost untrusted hop")
+nox.test.assert_true(nox.strings.contains(r10.body, "203.0.113.9") == False, "prepended hop is not the client")
 nox.test.assert_true(nox.strings.contains(r10.body, "\"q\":\"1\""), "query")
 nox.test.assert_true(nox.strings.contains(r10.body, "\"h\":\"hello\""), "header")
 
 r_xff: HttpResponse = aether.testing.request_peer(app2, "GET", "/ip", "", headers2, "198.51.100.10")
-nox.test.assert_true(nox.strings.contains(r_xff.body, "203.0.113.9"), "xff beats peer")
+nox.test.assert_true(nox.strings.contains(r_xff.body, "\"ip\":\"10.0.0.1\""), "xff beats peer")
+spoofed_left: dict[str, str] = {}
+spoofed_left["X-Forwarded-For"] = "9.9.9.9, 10.0.0.1"
+r_same: HttpResponse = aether.testing.request_peer(app2, "GET", "/ip", "", spoofed_left, "198.51.100.10")
+nox.test.assert_true(nox.strings.contains(r_same.body, "\"ip\":\"10.0.0.1\""), "left hop does not change the client")
+skipped: dict[str, str] = {}
+skipped["X-Forwarded-For"] = "203.0.113.9, 203.0.113.8, 198.51.100.10"
+r_skip: HttpResponse = aether.testing.request_peer(app2, "GET", "/ip", "", skipped, "198.51.100.10")
+nox.test.assert_true(nox.strings.contains(r_skip.body, "\"ip\":\"203.0.113.8\""), "trusted hop at the right is skipped")
 
 cfg3: Config = aether.config.defaults("test")
 cfg3.log_requests = False

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.0 — 2026-11-16
+
+Nox floor stays **2.1.186**.
+
+- A trusted proxy's `X-Forwarded-For` client is the rightmost hop that is not itself a trusted proxy. Prepending an address no longer chooses the rate-limit bucket. `AETHER_TRUSTED_PROXIES` accepts an address or a CIDR. A bad entry fails boot
+- `AETHER_RATE_LIMIT` runs before guards and pipes. A 401 or 422 spends the quota. User interceptors stay after those stages
+- `handle_bare` still skips header parsing and now passes `req.peer_addr`, so the limiter can see the socket. The scaffold and `examples/hello_api` do this. The benchmark entry still omits the peer
+- `scripts/smoke_scaffold.sh` runs in CI. The release workflow no longer rewrites the generated `nox.json` ref before fetch
+
 ## 0.13.0 — 2026-11-16
 
 Nox floor stays **2.1.186**.

@@ -1,6 +1,6 @@
 # Nox limitations
 
-Aether **0.13.0** requires **Nox ≥ 2.1.186**. The sections below the 0.11 note are the 2026-11-11 recheck on `noxc 2.1.52`. They were not re-run for this floor. `serve_multicore` still gives each worker its own module globals; Nox 2.1.120–2.1.140 did not change that factory model.
+Aether **0.14.0** requires **Nox ≥ 2.1.186**. The sections below the 0.11 note are the 2026-11-11 recheck on `noxc 2.1.52`. They were not re-run for this floor. `serve_multicore` still gives each worker its own module globals; Nox 2.1.120–2.1.140 did not change that factory model.
 
 ## 0.11.0 choices
 
@@ -189,7 +189,7 @@ There is no outbound HTTP client wrapper. Generators, mixins, `@property`, and `
 
 ## Workarounds that stay
 
-- One worker: bare `handle` / `handle_bare`. Several workers: bare `make_handle` / `make_handle_bare` in the entry file. Pass `req.conn` from the full handle. `handle_bare` does not read `req.headers` or `req.peer_addr`.
+- One worker: bare `handle` / `handle_bare`. Several workers: bare `make_handle` / `make_handle_bare` in the entry file. Pass `req.conn` from the full handle. `handle_bare` does not read `req.headers`. It does pass `req.peer_addr`. The benchmark entry still passes `""`.
 - Do not close over `Application`. `boot_for_serve` validates once and clears the parent slot when `workers>1`. The factory boots that slot again, and it boots the others.
 - `POST /__aether/shutdown` calls `begin_shutdown` and keeps listening, so clients observe 503. `request_shutdown(port)` writes the drain file and then calls `nox.http.shutdown()`, which refuses new connections and returns from `serve*` after the drain timeout. SIGTERM stops accept without the file; `finalize_serve` writes it when `serve*` returns.
 - CORS, rate limit, and request id stay in Aether. They are worker-scoped, honor trusted `X-Forwarded-For`, and production CORS stays off unless configured. `nox.web` is used for cookie encoding and the security-header trio, not as a replacement router.

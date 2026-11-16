@@ -98,6 +98,11 @@ jobs:
           chmod +x scripts/smoke_package.sh
           ./scripts/smoke_package.sh
 
+      - name: Scaffold pins this version
+        run: |
+          chmod +x scripts/smoke_scaffold.sh
+          ./scripts/smoke_scaffold.sh
+
       - name: Keep-alive isolation
         run: |
           chmod +x scripts/smoke_keepalive.sh

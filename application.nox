@@ -321,10 +321,10 @@ def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
     container: Container = Container()
     table: RouteTable = RouteTable()
     hooks: HookState = HookState()
-    xs: list[InterceptorFns] = hooks.interceptors
     if cfg.rate_limit_enabled:
-        xs.append(aether.rate_limit.rate_limit_interceptor(cfg.rate_limit_max, cfg.rate_limit_window_ms))
-    hooks.interceptors = xs
+        early: list[InterceptorFns] = hooks.limiters
+        early.append(aether.rate_limit.rate_limit_interceptor(cfg.rate_limit_max, cfg.rate_limit_window_ms))
+        hooks.limiters = early
     shutdown_hooks: list[() -> None] = []
     boot_id: str = nox.uuid.uuid7()
     app: Application = Application(cfg, container, table, hooks, shutdown_hooks, "{}", Metrics(), boot_id)
@@ -459,6 +459,7 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                     resp_opt = execute(
                         hit.route,
                         ctx,
+                        app.hooks.limiters,
                         app.hooks.guards,
                         app.hooks.pipes,
                         app.hooks.interceptors

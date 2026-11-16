@@ -33,8 +33,10 @@ def handle(req: HttpRequest) -> HttpResponse:
     )
 
 def handle_bare(req: HttpRequest) -> HttpResponse:
+    # Headers stay unread so Nox skips header parsing. The peer is still
+    # passed: the rate limiter keys on the socket when XFF is off.
     return aether.application.dispatch_from_parts(
-        req.method, req.target, req.body, EMPTY_HEADERS, "", cfg, build
+        req.method, req.target, req.body, EMPTY_HEADERS, req.peer_addr, cfg, build
     )
 
 # serve_multicore calls this once inside each worker, then uses the closure.
@@ -52,7 +54,7 @@ def make_handle_bare() -> (HttpRequest) -> HttpResponse:
     aether.application.arm_drain(cfg.port)
     def bound(req: HttpRequest) -> HttpResponse:
         return aether.application.dispatch_from_parts(
-            req.method, req.target, req.body, EMPTY_HEADERS, "", cfg, build
+            req.method, req.target, req.body, EMPTY_HEADERS, req.peer_addr, cfg, build
         )
     return bound
 

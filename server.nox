@@ -9,7 +9,7 @@
 #           req.method, req.target, req.body, req.headers, req.peer_addr, cfg, build, req.conn)
 #   def handle_bare(req: HttpRequest) -> HttpResponse:
 #       return aether.application.dispatch_from_parts(
-#           req.method, req.target, req.body, aether.application.EMPTY_HEADERS, "", cfg, build)
+#           req.method, req.target, req.body, aether.application.EMPTY_HEADERS, req.peer_addr, cfg, build)
 #   # NOX_POOL_WORKERS must be in the process environment BEFORE exec
 #   # (LLVM $main pool, the default backend). apply_pool_workers is too late.
 #   if aether.server.materialize_request_headers(cfg):
@@ -51,6 +51,7 @@ import nox.log
 import nox.os
 from nox.os import OsError
 import aether.config
+import aether.context
 from aether.config import Config
 
 class ServerError(Exception):
@@ -190,13 +191,18 @@ def listen_v6_fd(cfg: Config) -> int:
     return nox.http.listen_v6(cfg.port, cfg.ipv6_only)
 
 # X-Forwarded-For is a client header. It is read only when the TCP peer is
-# listed in AETHER_TRUSTED_PROXIES. An empty list with trust enabled would
-# accept the header from every caller, so boot refuses that pair.
+# listed in AETHER_TRUSTED_PROXIES. An entry is one address or a CIDR.
+# An empty list with trust enabled would accept the header from every caller,
+# so boot refuses that pair.
 def require_trusted_proxies(cfg: Config) -> None:
+    if len(cfg.trusted_proxies) > 0:
+        bad: str = aether.context.proxy_list_error(cfg.trusted_proxies)
+        if len(bad) > 0:
+            raise ServerError("AETHER_TRUSTED_PROXIES entry is not an address or CIDR: " + bad)
     if not cfg.trust_x_forwarded_for:
         return
     if len(cfg.trusted_proxies) == 0:
-        raise ServerError("AETHER_TRUST_X_FORWARDED_FOR requires AETHER_TRUSTED_PROXIES (comma-separated peer addresses)")
+        raise ServerError("AETHER_TRUST_X_FORWARDED_FOR requires AETHER_TRUSTED_PROXIES (comma-separated peer addresses or CIDRs)")
 
 # Process-wide Nox server limits. 0 keeps that knob's current Nox default.
 # Call once before serve* (boot_for_serve does). Safe to repeat with the same cfg.

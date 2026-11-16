@@ -9,13 +9,13 @@ It is independent of Nyx (the Rails-style full-stack framework).
 - **Official DI = closures:** `m.provide("Name")` is a **name registry only**. Hold service instances in module fields/locals and capture them when registering handlers (`m.get(..., self._show(svc))`). An imported class can be a base (`class Mine(HttpError)`), but `class_init_param_type` returns a mangled name, so Aether does not wire constructors from reflect.
 - **Module import:** `app.import_module(configure)` / `app.import_configure(configure)`; `m.prefix("/api")` for path prefixes
 - **Top-level route decorators** (optional): `@get` / `@post` + `mount_decorators` (still run through `dispatch` pipeline)
-- **Custom pipeline:** Guard → Pipe → Interceptor (before may short-circuit) → Handler → Interceptor after → exception filters
+- **Custom pipeline:** Rate limit → Guard → Pipe → Interceptor (before may short-circuit) → Handler → Interceptor after → exception filters
 
 ## Request flow
 
-1. A single worker passes a bare `handle` to `serve` / `serve_fd`. `workers>1` passes a top-level zero-arg `make_handle` to `serve_multicore*`; Nox calls it once inside each worker and the closure it returns calls `dispatch_from_parts`. Do not pass `req` through. Omit `peer_addr` (pass `""`) when the handler must not retain the peer string. `handle_bare` does not read headers, peer, or `conn` (`conn` stays 0). Streaming needs the full handle. The factory has to be a bare name in the application entry; `aether.server.something` is not a factory.
+1. A single worker passes a bare `handle` to `serve` / `serve_fd`. `workers>1` passes a top-level zero-arg `make_handle` to `serve_multicore*`; Nox calls it once inside each worker and the closure it returns calls `dispatch_from_parts`. Do not pass `req` through. `handle_bare` does not read headers or `conn` (`conn` stays 0) and does pass `req.peer_addr`. The benchmark entry still passes `""` because the limiter is off there and reading the peer retains the string. Streaming needs the full handle. The factory has to be a bare name in the application entry; `aether.server.something` is not a factory.
 2. `application.dispatch` → normalize path → body limit / CORS OPTIONS / 405 → match → `HttpContext` + `TaskLocal`
-3. Global + route guards
+3. Built-in rate limit, then global + route guards
 4. Input pipes / DTO validation (including format checks)
 5. Interceptors (before; may return early)
 6. Handler

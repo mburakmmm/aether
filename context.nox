@@ -204,44 +204,296 @@ def peer_host(peer: str) -> str:
         return _substr(peer, 0, last)
     return peer
 
+def _strip_spaces(raw: str) -> str:
+    out: str = ""
+    i: int = 0
+    while i < len(raw):
+        ch: str = raw[i]
+        if ch != " ":
+            out = out + ch
+        i = i + 1
+    return out
+
+def _parse_ipv4(host: str) -> list[int]:
+    bad: list[int] = []
+    if len(host) == 0:
+        return bad
+    parts: list[str] = nox.strings.split(host, ".")
+    if len(parts) != 4:
+        return bad
+    out: list[int] = []
+    i: int = 0
+    while i < 4:
+        part: str = parts[i]
+        if len(part) == 0 or len(part) > 3:
+            return bad
+        if not _all_digits(part, 0):
+            return bad
+        n: int = int(part)
+        if n > 255:
+            return bad
+        out.append(n)
+        i = i + 1
+    return out
+
+def _hex_value(byte: int) -> int:
+    if byte >= 48 and byte <= 57:
+        return byte - 48
+    if byte >= 97 and byte <= 102:
+        return byte - 87
+    if byte >= 65 and byte <= 70:
+        return byte - 55
+    return -1
+
+def _parse_v6_group(part: str) -> int:
+    if len(part) == 0 or len(part) > 4:
+        return -1
+    n: int = 0
+    i: int = 0
+    while i < len(part):
+        digit: int = _hex_value(nox.strings.byte_at(part, i))
+        if digit < 0:
+            return -1
+        n = (n << 4) | digit
+        i = i + 1
+    return n
+
+def _v6_side_bad(groups: list[int]) -> bool:
+    if len(groups) == 1 and groups[0] < 0:
+        return True
+    return False
+
+def _parse_v6_side(side: str) -> list[int]:
+    bad: list[int] = []
+    bad.append(-1)
+    if len(side) == 0:
+        empty: list[int] = []
+        return empty
+    parts: list[str] = nox.strings.split(side, ":")
+    out: list[int] = []
+    i: int = 0
+    while i < len(parts):
+        part: str = parts[i]
+        if len(part) == 0:
+            return bad
+        if nox.strings.index_of(part, ".") >= 0:
+            if i != len(parts) - 1:
+                return bad
+            v4: list[int] = _parse_ipv4(part)
+            if len(v4) != 4:
+                return bad
+            out.append((v4[0] << 8) | v4[1])
+            out.append((v4[2] << 8) | v4[3])
+        else:
+            group: int = _parse_v6_group(part)
+            if group < 0:
+                return bad
+            out.append(group)
+        i = i + 1
+    return out
+
+def _parse_ipv6(host: str) -> list[int]:
+    none: list[int] = []
+    if len(host) == 0:
+        return none
+    if nox.strings.index_of(host, "%") >= 0:
+        return none
+    dbl: int = nox.strings.index_of(host, "::")
+    if dbl >= 0:
+        after: str = _substr(host, dbl + 2, len(host))
+        if nox.strings.index_of(after, "::") >= 0:
+            return none
+        left: list[int] = _parse_v6_side(_substr(host, 0, dbl))
+        right: list[int] = _parse_v6_side(after)
+        if _v6_side_bad(left) or _v6_side_bad(right):
+            return none
+        zeros: int = 8 - len(left) - len(right)
+        if zeros < 1:
+            return none
+        merged: list[int] = []
+        i: int = 0
+        while i < len(left):
+            merged.append(left[i])
+            i = i + 1
+        z: int = 0
+        while z < zeros:
+            merged.append(0)
+            z = z + 1
+        j: int = 0
+        while j < len(right):
+            merged.append(right[j])
+            j = j + 1
+        if len(merged) != 8:
+            return none
+        return merged
+    whole: list[int] = _parse_v6_side(host)
+    if _v6_side_bad(whole) or len(whole) != 8:
+        return none
+    return whole
+
+def _pack_v4(octets: list[int]) -> int:
+    return (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]
+
+def _mask_bits(width: int, prefix: int) -> int:
+    if prefix <= 0:
+        return 0
+    mask: int = 0
+    bit: int = 0
+    while bit < prefix:
+        mask = (mask << 1) | 1
+        bit = bit + 1
+    return mask << (width - prefix)
+
+def _ipv4_in_prefix(peer: list[int], net: list[int], prefix: int) -> bool:
+    if prefix == 0:
+        return True
+    mask: int = _mask_bits(32, prefix)
+    return (_pack_v4(peer) & mask) == (_pack_v4(net) & mask)
+
+def _groups_in_prefix(peer: list[int], net: list[int], prefix: int) -> bool:
+    if prefix == 0:
+        return True
+    full: int = 0
+    left: int = prefix
+    while left >= 16:
+        full = full + 1
+        left = left - 16
+    i: int = 0
+    while i < full:
+        if peer[i] != net[i]:
+            return False
+        i = i + 1
+    if left == 0:
+        return True
+    mask: int = _mask_bits(16, left)
+    return (peer[full] & mask) == (net[full] & mask)
+
+def _same_address(left: str, right: str) -> bool:
+    l4: list[int] = _parse_ipv4(left)
+    r4: list[int] = _parse_ipv4(right)
+    if len(l4) == 4 and len(r4) == 4:
+        return _pack_v4(l4) == _pack_v4(r4)
+    l6: list[int] = _parse_ipv6(left)
+    r6: list[int] = _parse_ipv6(right)
+    if len(l6) == 8 and len(r6) == 8:
+        i: int = 0
+        while i < 8:
+            if l6[i] != r6[i]:
+                return False
+            i = i + 1
+        return True
+    return left == right
+
+def _prefix_of(entry: str) -> int:
+    slash: int = nox.strings.index_of(entry, "/")
+    if slash < 1:
+        return -1
+    pref: str = _substr(entry, slash + 1, len(entry))
+    if not _all_digits(pref, 0):
+        return -1
+    return int(pref)
+
+def _cidr_has(peer: str, entry: str) -> bool:
+    slash: int = nox.strings.index_of(entry, "/")
+    if slash < 1:
+        return False
+    prefix: int = _prefix_of(entry)
+    if prefix < 0:
+        return False
+    addr: str = _substr(entry, 0, slash)
+    p4: list[int] = _parse_ipv4(peer)
+    n4: list[int] = _parse_ipv4(addr)
+    if len(p4) == 4 and len(n4) == 4:
+        if prefix > 32:
+            return False
+        return _ipv4_in_prefix(p4, n4, prefix)
+    p6: list[int] = _parse_ipv6(peer)
+    n6: list[int] = _parse_ipv6(addr)
+    if len(p6) == 8 and len(n6) == 8:
+        if prefix > 128:
+            return False
+        return _groups_in_prefix(p6, n6, prefix)
+    return False
+
+def _entry_valid(entry: str) -> bool:
+    slash: int = nox.strings.index_of(entry, "/")
+    if slash < 0:
+        v4: list[int] = _parse_ipv4(entry)
+        if len(v4) == 4:
+            return True
+        v6: list[int] = _parse_ipv6(entry)
+        return len(v6) == 8
+    prefix: int = _prefix_of(entry)
+    if prefix < 0:
+        return False
+    addr: str = _substr(entry, 0, slash)
+    a4: list[int] = _parse_ipv4(addr)
+    if len(a4) == 4:
+        return prefix <= 32
+    a6: list[int] = _parse_ipv6(addr)
+    if len(a6) == 8:
+        return prefix <= 128
+    return False
+
+# Empty string means every entry is an address or a CIDR.
+def proxy_list_error(proxies: str) -> str:
+    parts: list[str] = nox.strings.split(proxies, ",")
+    i: int = 0
+    while i < len(parts):
+        entry: str = _strip_spaces(parts[i])
+        if len(entry) > 0 and not _entry_valid(entry):
+            return entry
+        i = i + 1
+    return ""
+
 def peer_trusted(peer: str, proxies: str) -> bool:
     if len(peer) == 0 or len(proxies) == 0:
         return False
     parts: list[str] = nox.strings.split(proxies, ",")
     i: int = 0
     while i < len(parts):
-        hop: str = parts[i]
-        out: str = ""
-        j: int = 0
-        while j < len(hop):
-            ch: str = hop[j]
-            if ch != " ":
-                out = out + ch
-            j = j + 1
-        if out == peer:
-            return True
+        entry: str = _strip_spaces(parts[i])
+        if len(entry) > 0:
+            if nox.strings.index_of(entry, "/") >= 0:
+                if _cidr_has(peer, entry):
+                    return True
+            else:
+                if _same_address(peer, entry):
+                    return True
         i = i + 1
     return False
 
-def client_ip(headers: dict[str, str], trust_xff: bool) -> str:
+# Rightmost hop that is not itself a trusted proxy. A client can prepend a
+# fake address; the proxy appends the hop it actually saw. When every hop is
+# trusted, the original client is the leftmost address.
+def _forwarded_client(xff: str, proxies: str) -> str:
+    parts: list[str] = nox.strings.split(xff, ",")
+    n: int = len(parts)
+    i: int = n - 1
+    while i >= 0:
+        hop: str = _strip_spaces(parts[i])
+        if len(hop) > 0:
+            if not peer_trusted(hop, proxies):
+                return hop
+        i = i - 1
+    j: int = 0
+    while j < n:
+        first: str = _strip_spaces(parts[j])
+        if len(first) > 0:
+            return first
+        j = j + 1
+    return ""
+
+def client_ip(headers: dict[str, str], trust_xff: bool, proxies: str) -> str:
     if trust_xff:
         xff: str = header_get(headers, "X-Forwarded-For")
         if len(xff) > 0:
-            parts: list[str] = nox.strings.split(xff, ",")
-            if len(parts) > 0:
-                hop: str = parts[0]
-                out: str = ""
-                i: int = 0
-                while i < len(hop):
-                    ch: str = hop[i]
-                    if ch != " ":
-                        out = out + ch
-                    i = i + 1
-                if len(out) > 0:
-                    return out
+            picked: str = _forwarded_client(xff, proxies)
+            if len(picked) > 0:
+                return picked
         real: str = header_get(headers, "X-Real-IP")
         if len(real) > 0:
-            return real
+            return _strip_spaces(real)
     return ""
 
 class HttpContext:
@@ -335,11 +587,12 @@ class HttpContext:
         return self.request.body
 
     def client_ip(self: HttpContext) -> str:
-        # Trusted XFF wins (the TCP peer is the proxy). Otherwise the
-        # socket peer. Empty when the serve handle did not read req.peer_addr.
+        # Trusted XFF wins only when the TCP peer is a listed proxy.
+        # The client is the rightmost hop that is not itself on that list.
+        # Empty when the serve handle did not pass req.peer_addr.
         peer: str = peer_host(self.request.peer_addr)
         if self.trust_xff and peer_trusted(peer, self.trusted_proxies):
-            forwarded: str = client_ip(self.request.headers, True)
+            forwarded: str = client_ip(self.request.headers, True, self.trusted_proxies)
             if len(forwarded) > 0:
                 return forwarded
         return peer

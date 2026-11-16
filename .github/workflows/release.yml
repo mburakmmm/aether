@@ -83,25 +83,7 @@ jobs:
           noxc check src/main.nox
           noxc run src/main.nox
 
-      - name: Scaffold from checkout templates
+      - name: Scaffold pins this version
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          WORK="$(mktemp -d)"
-          cd "$GITHUB_WORKSPACE"
-          noxc run cli.nox -- new "$WORK/smokeapi"
-          cd "$WORK/smokeapi"
-          python3 - <<PY
-          import json, os
-          tag = os.environ["TAG"]
-          data = json.load(open("nox.json"))
-          data["requires"] = [{
-            "alias": "aether",
-            "repo": "github.com/mburakmmm/aether",
-            "ref": tag,
-          }]
-          open("nox.json", "w").write(json.dumps(data, indent=2) + "\n")
-          PY
-          noxc fetch
-          noxc check main.nox
-        env:
-          TAG: ${{ github.ref_name }}
+          chmod +x scripts/smoke_scaffold.sh
+          ./scripts/smoke_scaffold.sh

@@ -1,10 +1,13 @@
 # aether.rate_limit - in-process window with eviction.
 #
-# Keyed by HttpContext.client_ip() (socket peer, or XFF from a listed proxy).
+# Keyed by HttpContext.client_ip() (socket peer, or the rightmost untrusted
+# XFF hop from a listed proxy or CIDR).
 # An empty key is rejected. Unknown clients do not skip the limiter and do
 # not share one bucket.
 # The serve handle must pass req.peer_addr into dispatch_from_parts.
-# Each interceptor captures its own RateStore (not a process-global singleton).
+# AETHER_RATE_LIMIT is installed before guards. A caller can still add
+# rate_limit_interceptor() as a normal interceptor.
+# Each limiter captures its own RateStore (not a process-global singleton).
 #
 # Scope: worker-local. Nox module globals / Application boot are per worker slot,
 # so each RateStore only sees traffic handled by that worker. With workers=N the

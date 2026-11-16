@@ -160,7 +160,7 @@ def handle(req: HttpRequest) -> HttpResponse:
 
 def handle_bare(req: HttpRequest) -> HttpResponse:
     return aether.application.dispatch_from_parts(
-        req.method, req.target, req.body, EMPTY_HEADERS, "", cfg, build
+        req.method, req.target, req.body, EMPTY_HEADERS, req.peer_addr, cfg, build
     )
 
 def make_handle() -> (HttpRequest) -> HttpResponse:
@@ -177,7 +177,7 @@ def make_handle_bare() -> (HttpRequest) -> HttpResponse:
     aether.application.arm_drain(cfg.port)
     def bound(req: HttpRequest) -> HttpResponse:
         return aether.application.dispatch_from_parts(
-            req.method, req.target, req.body, EMPTY_HEADERS, "", cfg, build
+            req.method, req.target, req.body, EMPTY_HEADERS, req.peer_addr, cfg, build
         )
     return bound
 

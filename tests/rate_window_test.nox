@@ -5,6 +5,7 @@ import aether.application
 import aether.config
 import aether.rate_limit
 import aether.testing
+from aether.errors import UnauthorizedError
 from aether.server import ServerError
 from aether.application import Application
 from aether.config import Config
@@ -79,10 +80,90 @@ trusted: Application = aether.application.boot_with_config(cfg2, build)
 hop: dict[str, str] = {}
 hop["X-Forwarded-For"] = "203.0.113.9, 10.0.0.1"
 t1: HttpResponse = aether.testing.request_peer(trusted, "GET", "/ping", "", hop, "198.51.100.10")
-nox.test.assert_eq_int(t1.status, 200, "trusted first hop allowed")
+nox.test.assert_eq_int(t1.status, 200, "trusted rightmost hop allowed")
 t2: HttpResponse = aether.testing.request_peer(trusted, "GET", "/ping", "", hop, "198.51.100.11")
-nox.test.assert_eq_int(t2.status, 429, "same first hop shares a bucket")
+nox.test.assert_eq_int(t2.status, 429, "same rightmost hop shares a bucket")
 outsider: HttpResponse = aether.testing.request_peer(trusted, "GET", "/ping", "", hop, "203.0.113.50")
 nox.test.assert_eq_int(outsider.status, 200, "unlisted peer ignores XFF")
+
+cfg3: Config = aether.config.defaults("test")
+cfg3.log_requests = False
+cfg3.metrics = False
+cfg3.rate_limit_enabled = True
+cfg3.rate_limit_max = 1
+cfg3.rate_limit_window_ms = 60000
+cfg3.trust_x_forwarded_for = True
+cfg3.trusted_proxies = "198.51.100.10,198.51.100.11"
+chain: Application = aether.application.boot_with_config(cfg3, build)
+left_a: dict[str, str] = {}
+left_a["X-Forwarded-For"] = "203.0.113.9, 203.0.113.50"
+left_b: dict[str, str] = {}
+left_b["X-Forwarded-For"] = "198.51.100.99, 203.0.113.50"
+left_c: dict[str, str] = {}
+left_c["X-Forwarded-For"] = "203.0.113.9, 203.0.113.51"
+c1: HttpResponse = aether.testing.request_peer(chain, "GET", "/ping", "", left_a, "198.51.100.10")
+nox.test.assert_eq_int(c1.status, 200, "real client allowed")
+c2: HttpResponse = aether.testing.request_peer(chain, "GET", "/ping", "", left_b, "198.51.100.11")
+nox.test.assert_eq_int(c2.status, 429, "spoofed left hop does not open a new bucket")
+c3: HttpResponse = aether.testing.request_peer(chain, "GET", "/ping", "", left_c, "198.51.100.10")
+nox.test.assert_eq_int(c3.status, 200, "a different rightmost hop is another client")
+
+cfg4: Config = aether.config.defaults("test")
+cfg4.log_requests = False
+cfg4.metrics = False
+cfg4.rate_limit_enabled = True
+cfg4.rate_limit_max = 1
+cfg4.rate_limit_window_ms = 60000
+cfg4.trust_x_forwarded_for = True
+cfg4.trusted_proxies = "198.51.100.0/24, 2001:db8::/32"
+net: Application = aether.application.boot_with_config(cfg4, build)
+cidr_hop: dict[str, str] = {}
+cidr_hop["X-Forwarded-For"] = "203.0.113.9, 203.0.113.60"
+n1: HttpResponse = aether.testing.request_peer(net, "GET", "/ping", "", cidr_hop, "198.51.100.10")
+nox.test.assert_eq_int(n1.status, 200, "peer inside the CIDR is trusted")
+n2: HttpResponse = aether.testing.request_peer(net, "GET", "/ping", "", cidr_hop, "198.51.100.200")
+nox.test.assert_eq_int(n2.status, 429, "another address in the CIDR shares the client")
+outside_net: HttpResponse = aether.testing.request_peer(net, "GET", "/ping", "", cidr_hop, "198.51.101.10")
+nox.test.assert_eq_int(outside_net.status, 200, "address outside the CIDR ignores XFF")
+v6_hop: dict[str, str] = {}
+v6_hop["X-Forwarded-For"] = "198.51.100.9, 203.0.113.70"
+n6: HttpResponse = aether.testing.request_peer(net, "GET", "/ping", "", v6_hop, "2001:db8::5")
+nox.test.assert_eq_int(n6.status, 200, "ipv6 CIDR peer is trusted")
+n6b: HttpResponse = aether.testing.request_peer(net, "GET", "/ping", "", v6_hop, "2001:0db8:0000:0000:0000:0000:0000:0005")
+nox.test.assert_eq_int(n6b.status, 429, "expanded ipv6 is the same peer")
+v6_out: HttpResponse = aether.testing.request_peer(net, "GET", "/ping", "", v6_hop, "2001:db9::5")
+nox.test.assert_eq_int(v6_out.status, 200, "ipv6 outside the prefix ignores XFF")
+
+cfg5: Config = aether.config.defaults("test")
+cfg5.log_requests = False
+cfg5.trust_x_forwarded_for = True
+cfg5.trusted_proxies = "198.51.100.0/33"
+bad_cidr: bool = False
+try:
+    aether.application.boot_with_config(cfg5, build)
+except ServerError as err2:
+    bad_cidr = nox.strings.contains(err2.message, "not an address or CIDR")
+nox.test.assert_true(bad_cidr, "a prefix past 32 fails boot")
+
+def deny(ctx: HttpContext) -> bool:
+    raise UnauthorizedError("nope")
+
+def build_guarded(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.use_guard(deny)
+    m.get("/ping", ping)
+
+cfg6: Config = aether.config.defaults("test")
+cfg6.log_requests = False
+cfg6.metrics = False
+cfg6.rate_limit_enabled = True
+cfg6.rate_limit_max = 1
+cfg6.rate_limit_window_ms = 60000
+cfg6.trust_x_forwarded_for = False
+guarded: Application = aether.application.boot_with_config(cfg6, build_guarded)
+g1: HttpResponse = aether.testing.request_peer(guarded, "GET", "/ping", "", {}, "198.51.100.10")
+nox.test.assert_eq_int(g1.status, 401, "first request is rejected by the guard and still counted")
+g2: HttpResponse = aether.testing.request_peer(guarded, "GET", "/ping", "", {}, "198.51.100.10")
+nox.test.assert_eq_int(g2.status, 429, "the next request is limited before the guard")
 
 print("rate_window_test ok")

@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.13.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
+**Version:** 0.14.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.13.0"
+      "ref": "v0.14.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.13.0
+noxc install github.com/mburakmmm/aether@v0.14.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -108,6 +108,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.14.0
+
+Nox floor stays **2.1.186**. Behind a trusted proxy the client is the rightmost `X-Forwarded-For` hop that is not itself listed. `AETHER_TRUSTED_PROXIES` accepts an address or a CIDR. The built-in rate limiter runs before guards and pipes. `handle_bare` still skips headers and passes the socket peer. `aether new` pins this version.
 
 ## What’s new in 0.13.0
 
@@ -296,7 +300,8 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 | `AETHER_CORS_ORIGINS` | `*` (dev/test); **empty in production** | Opt-in CORS: `*` or comma-separated allowlist |
 | `AETHER_METRICS` | on | `0` skips status counters in `/metrics` (fair bench / hot path) |
 | `AETHER_METRICS_ROUTES` | on (dev/test); **off in production** | Per-route hit counters in `/metrics` |
-| `AETHER_TRUST_X_FORWARDED_FOR` | `false` | Read `X-Forwarded-For` only from peers in `AETHER_TRUSTED_PROXIES`. An empty list fails boot |
+| `AETHER_TRUST_X_FORWARDED_FOR` | `false` | Read `X-Forwarded-For` only from peers in `AETHER_TRUSTED_PROXIES`. The client is the rightmost hop that is not itself listed. An empty list fails boot |
+| `AETHER_TRUSTED_PROXIES` | empty | Comma-separated addresses or CIDRs. A bad entry fails boot |
 | `AETHER_JOBS_DB` | `db/jobs.sqlite` | Queue SQLite path |
 | `AETHER_JOB_STALE_MS` | `300000` | Stuck `running` reclaim window |
 | `AETHER_MAX_BODY_BYTES` | `1048576` | Passed to `nox.http.configure`. A larger socket body is Nox’s plain-text 413 and the handler does not run. `0` keeps Nox’s 10 MiB |

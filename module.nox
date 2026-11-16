@@ -156,12 +156,14 @@ class HookState:
     guards: list[(HttpContext) -> bool]
     pipes: list[(HttpContext) -> None]
     interceptors: list[InterceptorFns]
+    limiters: list[InterceptorFns]
     exception_filters: list[(HttpError) -> HttpResponse | None]
 
     def __init__(self: HookState) -> None:
         self.guards = []
         self.pipes = []
         self.interceptors = []
+        self.limiters = []
         self.exception_filters = []
 
 class ModuleBuilder:
