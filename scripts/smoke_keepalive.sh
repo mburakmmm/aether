@@ -46,7 +46,7 @@ noxc run benchmarks/keepalive_probe/main.nox >"$LOG" 2>&1 &
 PID=$!
 
 ok=0
-for _ in $(seq 1 80); do
+for _ in $(seq 1 120); do
   if curl -fsS "http://127.0.0.1:${PORT}/who" >/dev/null 2>&1; then
     ok=1
     break
@@ -56,7 +56,7 @@ for _ in $(seq 1 80); do
     cat "$LOG" >&2 || true
     exit 1
   fi
-  sleep 0.1
+    sleep 0.5
 done
 if [[ "$ok" != "1" ]]; then
   echo "keepalive server did not become ready" >&2

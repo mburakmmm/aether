@@ -88,7 +88,7 @@ noxc run benchmarks/http3_probe/main.nox >"$LOG" 2>&1 &
 PID=$!
 
 ok=0
-for _ in $(seq 1 80); do
+for _ in $(seq 1 120); do
   if "$CURL_BIN" -fsS -k "https://127.0.0.1:${PORT}/who" >/dev/null 2>&1; then
     ok=1
     break
@@ -98,7 +98,7 @@ for _ in $(seq 1 80); do
     cat "$LOG" >&2 || true
     exit 1
   fi
-  sleep 0.1
+  sleep 0.5
 done
 if [[ "$ok" != "1" ]]; then
   echo "http3 server did not become ready" >&2

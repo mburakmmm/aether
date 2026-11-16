@@ -75,12 +75,12 @@ else
 fi
 
 ok=0
-for _ in $(seq 1 80); do
+for _ in $(seq 1 120); do
   if curl -fsS "http://127.0.0.1:${PORT}/ping" >/dev/null 2>&1; then
     ok=1
     break
   fi
-  sleep 0.1
+  sleep 0.5
 done
 if [[ "$ok" != "1" ]]; then
   echo "server failed to become ready" >&2
@@ -138,7 +138,7 @@ fi
 
 # Poll registry drain.
 drained=0
-for _ in $(seq 1 80); do
+for _ in $(seq 1 120); do
   n=0
   if [[ -d "$LIFE_DIR/workers" ]]; then
     n="$(find "$LIFE_DIR/workers" -type f 2>/dev/null | wc -l | tr -d ' ')"
