@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.15.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
+**Version:** 0.16.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.15.0"
+      "ref": "v0.16.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.15.0
+noxc install github.com/mburakmmm/aether@v0.16.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -108,6 +108,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.16.0
+
+Nox floor stays **2.1.186**. With the limiter on, `AETHER_RATE_LIMIT_MAX`, `AETHER_RATE_LIMIT_WINDOW_MS`, and `AETHER_RATE_LIMIT_MAX_BUCKETS` must be greater than 0. A known client is an index lookup. The bucket list is scanned only when a new key needs a free slot. The bucket cap defaults to 10000. The release workflow fetches, typechecks, and requests the app from the installed `aether new`.
 
 ## What’s new in 0.15.0
 
@@ -301,6 +305,9 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 | `AETHER_REQUEST_HEADERS` | on | `0` uses `handle_bare` (Nox skips copying request headers) |
 | `AETHER_OPENAPI` | on (off in prod) | `/openapi.json`, `/docs` |
 | `AETHER_RATE_LIMIT` | off | Opt-in. An empty client identity is 429. The window is per worker. Refused together with `AETHER_HTTP3` |
+| `AETHER_RATE_LIMIT_MAX` | `100` | Requests allowed in the window. Must be greater than 0 when the limiter is on |
+| `AETHER_RATE_LIMIT_WINDOW_MS` | `60000` | Window length. Must be greater than 0 when the limiter is on |
+| `AETHER_RATE_LIMIT_MAX_BUCKETS` | `10000` | Distinct client keys kept per worker. A new key is refused while every slot holds a live window. Must be greater than 0 when the limiter is on |
 | `AETHER_CORS_ORIGINS` | `*` (dev/test); **empty in production** | Opt-in CORS: `*` or comma-separated allowlist |
 | `AETHER_METRICS` | on | `0` skips status counters in `/metrics` (fair bench / hot path) |
 | `AETHER_METRICS_ROUTES` | on (dev/test); **off in production** | Per-route hit counters in `/metrics` |

@@ -9,6 +9,8 @@
 # rate_limit_interceptor() as a normal interceptor.
 # Each limiter captures its own RateStore (not a process-global singleton).
 # A full store refuses a new key. It does not drop a live counter.
+# A known key is a dict lookup. Its own window resets in place.
+# The full list is scanned only when a new key needs a free slot.
 #
 # Scope: worker-local. Nox module globals / Application boot are per worker slot,
 # so each RateStore only sees traffic handled by that worker. With workers=N the
@@ -82,7 +84,6 @@ class RateStore:
 
     def allow(self: RateStore, key: str, max_n: int, window_ms: int) -> bool:
         now: int = nox.time.monotonic_ns() // 1000000
-        self._evict_expired(now, window_ms)
         pos: int = self._find(key)
         if pos >= 0:
             b: RateBucket = self.buckets[pos]
@@ -94,18 +95,19 @@ class RateStore:
                 return False
             b.count = b.count + 1
             return True
-        # A full table refuses the new key. Dropping a live bucket would
-        # reset that client's counter.
+        # Sweep only to free a slot. A live counter is not dropped.
         if self.max_buckets > 0 and len(self.buckets) >= self.max_buckets:
-            return False
+            self._evict_expired(now, window_ms)
+            if len(self.buckets) >= self.max_buckets:
+                return False
         buckets: list[RateBucket] = self.buckets
         buckets.append(RateBucket(key, 1, now))
         self.buckets = buckets
         self.index[key] = len(self.buckets)
         return True
 
-def rate_limit_interceptor(max_n: int, window_ms: int) -> InterceptorFns:
-    store: RateStore = RateStore(10000)
+def _limiter(max_n: int, window_ms: int, max_buckets: int) -> InterceptorFns:
+    store: RateStore = RateStore(max_buckets)
 
     def before(ctx: HttpContext) -> HttpResponse | None:
         key: str = ctx.client_ip()
@@ -119,3 +121,11 @@ def rate_limit_interceptor(max_n: int, window_ms: int) -> InterceptorFns:
         return resp
 
     return InterceptorFns(before, after)
+
+# Built-in AETHER_RATE_LIMIT. The cap is AETHER_RATE_LIMIT_MAX_BUCKETS.
+def rate_limit_interceptor_capped(max_n: int, window_ms: int, max_buckets: int) -> InterceptorFns:
+    return _limiter(max_n, window_ms, max_buckets)
+
+# User interceptor. Keeps the previous two-argument call and a 10000 cap.
+def rate_limit_interceptor(max_n: int, window_ms: int) -> InterceptorFns:
+    return _limiter(max_n, window_ms, 10000)

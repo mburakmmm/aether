@@ -3,7 +3,7 @@
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.15.0",
+      "ref": "v0.16.0",
       "resolved": "9241c8499f426eeed054de8973d467b312c46c01"
     }
   ]

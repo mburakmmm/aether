@@ -206,11 +206,24 @@ def require_trusted_proxies(cfg: Config) -> None:
     if not cfg.request_headers:
         raise ServerError("AETHER_TRUST_X_FORWARDED_FOR requires AETHER_REQUEST_HEADERS (the bare handle does not pass the forwarded header)")
 
+# A zero window evicts every bucket, so the limiter would allow every request.
+# A non-positive max allows a burst and then blocks, or never means what it says.
+def require_rate_limit(cfg: Config) -> None:
+    if not cfg.rate_limit_enabled:
+        return
+    if cfg.rate_limit_max <= 0:
+        raise ServerError("AETHER_RATE_LIMIT_MAX must be greater than 0")
+    if cfg.rate_limit_window_ms <= 0:
+        raise ServerError("AETHER_RATE_LIMIT_WINDOW_MS must be greater than 0")
+    if cfg.rate_limit_max_buckets <= 0:
+        raise ServerError("AETHER_RATE_LIMIT_MAX_BUCKETS must be greater than 0")
+
 # Process-wide Nox server limits. 0 keeps that knob's current Nox default.
 # Call once before serve* (boot_for_serve does). Safe to repeat with the same cfg.
 def apply_http_server(cfg: Config) -> None:
     require_listen_host(cfg)
     require_trusted_proxies(cfg)
+    require_rate_limit(cfg)
     nox.http.configure(
         cfg.max_body_bytes,
         cfg.max_header_bytes,

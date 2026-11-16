@@ -97,6 +97,41 @@ jobs:
               raise SystemExit("installed scaffold ref %s != %s" % (ref, tag))
           print("installed scaffold", ref)
           PY
+          cd demo
+          noxc fetch
+          noxc check main.nox
+          AETHER_ENV=test \
+          AETHER_PORT=34771 \
+          AETHER_WORKERS=1 \
+          AETHER_OPENAPI=0 \
+          AETHER_LOG_REQUESTS=0 \
+          AETHER_METRICS=0 \
+          AETHER_RATE_LIMIT=0 \
+          noxc run main.nox > /tmp/aether-scaffold-http.log 2>&1 &
+          PID=$!
+          ok=0
+          i=0
+          while [[ $i -lt 120 ]]; do
+            if curl -fsS "http://127.0.0.1:34771/" | grep -q demo; then
+              ok=1
+              break
+            fi
+            if ! kill -0 "$PID" 2>/dev/null; then
+              echo "scaffold server exited" >&2
+              cat /tmp/aether-scaffold-http.log >&2 || true
+              exit 1
+            fi
+            i=$((i + 1))
+            sleep 0.5
+          done
+          kill "$PID" 2>/dev/null || true
+          wait "$PID" 2>/dev/null || true
+          if [[ "$ok" -ne 1 ]]; then
+            echo "scaffold http smoke failed" >&2
+            cat /tmp/aether-scaffold-http.log >&2 || true
+            exit 1
+          fi
+          echo "installed scaffold serves"
         env:
           TAG: ${{ github.ref_name }}
 

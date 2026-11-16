@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.16.0 — 2026-11-16
+
+Nox floor stays **2.1.186**.
+
+- `AETHER_RATE_LIMIT_MAX`, `AETHER_RATE_LIMIT_WINDOW_MS`, and `AETHER_RATE_LIMIT_MAX_BUCKETS` must be greater than 0 when the limiter is on. A zero window no longer clears every bucket
+- A known rate-limit key is an index lookup. The bucket list is scanned only when a new key needs a free slot
+- `AETHER_RATE_LIMIT_MAX_BUCKETS` defaults to 10000. The two-argument `rate_limit_interceptor` keeps that cap
+- The release workflow fetches, typechecks, and requests the app created by the installed `aether new`
+
 ## 0.15.0 — 2026-11-16
 
 Nox floor stays **2.1.186**.

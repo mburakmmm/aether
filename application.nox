@@ -317,13 +317,14 @@ def boot(build: (Application) -> None) -> Application:
 def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
     aether.server.require_listen_host(cfg)
     aether.server.require_trusted_proxies(cfg)
+    aether.server.require_rate_limit(cfg)
     aether.engines.prepare(cfg)
     container: Container = Container()
     table: RouteTable = RouteTable()
     hooks: HookState = HookState()
     if cfg.rate_limit_enabled:
         early: list[InterceptorFns] = hooks.limiters
-        early.append(aether.rate_limit.rate_limit_interceptor(cfg.rate_limit_max, cfg.rate_limit_window_ms))
+        early.append(aether.rate_limit.rate_limit_interceptor_capped(cfg.rate_limit_max, cfg.rate_limit_window_ms, cfg.rate_limit_max_buckets))
         hooks.limiters = early
     shutdown_hooks: list[() -> None] = []
     boot_id: str = nox.uuid.uuid7()

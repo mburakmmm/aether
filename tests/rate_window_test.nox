@@ -273,4 +273,128 @@ nox.test.assert_eq_int(m5.status, 204, "cors preflight")
 m6: HttpResponse = aether.testing.request_peer(miss, "GET", "/ping", "", {}, "198.51.100.23")
 nox.test.assert_eq_int(m6.status, 200, "options does not spend the quota")
 
+# A known key resets in place. The neighbor stays, so a third key still needs a sweep.
+pair: RateStore = RateStore(2)
+nox.test.assert_true(pair.allow("a", 2, 60000), "pair a")
+nox.test.assert_true(pair.allow("b", 2, 60000), "pair b")
+nox.test.assert_true(pair.allow("a", 2, 60000), "pair a second")
+nox.test.assert_true(not pair.allow("c", 1, 60000), "pair is full of live keys")
+nox.test.assert_true(not pair.allow("a", 2, 60000), "a kept its count without a sweep")
+
+cfg11: Config = aether.config.defaults("test")
+cfg11.log_requests = False
+cfg11.metrics = False
+cfg11.rate_limit_enabled = False
+cfg11.rate_limit_window_ms = 0
+cfg11.rate_limit_max = 0
+off: Application = aether.application.boot_with_config(cfg11, build)
+nox.test.assert_true(not off.config.rate_limit_enabled, "limiter off still boots")
+
+cfg12: Config = aether.config.defaults("test")
+cfg12.log_requests = False
+cfg12.metrics = False
+cfg12.rate_limit_enabled = True
+cfg12.rate_limit_max = 1
+cfg12.rate_limit_window_ms = 0
+zero_window: bool = False
+try:
+    aether.application.boot_with_config(cfg12, build)
+except ServerError as err4:
+    zero_window = nox.strings.contains(err4.message, "AETHER_RATE_LIMIT_WINDOW_MS")
+nox.test.assert_true(zero_window, "a zero window fails boot")
+
+cfg13: Config = aether.config.defaults("test")
+cfg13.log_requests = False
+cfg13.metrics = False
+cfg13.rate_limit_enabled = True
+cfg13.rate_limit_max = 0
+cfg13.rate_limit_window_ms = 60000
+zero_max: bool = False
+try:
+    aether.application.boot_with_config(cfg13, build)
+except ServerError as err5:
+    zero_max = nox.strings.contains(err5.message, "AETHER_RATE_LIMIT_MAX must")
+nox.test.assert_true(zero_max, "a zero max fails boot")
+
+cfg14: Config = aether.config.defaults("test")
+cfg14.log_requests = False
+cfg14.metrics = False
+cfg14.rate_limit_enabled = True
+cfg14.rate_limit_max = 1
+cfg14.rate_limit_window_ms = 60000
+cfg14.rate_limit_max_buckets = 0
+zero_cap: bool = False
+try:
+    aether.application.boot_with_config(cfg14, build)
+except ServerError as err6:
+    zero_cap = nox.strings.contains(err6.message, "AETHER_RATE_LIMIT_MAX_BUCKETS")
+nox.test.assert_true(zero_cap, "a zero bucket cap fails boot")
+
+cfg15: Config = aether.config.defaults("test")
+cfg15.log_requests = False
+cfg15.metrics = False
+cfg15.rate_limit_enabled = True
+cfg15.rate_limit_max = 100
+cfg15.rate_limit_window_ms = 60000
+cfg15.rate_limit_max_buckets = 1
+capped: Application = aether.application.boot_with_config(cfg15, build)
+k1: HttpResponse = aether.testing.request_peer(capped, "GET", "/ping", "", {}, "198.51.100.30")
+nox.test.assert_eq_int(k1.status, 200, "first client fills the only bucket")
+k2: HttpResponse = aether.testing.request_peer(capped, "GET", "/ping", "", {}, "198.51.100.30")
+nox.test.assert_eq_int(k2.status, 200, "the same client stays under the request max")
+k3: HttpResponse = aether.testing.request_peer(capped, "GET", "/ping", "", {}, "198.51.100.31")
+nox.test.assert_eq_int(k3.status, 429, "a second client is refused while the bucket is live")
+
+cfg16: Config = aether.config.defaults("test")
+cfg16.log_requests = False
+cfg16.metrics = False
+cfg16.rate_limit_enabled = True
+cfg16.rate_limit_max = 1
+cfg16.rate_limit_window_ms = 60000
+cfg16.trust_x_forwarded_for = True
+cfg16.trusted_proxies = "198.51.100.10"
+fuzz: Application = aether.application.boot_with_config(cfg16, build_who)
+upper: dict[str, str] = {}
+upper["X-Forwarded-For"] = "2001:DB8::1"
+f1: HttpResponse = aether.testing.request_peer(fuzz, "GET", "/who", "", upper, "198.51.100.10")
+nox.test.assert_eq_int(f1.status, 200, "uppercase ipv6 allowed")
+nox.test.assert_true(nox.strings.contains(f1.body, "2001:db8::1"), "uppercase ipv6 is lowercase")
+lower: dict[str, str] = {}
+lower["X-Forwarded-For"] = "2001:db8::1"
+f2: HttpResponse = aether.testing.request_peer(fuzz, "GET", "/who", "", lower, "198.51.100.10")
+nox.test.assert_eq_int(f2.status, 429, "lowercase ipv6 shares the uppercase bucket")
+padded: dict[str, str] = {}
+padded["X-Forwarded-For"] = "203.0.113.009"
+f3: HttpResponse = aether.testing.request_peer(fuzz, "GET", "/who", "", padded, "198.51.100.10")
+nox.test.assert_eq_int(f3.status, 200, "padded ipv4 allowed")
+nox.test.assert_true(nox.strings.contains(f3.body, "203.0.113.9"), "padded ipv4 drops the zero")
+plain4: dict[str, str] = {}
+plain4["X-Forwarded-For"] = "203.0.113.9"
+f4: HttpResponse = aether.testing.request_peer(fuzz, "GET", "/who", "", plain4, "198.51.100.10")
+nox.test.assert_eq_int(f4.status, 429, "plain ipv4 shares the padded bucket")
+mapped_pad: dict[str, str] = {}
+mapped_pad["X-Forwarded-For"] = "::ffff:203.0.113.081"
+f5: HttpResponse = aether.testing.request_peer(fuzz, "GET", "/who", "", mapped_pad, "198.51.100.10")
+nox.test.assert_eq_int(f5.status, 200, "mapped padded ipv4 allowed")
+nox.test.assert_true(nox.strings.contains(f5.body, "203.0.113.81"), "mapped padded ipv4 is canonical")
+zone: dict[str, str] = {}
+zone["X-Forwarded-For"] = "2001:db8::1%eth0"
+f6: HttpResponse = aether.testing.request_peer(fuzz, "GET", "/who", "", zone, "198.51.100.10")
+nox.test.assert_eq_int(f6.status, 200, "zone id is not a client key")
+nox.test.assert_true(nox.strings.contains(f6.body, "198.51.100.10"), "zone id falls back to the peer")
+huge: dict[str, str] = {}
+huge["X-Forwarded-For"] = "999.1.1.1"
+f7: HttpResponse = aether.testing.request_peer(fuzz, "GET", "/who", "", huge, "198.51.100.10")
+nox.test.assert_eq_int(f7.status, 429, "a second invalid hop stays on the peer bucket")
+mixed: dict[str, str] = {}
+mixed["X-Forwarded-For"] = "not-an-ip, 203.0.113.82"
+f8: HttpResponse = aether.testing.request_peer(fuzz, "GET", "/who", "", mixed, "198.51.100.10")
+nox.test.assert_eq_int(f8.status, 200, "garbage then a valid hop is allowed")
+nox.test.assert_true(nox.strings.contains(f8.body, "203.0.113.82"), "the valid hop is the key")
+real_only: dict[str, str] = {}
+real_only["X-Real-IP"] = "203.0.113.083"
+f9: HttpResponse = aether.testing.request_peer(fuzz, "GET", "/who", "", real_only, "198.51.100.10")
+nox.test.assert_eq_int(f9.status, 200, "x-real-ip allowed")
+nox.test.assert_true(nox.strings.contains(f9.body, "203.0.113.83"), "x-real-ip is canonical")
+
 print("rate_window_test ok")
