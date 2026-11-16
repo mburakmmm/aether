@@ -5,7 +5,7 @@
 **[Nox](https://github.com/mburakmmm/nox-lang) için NestJS esintili API / backend framework’ü.**  
 Pythonic modüller, closure tabanlı DI, guard / pipe / interceptor, typed DTO, OpenAPI + Swagger UI, WebSocket gateway ve SQLite iş kuyrukları.
 
-**Sürüm:** 0.14.0 · **Lisans:** MIT · **Nox ≥ 2.1.186**  
+**Sürüm:** 0.15.0 · **Lisans:** MIT · **Nox ≥ 2.1.186**  
 Paket: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > [Nyx](https://github.com/mburakmmm/nyx)’ten bağımsızdır (Rails tarzı full-stack). HTTP API için **Aether**; HTML monolit için **Nyx**.
@@ -24,7 +24,7 @@ Uygulama `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.14.0"
+      "ref": "v0.15.0"
     }
   ]
 }
@@ -44,12 +44,16 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI iskelet
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.14.0
+noxc install github.com/mburakmmm/aether@v0.15.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
 
 ---
+
+## 0.15.0
+
+Nox tabanı **2.1.186**. `X-Forwarded-For` güveni istek başlıklarını ister. Başlıksız tutamaç bütün istemcileri vekilin adresinde toplayamaz. Kota anahtarı kanonik IP’dir: `2001:0db8::1` ile `2001:db8::1` aynı kovadır, `::ffff:203.0.113.9` `203.0.113.9` olur. IP olmayan hop atlanır. Dolu depo yeni anahtarı reddeder, duran sayacı silmez. 404, 405 ve CORS preflight kotayı tüketmez. 401 ve 422 tüketir.
 
 ## 0.14.0
 

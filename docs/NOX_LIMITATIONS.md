@@ -1,6 +1,6 @@
 # Nox limitations
 
-Aether **0.14.0** requires **Nox ≥ 2.1.186**. The sections below the 0.11 note are the 2026-11-11 recheck on `noxc 2.1.52`. They were not re-run for this floor. `serve_multicore` still gives each worker its own module globals; Nox 2.1.120–2.1.140 did not change that factory model.
+Aether **0.15.0** requires **Nox ≥ 2.1.186**. The sections below the 0.11 note are the 2026-11-11 recheck on `noxc 2.1.52`. They were not re-run for this floor. `serve_multicore` still gives each worker its own module globals; Nox 2.1.120–2.1.140 did not change that factory model.
 
 ## 0.11.0 choices
 

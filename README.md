@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.14.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
+**Version:** 0.15.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.14.0"
+      "ref": "v0.15.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.14.0
+noxc install github.com/mburakmmm/aether@v0.15.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -108,6 +108,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.15.0
+
+Nox floor stays **2.1.186**. Trusting `X-Forwarded-For` requires request headers, so a bare handle cannot put every client on the proxy address. The rate-limit key is a canonical IP: `2001:0db8::1` and `2001:db8::1` share a bucket, and `::ffff:203.0.113.9` is `203.0.113.9`. A hop that is not an IP is skipped. A full store refuses a new key instead of dropping a live counter. 404, 405, and CORS preflight do not spend the quota. 401 and 422 do.
 
 ## What’s new in 0.14.0
 
@@ -300,7 +304,7 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 | `AETHER_CORS_ORIGINS` | `*` (dev/test); **empty in production** | Opt-in CORS: `*` or comma-separated allowlist |
 | `AETHER_METRICS` | on | `0` skips status counters in `/metrics` (fair bench / hot path) |
 | `AETHER_METRICS_ROUTES` | on (dev/test); **off in production** | Per-route hit counters in `/metrics` |
-| `AETHER_TRUST_X_FORWARDED_FOR` | `false` | Read `X-Forwarded-For` only from peers in `AETHER_TRUSTED_PROXIES`. The client is the rightmost hop that is not itself listed. An empty list fails boot |
+| `AETHER_TRUST_X_FORWARDED_FOR` | `false` | Read `X-Forwarded-For` only from peers in `AETHER_TRUSTED_PROXIES`. The client is the canonical rightmost hop that is a valid IP and is not itself listed. An empty list fails boot. Trust with `AETHER_REQUEST_HEADERS=0` fails boot |
 | `AETHER_TRUSTED_PROXIES` | empty | Comma-separated addresses or CIDRs. A bad entry fails boot |
 | `AETHER_JOBS_DB` | `db/jobs.sqlite` | Queue SQLite path |
 | `AETHER_JOB_STALE_MS` | `300000` | Stuck `running` reclaim window |

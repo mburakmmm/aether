@@ -463,24 +463,94 @@ def peer_trusted(peer: str, proxies: str) -> bool:
         i = i + 1
     return False
 
-# Rightmost hop that is not itself a trusted proxy. A client can prepend a
-# fake address; the proxy appends the hop it actually saw. When every hop is
-# trusted, the original client is the leftmost address.
+def _hex_group(n: int) -> str:
+    if n == 0:
+        return "0"
+    digits: str = "0123456789abcdef"
+    out: str = ""
+    shift: int = 12
+    started: bool = False
+    while shift >= 0:
+        d: int = (n >> shift) & 15
+        if d != 0 or started:
+            out = out + digits[d]
+            started = True
+        shift = shift - 4
+    return out
+
+def _ends_colon(s: str) -> bool:
+    if len(s) == 0:
+        return False
+    return s[len(s) - 1] == ":"
+
+# RFC 5952 text. An IPv4-mapped address is the dotted IPv4 form, so
+# ::ffff:203.0.113.9 and 203.0.113.9 share one rate-limit key.
+def _canonical_ipv6(groups: list[int]) -> str:
+    if groups[0] == 0 and groups[1] == 0 and groups[2] == 0 and groups[3] == 0 and groups[4] == 0 and groups[5] == 65535:
+        return str((groups[6] >> 8) & 255) + "." + str(groups[6] & 255) + "." + str((groups[7] >> 8) & 255) + "." + str(groups[7] & 255)
+    best_at: int = -1
+    best_len: int = 0
+    i: int = 0
+    while i < 8:
+        if groups[i] == 0:
+            j: int = i
+            while j < 8 and groups[j] == 0:
+                j = j + 1
+            n: int = j - i
+            if n > best_len:
+                best_len = n
+                best_at = i
+            i = j
+        else:
+            i = i + 1
+    if best_len < 2:
+        best_at = -1
+    out: str = ""
+    i = 0
+    while i < 8:
+        if i == best_at:
+            out = out + "::"
+            i = i + best_len
+        else:
+            if len(out) > 0 and not _ends_colon(out):
+                out = out + ":"
+            out = out + _hex_group(groups[i])
+            i = i + 1
+    return out
+
+# Empty when the text is not an IP. IPv4 drops leading zeros. IPv6 is lowercase
+# and compressed. The rate limiter uses this text as the bucket key.
+def canonical_ip(host: str) -> str:
+    v4: list[int] = _parse_ipv4(host)
+    if len(v4) == 4:
+        return str(v4[0]) + "." + str(v4[1]) + "." + str(v4[2]) + "." + str(v4[3])
+    v6: list[int] = _parse_ipv6(host)
+    if len(v6) == 8:
+        return _canonical_ipv6(v6)
+    return ""
+
+# Rightmost valid IP that is not itself a trusted proxy. A client can prepend
+# a fake address; the proxy appends the hop it actually saw. A hop that is not
+# an IP is skipped, so it cannot mint a bucket. When every hop is trusted, the
+# leftmost valid address is the client.
 def _forwarded_client(xff: str, proxies: str) -> str:
     parts: list[str] = nox.strings.split(xff, ",")
     n: int = len(parts)
     i: int = n - 1
     while i >= 0:
         hop: str = _strip_spaces(parts[i])
-        if len(hop) > 0:
-            if not peer_trusted(hop, proxies):
-                return hop
+        if len(hop) > 0 and not peer_trusted(hop, proxies):
+            canon: str = canonical_ip(hop)
+            if len(canon) > 0:
+                return canon
         i = i - 1
     j: int = 0
     while j < n:
         first: str = _strip_spaces(parts[j])
         if len(first) > 0:
-            return first
+            canon2: str = canonical_ip(first)
+            if len(canon2) > 0:
+                return canon2
         j = j + 1
     return ""
 
@@ -493,7 +563,9 @@ def client_ip(headers: dict[str, str], trust_xff: bool, proxies: str) -> str:
                 return picked
         real: str = header_get(headers, "X-Real-IP")
         if len(real) > 0:
-            return _strip_spaces(real)
+            real_ip: str = canonical_ip(_strip_spaces(real))
+            if len(real_ip) > 0:
+                return real_ip
     return ""
 
 class HttpContext:
@@ -588,10 +660,12 @@ class HttpContext:
 
     def client_ip(self: HttpContext) -> str:
         # Trusted XFF wins only when the TCP peer is a listed proxy.
-        # The client is the rightmost hop that is not itself on that list.
-        # Empty when the serve handle did not pass req.peer_addr.
-        peer: str = peer_host(self.request.peer_addr)
-        if self.trust_xff and peer_trusted(peer, self.trusted_proxies):
+        # The client is the canonical rightmost hop that is not itself listed.
+        # Empty when the serve handle did not pass a parseable req.peer_addr
+        # and no forwarded address was usable.
+        raw: str = peer_host(self.request.peer_addr)
+        peer: str = canonical_ip(raw)
+        if self.trust_xff and peer_trusted(raw, self.trusted_proxies):
             forwarded: str = client_ip(self.request.headers, True, self.trusted_proxies)
             if len(forwarded) > 0:
                 return forwarded

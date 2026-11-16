@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.0 — 2026-11-16
+
+Nox floor stays **2.1.186**.
+
+- `AETHER_TRUST_X_FORWARDED_FOR` with `AETHER_REQUEST_HEADERS=0` fails boot
+- The rate-limit key is a canonical IP. Two spellings of one address share a bucket. A hop that is not an IP is skipped
+- A full `RateStore` refuses a new key. It does not drop a live counter. Expired windows still free their slots
+- 404, 405, and CORS preflight do not spend the built-in quota. 401 and 422 do. The release workflow runs the installed `aether new` outside the tree
+
 ## 0.14.0 — 2026-11-16
 
 Nox floor stays **2.1.186**.

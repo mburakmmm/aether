@@ -83,6 +83,23 @@ jobs:
           noxc check src/main.nox
           noxc run src/main.nox
 
+      - name: Installed CLI scaffolds outside the tree
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          WORK="$(mktemp -d)"
+          cd "$WORK"
+          aether new demo
+          python3 - <<PY
+          import json, os
+          tag = os.environ["TAG"]
+          ref = json.load(open("demo/nox.json"))["requires"][0]["ref"]
+          if ref != tag:
+              raise SystemExit("installed scaffold ref %s != %s" % (ref, tag))
+          print("installed scaffold", ref)
+          PY
+        env:
+          TAG: ${{ github.ref_name }}
+
       - name: Scaffold pins this version
         run: |
           chmod +x scripts/smoke_scaffold.sh

@@ -8,6 +8,7 @@
 # AETHER_RATE_LIMIT is installed before guards. A caller can still add
 # rate_limit_interceptor() as a normal interceptor.
 # Each limiter captures its own RateStore (not a process-global singleton).
+# A full store refuses a new key. It does not drop a live counter.
 #
 # Scope: worker-local. Nox module globals / Application boot are per worker slot,
 # so each RateStore only sees traffic handled by that worker. With workers=N the
@@ -35,11 +36,38 @@ class RateBucket:
 
 class RateStore:
     buckets: list[RateBucket]
+    # A missing key raises. The stored value is position+1 so 0 stays unused.
+    index: dict[str, int]
     max_buckets: int
 
     def __init__(self: RateStore, max_buckets: int) -> None:
         self.buckets = []
+        self.index = {}
         self.max_buckets = max_buckets
+
+    def _reindex(self: RateStore) -> None:
+        fresh: dict[str, int] = {}
+        i: int = 0
+        while i < len(self.buckets):
+            fresh[self.buckets[i].key] = i + 1
+            i = i + 1
+        self.index = fresh
+
+    def _find(self: RateStore, key: str) -> int:
+        # A missing key raises. The hit path stays a dict lookup.
+        slot: int = 0
+        try:
+            slot = self.index[key]
+        except KeyError:
+            return -1
+        if slot <= 0:
+            return -1
+        pos: int = slot - 1
+        if pos >= len(self.buckets):
+            return -1
+        if self.buckets[pos].key != key:
+            return -1
+        return pos
 
     def _evict_expired(self: RateStore, now: int, window_ms: int) -> None:
         fresh: list[RateBucket] = []
@@ -50,34 +78,30 @@ class RateStore:
                 fresh.append(b)
             i = i + 1
         self.buckets = fresh
+        self._reindex()
 
     def allow(self: RateStore, key: str, max_n: int, window_ms: int) -> bool:
         now: int = nox.time.monotonic_ns() // 1000000
         self._evict_expired(now, window_ms)
-        i: int = 0
-        while i < len(self.buckets):
-            b: RateBucket = self.buckets[i]
-            if b.key == key:
-                if now - b.window_start_ms >= window_ms:
-                    b.count = 1
-                    b.window_start_ms = now
-                    return True
-                if b.count >= max_n:
-                    return False
-                b.count = b.count + 1
+        pos: int = self._find(key)
+        if pos >= 0:
+            b: RateBucket = self.buckets[pos]
+            if now - b.window_start_ms >= window_ms:
+                b.count = 1
+                b.window_start_ms = now
                 return True
-            i = i + 1
+            if b.count >= max_n:
+                return False
+            b.count = b.count + 1
+            return True
+        # A full table refuses the new key. Dropping a live bucket would
+        # reset that client's counter.
         if self.max_buckets > 0 and len(self.buckets) >= self.max_buckets:
-            # Drop oldest window to bound memory.
-            drop: list[RateBucket] = []
-            j: int = 1
-            while j < len(self.buckets):
-                drop.append(self.buckets[j])
-                j = j + 1
-            self.buckets = drop
+            return False
         buckets: list[RateBucket] = self.buckets
         buckets.append(RateBucket(key, 1, now))
         self.buckets = buckets
+        self.index[key] = len(self.buckets)
         return True
 
 def rate_limit_interceptor(max_n: int, window_ms: int) -> InterceptorFns:

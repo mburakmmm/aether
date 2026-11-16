@@ -5,6 +5,7 @@ import aether.application
 import aether.config
 import aether.rate_limit
 import aether.testing
+from aether.dto import DtoSchema
 from aether.errors import UnauthorizedError
 from aether.server import ServerError
 from aether.application import Application
@@ -26,12 +27,18 @@ nox.test.assert_true(not short.allow("a", 1, 20), "short window blocked")
 nox.time.sleep_ms(40)
 nox.test.assert_true(short.allow("a", 1, 20), "window elapsed on monotonic clock")
 
+# A full store keeps the live key. The next client is refused.
 tiny: RateStore = RateStore(1)
 nox.test.assert_true(tiny.allow("a", 1, 60000), "bucket a")
 nox.test.assert_true(not tiny.allow("a", 1, 60000), "a is full")
-nox.test.assert_true(tiny.allow("b", 1, 60000), "b replaces a")
-nox.test.assert_true(tiny.allow("a", 1, 60000), "a returns as its own bucket")
+nox.test.assert_true(not tiny.allow("b", 1, 60000), "a live bucket is not dropped for b")
 nox.test.assert_true(not tiny.allow("a", 1, 60000), "a keeps its own count")
+
+room: RateStore = RateStore(1)
+nox.test.assert_true(room.allow("a", 1, 20), "room holds a")
+nox.test.assert_true(not room.allow("b", 1, 20), "room refuses b")
+nox.time.sleep_ms(40)
+nox.test.assert_true(room.allow("b", 1, 20), "expired a frees the slot")
 
 def ping(ctx: HttpContext) -> HttpResponse:
     return json_ok("{\"pong\":true}")
@@ -165,5 +172,105 @@ g1: HttpResponse = aether.testing.request_peer(guarded, "GET", "/ping", "", {}, 
 nox.test.assert_eq_int(g1.status, 401, "first request is rejected by the guard and still counted")
 g2: HttpResponse = aether.testing.request_peer(guarded, "GET", "/ping", "", {}, "198.51.100.10")
 nox.test.assert_eq_int(g2.status, 429, "the next request is limited before the guard")
+
+cfg7: Config = aether.config.defaults("test")
+cfg7.log_requests = False
+cfg7.metrics = False
+cfg7.trust_x_forwarded_for = True
+cfg7.trusted_proxies = "198.51.100.10"
+cfg7.request_headers = False
+bare: bool = False
+try:
+    aether.application.boot_with_config(cfg7, build)
+except ServerError as err3:
+    bare = nox.strings.contains(err3.message, "AETHER_REQUEST_HEADERS")
+nox.test.assert_true(bare, "trust without request headers fails boot")
+
+def who(ctx: HttpContext) -> HttpResponse:
+    return json_ok("{\"ip\":\"" + ctx.client_ip() + "\"}")
+
+def build_who(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.get("/who", who)
+
+cfg8: Config = aether.config.defaults("test")
+cfg8.log_requests = False
+cfg8.metrics = False
+cfg8.rate_limit_enabled = True
+cfg8.rate_limit_max = 1
+cfg8.rate_limit_window_ms = 60000
+cfg8.trust_x_forwarded_for = True
+cfg8.trusted_proxies = "198.51.100.10"
+named: Application = aether.application.boot_with_config(cfg8, build_who)
+wide: dict[str, str] = {}
+wide["X-Forwarded-For"] = "2001:0db8:0000:0000:0000:0000:0000:0001"
+w1: HttpResponse = aether.testing.request_peer(named, "GET", "/who", "", wide, "198.51.100.10")
+nox.test.assert_eq_int(w1.status, 200, "expanded ipv6 allowed")
+nox.test.assert_true(nox.strings.contains(w1.body, "2001:db8::1"), "expanded ipv6 is canonical")
+tight: dict[str, str] = {}
+tight["X-Forwarded-For"] = "2001:db8::1"
+w2: HttpResponse = aether.testing.request_peer(named, "GET", "/who", "", tight, "198.51.100.10")
+nox.test.assert_eq_int(w2.status, 429, "compressed ipv6 is the same bucket")
+mapped: dict[str, str] = {}
+mapped["X-Forwarded-For"] = "::ffff:203.0.113.90"
+w3: HttpResponse = aether.testing.request_peer(named, "GET", "/who", "", mapped, "198.51.100.10")
+nox.test.assert_eq_int(w3.status, 200, "mapped ipv6 allowed")
+nox.test.assert_true(nox.strings.contains(w3.body, "203.0.113.90"), "mapped ipv6 is dotted ipv4")
+plain: dict[str, str] = {}
+plain["X-Forwarded-For"] = "203.0.113.90"
+w4: HttpResponse = aether.testing.request_peer(named, "GET", "/who", "", plain, "198.51.100.10")
+nox.test.assert_eq_int(w4.status, 429, "dotted form shares the mapped bucket")
+junk: dict[str, str] = {}
+junk["X-Forwarded-For"] = "not-an-ip"
+w5: HttpResponse = aether.testing.request_peer(named, "GET", "/who", "", junk, "198.51.100.10")
+nox.test.assert_eq_int(w5.status, 200, "invalid hop falls back to the peer")
+nox.test.assert_true(nox.strings.contains(w5.body, "198.51.100.10"), "fallback key is the peer")
+junk2: dict[str, str] = {}
+junk2["X-Forwarded-For"] = "also-bad"
+w6: HttpResponse = aether.testing.request_peer(named, "GET", "/who", "", junk2, "198.51.100.10")
+nox.test.assert_eq_int(w6.status, 429, "another invalid hop does not open a bucket")
+
+def build_echo(app: Application) -> None:
+    m: ModuleBuilder = app.module()
+    m.get("/ping", ping)
+    schema: DtoSchema = DtoSchema("Echo")
+    schema.require("msg", "string")
+    m.post_body("/echo", ping, "Echo", schema, schema)
+
+cfg9: Config = aether.config.defaults("test")
+cfg9.log_requests = False
+cfg9.metrics = False
+cfg9.rate_limit_enabled = True
+cfg9.rate_limit_max = 1
+cfg9.rate_limit_window_ms = 60000
+echo: Application = aether.application.boot_with_config(cfg9, build_echo)
+v1: HttpResponse = aether.testing.request_peer(echo, "POST", "/echo", "{}", {}, "198.51.100.20")
+nox.test.assert_eq_int(v1.status, 422, "validation is rejected")
+v2: HttpResponse = aether.testing.request_peer(echo, "POST", "/echo", "{}", {}, "198.51.100.20")
+nox.test.assert_eq_int(v2.status, 429, "validation still spends the quota")
+
+cfg10: Config = aether.config.defaults("test")
+cfg10.log_requests = False
+cfg10.metrics = False
+cfg10.rate_limit_enabled = True
+cfg10.rate_limit_max = 1
+cfg10.rate_limit_window_ms = 60000
+cfg10.cors_origins = "*"
+miss: Application = aether.application.boot_with_config(cfg10, build)
+m1: HttpResponse = aether.testing.request_peer(miss, "GET", "/missing", "", {}, "198.51.100.21")
+nox.test.assert_eq_int(m1.status, 404, "unknown path")
+m2: HttpResponse = aether.testing.request_peer(miss, "GET", "/ping", "", {}, "198.51.100.21")
+nox.test.assert_eq_int(m2.status, 200, "404 does not spend the quota")
+m3: HttpResponse = aether.testing.request_peer(miss, "POST", "/ping", "{}", {}, "198.51.100.22")
+nox.test.assert_eq_int(m3.status, 405, "wrong method")
+m4: HttpResponse = aether.testing.request_peer(miss, "GET", "/ping", "", {}, "198.51.100.22")
+nox.test.assert_eq_int(m4.status, 200, "405 does not spend the quota")
+opt: dict[str, str] = {}
+opt["Origin"] = "https://example.com"
+opt["Access-Control-Request-Method"] = "GET"
+m5: HttpResponse = aether.testing.request_peer(miss, "OPTIONS", "/ping", "", opt, "198.51.100.23")
+nox.test.assert_eq_int(m5.status, 204, "cors preflight")
+m6: HttpResponse = aether.testing.request_peer(miss, "GET", "/ping", "", {}, "198.51.100.23")
+nox.test.assert_eq_int(m6.status, 200, "options does not spend the quota")
 
 print("rate_window_test ok")
