@@ -46,6 +46,7 @@ class Config:
     use_br: bool
     use_zstd: bool
     use_lz4: bool
+    trusted_proxies: str
 
     def __init__(
         self: Config,
@@ -83,7 +84,8 @@ class Config:
         log_level: str,
         http3: bool,
         json_engine: str,
-        body_codecs: str
+        body_codecs: str,
+        trusted_proxies: str
     ) -> None:
         self.env = env
         self.host = host
@@ -120,6 +122,7 @@ class Config:
         self.http3 = http3
         self.json_engine = json_engine
         self.body_codecs = body_codecs
+        self.trusted_proxies = trusted_proxies
         self.use_br = False
         self.use_zstd = False
         self.use_lz4 = False
@@ -197,7 +200,7 @@ def defaults(env: str) -> Config:
         log_req,
         openapi_on,
         "Aether API",
-        "0.12.0",
+        "0.13.0",
         jobs,
         "",
         "",
@@ -224,6 +227,7 @@ def defaults(env: str) -> Config:
         "",
         False,
         "std",
+        "",
         ""
     )
 
@@ -241,6 +245,7 @@ def from_env() -> Config:
     cfg.tls_cert_path = _env_or("AETHER_TLS_CERT", cfg.tls_cert_path)
     cfg.tls_key_path = _env_or("AETHER_TLS_KEY", cfg.tls_key_path)
     cfg.trust_x_forwarded_for = _env_bool("AETHER_TRUST_X_FORWARDED_FOR", cfg.trust_x_forwarded_for)
+    cfg.trusted_proxies = _env_or("AETHER_TRUSTED_PROXIES", cfg.trusted_proxies)
     cfg.ws_enabled = _env_bool("AETHER_WS", cfg.ws_enabled)
     cfg.max_body_bytes = _env_int("AETHER_MAX_BODY_BYTES", cfg.max_body_bytes)
     cfg.rate_limit_enabled = _env_bool("AETHER_RATE_LIMIT", cfg.rate_limit_enabled)

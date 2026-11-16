@@ -1,9 +1,11 @@
 import nox.test
 import nox.time
+import nox.strings
 import aether.application
 import aether.config
 import aether.rate_limit
 import aether.testing
+from aether.server import ServerError
 from aether.application import Application
 from aether.config import Config
 from aether.context import HttpContext
@@ -55,9 +57,9 @@ nox.test.assert_eq_int(second.status, 429, "same peer limited")
 other: HttpResponse = aether.testing.request_peer(app, "GET", "/ping", "", spoof, "198.51.100.11")
 nox.test.assert_eq_int(other.status, 200, "other peer is another bucket")
 unknown: HttpResponse = aether.testing.request_peer(app, "GET", "/ping", "", spoof, "")
-nox.test.assert_eq_int(unknown.status, 200, "empty peer skips the limiter")
+nox.test.assert_eq_int(unknown.status, 429, "empty peer is limited")
 unknown2: HttpResponse = aether.testing.request_peer(app, "GET", "/ping", "", spoof, "")
-nox.test.assert_eq_int(unknown2.status, 200, "empty peer does not share a bucket")
+nox.test.assert_eq_int(unknown2.status, 429, "empty peer stays limited")
 
 cfg2: Config = aether.config.defaults("test")
 cfg2.log_requests = False
@@ -66,6 +68,13 @@ cfg2.rate_limit_enabled = True
 cfg2.rate_limit_max = 1
 cfg2.rate_limit_window_ms = 60000
 cfg2.trust_x_forwarded_for = True
+missing: bool = False
+try:
+    aether.application.boot_with_config(cfg2, build)
+except ServerError as err:
+    missing = nox.strings.contains(err.message, "AETHER_TRUSTED_PROXIES")
+nox.test.assert_true(missing, "trust without a proxy list fails boot")
+cfg2.trusted_proxies = "198.51.100.10,198.51.100.11"
 trusted: Application = aether.application.boot_with_config(cfg2, build)
 hop: dict[str, str] = {}
 hop["X-Forwarded-For"] = "203.0.113.9, 10.0.0.1"
@@ -73,5 +82,7 @@ t1: HttpResponse = aether.testing.request_peer(trusted, "GET", "/ping", "", hop,
 nox.test.assert_eq_int(t1.status, 200, "trusted first hop allowed")
 t2: HttpResponse = aether.testing.request_peer(trusted, "GET", "/ping", "", hop, "198.51.100.11")
 nox.test.assert_eq_int(t2.status, 429, "same first hop shares a bucket")
+outsider: HttpResponse = aether.testing.request_peer(trusted, "GET", "/ping", "", hop, "203.0.113.50")
+nox.test.assert_eq_int(outsider.status, 200, "unlisted peer ignores XFF")
 
 print("rate_window_test ok")

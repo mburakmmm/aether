@@ -1,10 +1,9 @@
 # aether.rate_limit - in-process window with eviction.
 #
-# Keyed by HttpContext.client_ip() (socket peer, or XFF when trusted).
-# An empty key skips the limiter so unknown clients do not share one bucket.
-# The serve handle must pass req.peer_addr into dispatch_from_parts; bench
-# handles pass "" and therefore do not rate-limit.
-# Empty client_ip skips limiting (does NOT collapse into a shared "unknown" bucket).
+# Keyed by HttpContext.client_ip() (socket peer, or XFF from a listed proxy).
+# An empty key is rejected. Unknown clients do not skip the limiter and do
+# not share one bucket.
+# The serve handle must pass req.peer_addr into dispatch_from_parts.
 # Each interceptor captures its own RateStore (not a process-global singleton).
 #
 # Scope: worker-local. Nox module globals / Application boot are per worker slot,
@@ -84,8 +83,7 @@ def rate_limit_interceptor(max_n: int, window_ms: int) -> InterceptorFns:
     def before(ctx: HttpContext) -> HttpResponse | None:
         key: str = ctx.client_ip()
         if len(key) == 0:
-            # No peer identity - do not share a global "unknown" bucket.
-            return None
+            raise TooManyRequestsError("rate limit exceeded")
         if not store.allow(key, max_n, window_ms):
             raise TooManyRequestsError("rate limit exceeded")
         return None

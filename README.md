@@ -5,7 +5,7 @@
 **NestJS-inspired API / backend framework for [Nox](https://github.com/mburakmmm/nox-lang).**  
 Pythonic modules, closure-based DI, guards / pipes / interceptors, typed DTOs, OpenAPI + Swagger UI, WebSocket gateways, and SQLite job queues.
 
-**Version:** 0.12.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
+**Version:** 0.13.0 · **License:** MIT · **Requires Nox ≥ 2.1.186**  
 Package name: `aether` · Repo: [github.com/mburakmmm/aether](https://github.com/mburakmmm/aether)
 
 > Independent of [Nyx](https://github.com/mburakmmm/nyx) (Rails-style full-stack). Use **Aether** for HTTP APIs; use **Nyx** for monolithic HTML apps.
@@ -24,7 +24,7 @@ Add to your app’s `nox.json`:
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.12.0"
+      "ref": "v0.13.0"
     }
   ]
 }
@@ -44,7 +44,7 @@ AETHER_ENV=development AETHER_WORKERS=1 NOX_POOL_WORKERS=1 noxc run main.nox
 ### CLI scaffold
 
 ```sh
-noxc install github.com/mburakmmm/aether@v0.12.0
+noxc install github.com/mburakmmm/aether@v0.13.0
 aether new myapi
 cd myapi && noxc fetch && chmod +x run.sh && ./run.sh
 ```
@@ -108,6 +108,10 @@ finally:
 Dogfood example: `examples/hello_api` (`GET/POST/PUT/DELETE /api/users…`).
 
 ---
+
+## What’s new in 0.13.0
+
+Nox floor stays **2.1.186**. `aether new` pins this version. `X-Forwarded-For` is read only from peers listed in `AETHER_TRUSTED_PROXIES`. A rate-limited request with no client identity is 429. HTTP/3 and the rate limiter cannot be on together.
 
 ## What’s new in 0.11.0
 
@@ -288,11 +292,11 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 | `AETHER_REQUEST_ID` | on | `0` skips `uuid4` + `X-Request-Id` |
 | `AETHER_REQUEST_HEADERS` | on | `0` uses `handle_bare` (Nox skips copying request headers) |
 | `AETHER_OPENAPI` | on (off in prod) | `/openapi.json`, `/docs` |
-| `AETHER_RATE_LIMIT` | off | Opt-in; requires identifiable client IP (`AETHER_TRUST_X_FORWARDED_FOR` today) |
+| `AETHER_RATE_LIMIT` | off | Opt-in. An empty client identity is 429. The window is per worker. Refused together with `AETHER_HTTP3` |
 | `AETHER_CORS_ORIGINS` | `*` (dev/test); **empty in production** | Opt-in CORS: `*` or comma-separated allowlist |
 | `AETHER_METRICS` | on | `0` skips status counters in `/metrics` (fair bench / hot path) |
 | `AETHER_METRICS_ROUTES` | on (dev/test); **off in production** | Per-route hit counters in `/metrics` |
-| `AETHER_TRUST_X_FORWARDED_FOR` | `false` | Enable only behind a trusted proxy |
+| `AETHER_TRUST_X_FORWARDED_FOR` | `false` | Read `X-Forwarded-For` only from peers in `AETHER_TRUSTED_PROXIES`. An empty list fails boot |
 | `AETHER_JOBS_DB` | `db/jobs.sqlite` | Queue SQLite path |
 | `AETHER_JOB_STALE_MS` | `300000` | Stuck `running` reclaim window |
 | `AETHER_MAX_BODY_BYTES` | `1048576` | Passed to `nox.http.configure`. A larger socket body is Nox’s plain-text 413 and the handler does not run. `0` keeps Nox’s 10 MiB |
@@ -301,7 +305,7 @@ m.get("/users/:id", self._show(svc))     # capture in closure
 | `AETHER_MAX_CONNECTIONS` | `4096` | Extra connections get Nox’s 503 |
 | `AETHER_DRAIN_TIMEOUT_MS` | `10000` | How long `nox.http.shutdown` waits for in-flight requests |
 | `AETHER_HTTP2` | on | `0` in benchmarks (wrk is HTTP/1.1) |
-| `AETHER_HTTP3` | off | TLS only, `AETHER_WORKERS=1`, `AETHER_WS` off. Empty QUIC peer; rate limit needs `AETHER_TRUST_X_FORWARDED_FOR` |
+| `AETHER_HTTP3` | off | TLS only, `AETHER_WORKERS=1`, `AETHER_WS` off, `AETHER_RATE_LIMIT` off. QUIC `peer_addr` is empty |
 | `AETHER_JSON` | `std` | `yyjson` requires `import aether.engine_yyjson` in the serve entry. Scalar bodies only |
 | `AETHER_BODY_CODECS` | empty | Comma list `br`, `zstd`, `lz4`. Each token requires its `aether.engine_*` import. Empty skips the header |
 | `AETHER_SECURITY_HEADERS` | off (on in production) | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` |

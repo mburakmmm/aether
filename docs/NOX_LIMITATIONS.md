@@ -1,10 +1,10 @@
 # Nox limitations
 
-Aether **0.12.0** requires **Nox ≥ 2.1.186**. The sections below the 0.11 note are the 2026-11-11 recheck on `noxc 2.1.52`. They were not re-run for this floor. `serve_multicore` still gives each worker its own module globals; Nox 2.1.120–2.1.140 did not change that factory model.
+Aether **0.13.0** requires **Nox ≥ 2.1.186**. The sections below the 0.11 note are the 2026-11-11 recheck on `noxc 2.1.52`. They were not re-run for this floor. `serve_multicore` still gives each worker its own module globals; Nox 2.1.120–2.1.140 did not change that factory model.
 
 ## 0.11.0 choices
 
-- `AETHER_HTTP3=1` is refused without TLS paths, with `AETHER_WS`, with `AETHER_WORKERS>1`, and with `AETHER_RATE_LIMIT` unless `AETHER_TRUST_X_FORWARDED_FOR` is set. QUIC `peer_addr` is empty. The UDP listener is one socket inside `serveImpl`, not one socket per worker.
+- `AETHER_HTTP3=1` is refused without TLS paths, with `AETHER_WS`, with `AETHER_WORKERS>1`, and with `AETHER_RATE_LIMIT`. QUIC `peer_addr` is empty, so the forwarded header is not a client proof. The UDP listener is one socket inside `serveImpl`, not one socket per worker.
 - `aether.engine_yyjson` is imported by the serve entry, not by `aether.application`. Scalar bodies use it when `AETHER_JSON=yyjson`. A parsed `1.0` dumps as `1.0` (`tests/engine_test.nox`). Duplicate keys still fail with `invalid JSON`. Nested and pattern schemas stay on `nox.json`. yyjson has no 32-level depth cap; a scalar document that is only deep nesting can diverge from `std`.
 - `nox.pcre2` is not an Aether pattern engine.
 - Body codecs (`br`, `zstd`, `lz4`) run only when `AETHER_BODY_CODECS` lists them and the matching module is imported. An empty list does not read `Content-Encoding`.

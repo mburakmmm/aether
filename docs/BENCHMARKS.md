@@ -56,6 +56,19 @@ The first pass of this table was taken while other Nox processes were still runn
 
 Bare Nox ping on the same settings: LLVM 227633 req/s (p99 629us), `--release` 182344 (p99 672us), QBE 201561 (p99 523us). The workers=4 probe answered with one `boot_id`. Accept stayed on one worker. `scripts/smoke_worker_bind.sh` remains the check that more than one worker boots.
 
+## Scale record (2026-11-16)
+
+`scripts/smoke_scale.sh`, `wrk -t4 -c40 -d20s --latency`, HTTP/1.1, LLVM `noxc run`, 10 CPUs. Non-2xx and read errors were 0. CPU is the maximum `ps` percent of the listen process, sampled once a second during that wrk. `boot_ids` counts distinct ids seen on `/__worker` while the probe was under the same wrk. This is not an idle-machine number and it is not a row in the historical tables.
+
+| Workers | Ping req/s | Ping p99 | Ping CPU | Echo req/s | Echo p99 | Echo CPU | Probe boot ids |
+|---------|------------|----------|----------|------------|----------|----------|----------------|
+| 1 | 218970 | 502us | 99 | 188328 | 514us | 99 | 1 |
+| 2 | 216395 | 410us | 198 | 203320 | 478us | 198 | 1 |
+| 4 | 202767 | 515us | 296 | 190227 | 533us | 295 | 1 |
+| 8 | 198956 | 513us | 296 | 189052 | 544us | 393 | 2 |
+
+Adding workers did not raise throughput. The listen process used more CPU. Accept stayed on one worker at 1, 2, and 4, and two workers appeared at 8. The extra workers are running. They are not taking the wrk connections. `scripts/smoke_worker_bind.sh` still checks that more than one worker boots when requests are spread on purpose.
+
 ## Results
 
 ### 2026-10-04 same-session (`wrk -t4 -c40 -d8s`, darwin arm64, noxc 1.126.0)

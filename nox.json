@@ -1,5 +1,6 @@
 {
   "name": "aether",
+  "source": "nox",
   "entry": "examples/hello_api/main.nox",
   "bin": {
     "name": "aether",
@@ -9,7 +10,7 @@
     {
       "alias": "aether",
       "repo": "github.com/mburakmmm/aether",
-      "ref": "v0.12.0"
+      "ref": "v0.13.0"
     }
   ]
 }

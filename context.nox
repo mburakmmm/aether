@@ -204,6 +204,25 @@ def peer_host(peer: str) -> str:
         return _substr(peer, 0, last)
     return peer
 
+def peer_trusted(peer: str, proxies: str) -> bool:
+    if len(peer) == 0 or len(proxies) == 0:
+        return False
+    parts: list[str] = nox.strings.split(proxies, ",")
+    i: int = 0
+    while i < len(parts):
+        hop: str = parts[i]
+        out: str = ""
+        j: int = 0
+        while j < len(hop):
+            ch: str = hop[j]
+            if ch != " ":
+                out = out + ch
+            j = j + 1
+        if out == peer:
+            return True
+        i = i + 1
+    return False
+
 def client_ip(headers: dict[str, str], trust_xff: bool) -> str:
     if trust_xff:
         xff: str = header_get(headers, "X-Forwarded-For")
@@ -244,6 +263,7 @@ class HttpContext:
     security_headers: bool
     cors_origins: str
     json_engine: str
+    trusted_proxies: str
     _stream_status: int
 
     def __init__(
@@ -257,7 +277,8 @@ class HttpContext:
         path: str,
         security_headers: bool = False,
         cors_origins: str = "",
-        json_engine: str = "std"
+        json_engine: str = "std",
+        trusted_proxies: str = ""
     ) -> None:
         empty_q: dict[str, str] = {}
         self.request = request
@@ -279,6 +300,7 @@ class HttpContext:
         self.security_headers = security_headers
         self.cors_origins = cors_origins
         self.json_engine = json_engine
+        self.trusted_proxies = trusted_proxies
         self._stream_status = 200
 
     def ensure_query(self: HttpContext) -> None:
@@ -315,11 +337,12 @@ class HttpContext:
     def client_ip(self: HttpContext) -> str:
         # Trusted XFF wins (the TCP peer is the proxy). Otherwise the
         # socket peer. Empty when the serve handle did not read req.peer_addr.
-        if self.trust_xff:
+        peer: str = peer_host(self.request.peer_addr)
+        if self.trust_xff and peer_trusted(peer, self.trusted_proxies):
             forwarded: str = client_ip(self.request.headers, True)
             if len(forwarded) > 0:
                 return forwarded
-        return peer_host(self.request.peer_addr)
+        return peer
 
     def has_provider(self: HttpContext, name: str) -> bool:
         return self.container.has(name)

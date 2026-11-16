@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0 — 2026-11-16
+
+Nox floor stays **2.1.186**.
+
+- `aether new` pins `github.com/mburakmmm/aether` at this version. The scaffold no longer asks for `v0.6.4`
+- `AETHER_TRUST_X_FORWARDED_FOR` requires `AETHER_TRUSTED_PROXIES`. The forwarded header is used only when the TCP peer is on that list. A rate-limited request with no client identity is 429. `AETHER_HTTP3` and `AETHER_RATE_LIMIT` cannot be on together
+- `docs/BENCHMARKS.md` records a 1/2/4/8 worker load. More workers did not raise throughput
+
 ## 0.12.0 — 2026-11-15
 
 Nox floor stays **2.1.186**.

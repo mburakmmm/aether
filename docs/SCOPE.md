@@ -54,7 +54,13 @@ Process-once cleanup that is not per-Application still belongs in the supervisor
 
 ## Rate limit
 
-In-memory `RateStore` is **worker-local**. Effective process capacity ≈ `workers × max` (skewed by accept affinity). Keep `AETHER_RATE_LIMIT` off for global quotas; use Redis/Postgres/API gateway.
+In-memory `RateStore` is **worker-local**. Effective process capacity ≈ `workers × max` (skewed by accept affinity). Aether does not add a shared quota: `serve_multicore` does not share that store, and a second database on the request path would not be a cluster limiter. Keep `AETHER_RATE_LIMIT` off when the cap must cover every worker. Use a proxy or gateway in front for that quota.
+
+`AETHER_TRUST_X_FORWARDED_FOR` reads `X-Forwarded-For` only when the TCP peer is listed in `AETHER_TRUSTED_PROXIES`. Trust with an empty list fails boot. An empty client identity is 429 while the limiter is on. `AETHER_HTTP3` and `AETHER_RATE_LIMIT` together fail boot: the QUIC peer is empty, so the forwarded header is not a client proof.
+
+## Ecosystem adapters
+
+Noxen, Pulse, Quartz, and a PostgreSQL reference application stay outside this package. Aether remains the HTTP framework. Those integrations are separate programs, not imports the core boots.
 
 ## Recommended production defaults
 

@@ -74,9 +74,18 @@ try:
     aether.server.require_http3(h3)
 except ServerError as e5:
     rejected_rate = len(e5.message) > 0
-nox.test.assert_true(rejected_rate, "http3 rate limit needs xff")
+nox.test.assert_true(rejected_rate, "http3 rejects rate limit")
+h3.trust_x_forwarded_for = True
+h3.trusted_proxies = "10.0.0.1"
+rejected_rate_trust: bool = False
+try:
+    aether.server.require_http3(h3)
+except ServerError as e5b:
+    rejected_rate_trust = nox.strings.contains(e5b.message, "AETHER_RATE_LIMIT")
+nox.test.assert_true(rejected_rate_trust, "http3 rejects rate limit even with a proxy list")
 
 h3.rate_limit_enabled = False
+h3.trust_x_forwarded_for = False
 aether.server.require_http3(h3)
 nox.test.assert_true(h3.http3, "http3 single-worker tls accepted")
 

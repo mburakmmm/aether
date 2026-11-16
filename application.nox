@@ -316,6 +316,7 @@ def boot(build: (Application) -> None) -> Application:
 
 def boot_with_config(cfg: Config, build: (Application) -> None) -> Application:
     aether.server.require_listen_host(cfg)
+    aether.server.require_trusted_proxies(cfg)
     aether.engines.prepare(cfg)
     container: Container = Container()
     table: RouteTable = RouteTable()
@@ -452,7 +453,8 @@ def dispatch(app: Application, req: HttpRequest) -> HttpResponse:
                         path,
                         app.config.security_headers,
                         app.config.cors_origins,
-                        app.config.json_engine
+                        app.config.json_engine,
+                        app.config.trusted_proxies
                     )
                     resp_opt = execute(
                         hit.route,

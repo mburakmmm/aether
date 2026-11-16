@@ -95,6 +95,7 @@ headers["X-Forwarded-For"] = "203.0.113.9, 10.0.0.1"
 cfg2: Config = aether.config.defaults("test")
 cfg2.log_requests = False
 cfg2.trust_x_forwarded_for = True
+cfg2.trusted_proxies = "198.51.100.10"
 seen_ip: list[str] = []
 
 class IpModule:
@@ -116,7 +117,7 @@ app2: Application = aether.application.boot_with_config(cfg2, build2)
 headers2: dict[str, str] = {}
 headers2["X-Forwarded-For"] = "203.0.113.9, 10.0.0.1"
 headers2["X-Custom"] = "hello"
-r10: HttpResponse = aether.testing.get_headers(app2, "/ip?q=1", headers2)
+r10: HttpResponse = aether.testing.request_peer(app2, "GET", "/ip?q=1", "", headers2, "198.51.100.10")
 nox.test.assert_eq_int(r10.status, 200, "ip status")
 nox.test.assert_true(nox.strings.contains(r10.body, "203.0.113.9"), "xff ip")
 nox.test.assert_true(nox.strings.contains(r10.body, "\"q\":\"1\""), "query")

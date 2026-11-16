@@ -164,8 +164,8 @@ def require_listen_host(cfg: Config) -> None:
 
 # HTTP/3 is one UDP socket inside serve_tls / serve_fd_tls, not SO_REUSEPORT.
 # workers>1 would make every extra worker fail that bind. peer_addr is empty
-# on QUIC, so a rate limit without a trusted XFF header cannot see a client.
-# WebSocket is not carried on HTTP/3.
+# on QUIC, so a rate limit cannot tell clients apart. WebSocket is not
+# carried on HTTP/3.
 def require_http3(cfg: Config) -> None:
     if not cfg.http3:
         return
@@ -175,8 +175,8 @@ def require_http3(cfg: Config) -> None:
         raise ServerError("AETHER_HTTP3 does not carry WebSocket; leave AETHER_WS off")
     if use_os_workers(cfg):
         raise ServerError("AETHER_HTTP3 listens on one UDP socket; set AETHER_WORKERS=1")
-    if cfg.rate_limit_enabled and not cfg.trust_x_forwarded_for:
-        raise ServerError("AETHER_HTTP3 leaves peer_addr empty; AETHER_RATE_LIMIT requires AETHER_TRUST_X_FORWARDED_FOR")
+    if cfg.rate_limit_enabled:
+        raise ServerError("AETHER_HTTP3 leaves peer_addr empty; AETHER_RATE_LIMIT cannot identify that client")
 
 # Single-worker WebSocket listen is AF_INET. Multicore WebSocket follows ip_family.
 def require_ipv6_listen(cfg: Config) -> None:
@@ -189,10 +189,20 @@ def listen_v6_fd(cfg: Config) -> int:
     require_ipv6_listen(cfg)
     return nox.http.listen_v6(cfg.port, cfg.ipv6_only)
 
+# X-Forwarded-For is a client header. It is read only when the TCP peer is
+# listed in AETHER_TRUSTED_PROXIES. An empty list with trust enabled would
+# accept the header from every caller, so boot refuses that pair.
+def require_trusted_proxies(cfg: Config) -> None:
+    if not cfg.trust_x_forwarded_for:
+        return
+    if len(cfg.trusted_proxies) == 0:
+        raise ServerError("AETHER_TRUST_X_FORWARDED_FOR requires AETHER_TRUSTED_PROXIES (comma-separated peer addresses)")
+
 # Process-wide Nox server limits. 0 keeps that knob's current Nox default.
 # Call once before serve* (boot_for_serve does). Safe to repeat with the same cfg.
 def apply_http_server(cfg: Config) -> None:
     require_listen_host(cfg)
+    require_trusted_proxies(cfg)
     nox.http.configure(
         cfg.max_body_bytes,
         cfg.max_header_bytes,
